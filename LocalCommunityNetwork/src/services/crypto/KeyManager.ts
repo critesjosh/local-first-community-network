@@ -14,7 +14,7 @@ class KeyManager {
   async generateKeyPair(): Promise<KeyPair> {
     try {
       // Generate random private key (32 bytes)
-      const privateKey = ed.utils.randomPrivateKey();
+      const privateKey = ed.utils.randomSecretKey();
 
       // Derive public key from private key
       const publicKey = await ed.getPublicKey(privateKey);

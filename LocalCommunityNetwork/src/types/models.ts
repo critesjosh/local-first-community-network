@@ -2,6 +2,8 @@
  * Application data models
  */
 
+import {Identity} from './crypto';
+
 export interface User {
   id: string; // base58 encoded public key
   displayName: string;

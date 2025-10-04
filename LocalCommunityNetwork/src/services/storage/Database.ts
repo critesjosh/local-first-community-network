@@ -197,6 +197,303 @@ class Database {
   }
 
   /**
+   * Get connection by ID
+   */
+  async getConnection(connectionId: string): Promise<Connection | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'SELECT * FROM connections WHERE id = ?';
+    const [results] = await this.db.executeSql(query, [connectionId]);
+
+    if (results.rows.length === 0) {
+      return null;
+    }
+
+    const row = results.rows.item(0);
+    return {
+      id: row.id,
+      userId: row.user_id,
+      displayName: row.display_name,
+      profilePhoto: row.profile_photo,
+      sharedSecret: row.shared_secret
+        ? new Uint8Array(Buffer.from(row.shared_secret, 'hex'))
+        : undefined,
+      connectedAt: new Date(row.connected_at),
+      notes: row.notes,
+      trustLevel: row.trust_level as 'verified' | 'pending',
+    };
+  }
+
+  /**
+   * Delete connection
+   */
+  async deleteConnection(connectionId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'DELETE FROM connections WHERE id = ?';
+    await this.db.executeSql(query, [connectionId]);
+  }
+
+  /**
+   * Update connection trust level
+   */
+  async updateConnectionTrustLevel(
+    connectionId: string,
+    trustLevel: 'verified' | 'pending',
+  ): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'UPDATE connections SET trust_level = ? WHERE id = ?';
+    await this.db.executeSql(query, [trustLevel, connectionId]);
+  }
+
+  /**
+   * Save event
+   */
+  async saveEvent(event: Event): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      INSERT OR REPLACE INTO events (
+        id, author_id, title, description, datetime, location,
+        photo, created_at, updated_at, encrypted_for
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    await this.db.executeSql(query, [
+      event.id,
+      event.authorId,
+      event.title,
+      event.description || null,
+      event.datetime.getTime(),
+      event.location || null,
+      event.photo || null,
+      event.createdAt.getTime(),
+      event.updatedAt.getTime(),
+      JSON.stringify(event.encryptedFor),
+    ]);
+  }
+
+  /**
+   * Get all events
+   */
+  async getEvents(limit: number = 100, offset: number = 0): Promise<Event[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'SELECT * FROM events ORDER BY datetime DESC LIMIT ? OFFSET ?';
+    const [results] = await this.db.executeSql(query, [limit, offset]);
+
+    const events: Event[] = [];
+    for (let i = 0; i < results.rows.length; i++) {
+      const row = results.rows.item(i);
+      events.push({
+        id: row.id,
+        authorId: row.author_id,
+        title: row.title,
+        description: row.description,
+        datetime: new Date(row.datetime),
+        location: row.location,
+        photo: row.photo,
+        createdAt: new Date(row.created_at),
+        updatedAt: new Date(row.updated_at),
+        encryptedFor: JSON.parse(row.encrypted_for || '[]'),
+      });
+    }
+
+    return events;
+  }
+
+  /**
+   * Get event by ID
+   */
+  async getEvent(eventId: string): Promise<Event | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'SELECT * FROM events WHERE id = ?';
+    const [results] = await this.db.executeSql(query, [eventId]);
+
+    if (results.rows.length === 0) {
+      return null;
+    }
+
+    const row = results.rows.item(0);
+    return {
+      id: row.id,
+      authorId: row.author_id,
+      title: row.title,
+      description: row.description,
+      datetime: new Date(row.datetime),
+      location: row.location,
+      photo: row.photo,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+      encryptedFor: JSON.parse(row.encrypted_for || '[]'),
+    };
+  }
+
+  /**
+   * Get events by connection (events visible to specific connection)
+   */
+  async getEventsByConnection(connectionId: string): Promise<Event[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      SELECT * FROM events
+      WHERE encrypted_for LIKE ?
+      ORDER BY datetime DESC
+    `;
+
+    // SQLite LIKE pattern to find connection ID in JSON array
+    const pattern = `%"${connectionId}"%`;
+    const [results] = await this.db.executeSql(query, [pattern]);
+
+    const events: Event[] = [];
+    for (let i = 0; i < results.rows.length; i++) {
+      const row = results.rows.item(i);
+      events.push({
+        id: row.id,
+        authorId: row.author_id,
+        title: row.title,
+        description: row.description,
+        datetime: new Date(row.datetime),
+        location: row.location,
+        photo: row.photo,
+        createdAt: new Date(row.created_at),
+        updatedAt: new Date(row.updated_at),
+        encryptedFor: JSON.parse(row.encrypted_for || '[]'),
+      });
+    }
+
+    return events;
+  }
+
+  /**
+   * Delete event
+   */
+  async deleteEvent(eventId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'DELETE FROM events WHERE id = ?';
+    await this.db.executeSql(query, [eventId]);
+  }
+
+  /**
+   * Save message
+   */
+  async saveMessage(message: Message): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      INSERT OR REPLACE INTO messages (
+        id, conversation_id, sender_id, recipient_id,
+        content, timestamp, delivered, read
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    await this.db.executeSql(query, [
+      message.id,
+      message.conversationId,
+      message.senderId,
+      message.recipientId,
+      message.content,
+      message.timestamp.getTime(),
+      message.delivered ? 1 : 0,
+      message.read ? 1 : 0,
+    ]);
+  }
+
+  /**
+   * Get messages for a conversation
+   */
+  async getMessages(
+    conversationId: string,
+    limit: number = 100,
+    offset: number = 0,
+  ): Promise<Message[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      SELECT * FROM messages
+      WHERE conversation_id = ?
+      ORDER BY timestamp ASC
+      LIMIT ? OFFSET ?
+    `;
+    const [results] = await this.db.executeSql(query, [conversationId, limit, offset]);
+
+    const messages: Message[] = [];
+    for (let i = 0; i < results.rows.length; i++) {
+      const row = results.rows.item(i);
+      messages.push({
+        id: row.id,
+        conversationId: row.conversation_id,
+        senderId: row.sender_id,
+        recipientId: row.recipient_id,
+        content: row.content,
+        timestamp: new Date(row.timestamp),
+        delivered: row.delivered === 1,
+        read: row.read === 1,
+      });
+    }
+
+    return messages;
+  }
+
+  /**
+   * Mark message as delivered
+   */
+  async markMessageAsDelivered(messageId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'UPDATE messages SET delivered = 1 WHERE id = ?';
+    await this.db.executeSql(query, [messageId]);
+  }
+
+  /**
+   * Mark message as read
+   */
+  async markMessageAsRead(messageId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'UPDATE messages SET read = 1 WHERE id = ?';
+    await this.db.executeSql(query, [messageId]);
+  }
+
+  /**
+   * Mark all messages in conversation as read
+   */
+  async markConversationAsRead(conversationId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'UPDATE messages SET read = 1 WHERE conversation_id = ?';
+    await this.db.executeSql(query, [conversationId]);
+  }
+
+  /**
+   * Get unread message count for conversation
+   */
+  async getUnreadCount(conversationId: string): Promise<number> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      SELECT COUNT(*) as count FROM messages
+      WHERE conversation_id = ? AND read = 0
+    `;
+    const [results] = await this.db.executeSql(query, [conversationId]);
+
+    return results.rows.item(0).count;
+  }
+
+  /**
+   * Delete message
+   */
+  async deleteMessage(messageId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'DELETE FROM messages WHERE id = ?';
+    await this.db.executeSql(query, [messageId]);
+  }
+
+  /**
    * Get app state value
    */
   async getAppState(key: string): Promise<string | null> {
