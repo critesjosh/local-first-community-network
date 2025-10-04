@@ -102,7 +102,100 @@ We're different:
 
 ## Getting Started
 
-_(Coming soon - Development setup instructions will be added as the codebase is built)_
+### Prerequisites
+
+- Node.js 20+
+- npm or yarn
+- React Native development environment set up ([React Native docs](https://reactnative.dev/docs/environment-setup))
+- iOS: Xcode 15+ (Mac only)
+- Android: Android Studio with SDK 34+
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/local-first-community-network.git
+cd local-first-community-network
+
+# Install dependencies
+npm run mobile:install
+
+# iOS only: Install pods
+cd LocalCommunityNetwork/ios && pod install && cd ../..
+```
+
+### Running the App
+
+```bash
+# Start Metro bundler
+npm run mobile:start
+
+# Run on iOS (Mac only)
+npm run mobile:ios
+
+# Run on Android
+npm run mobile:android
+```
+
+## Testing
+
+The project includes a comprehensive test suite covering cryptographic operations, secure storage, and core functionality.
+
+### Running Tests
+
+```bash
+# Run all tests
+npm run mobile:test
+
+# Run tests in watch mode (for development)
+npm run mobile:test:watch
+
+# Generate coverage report
+npm run mobile:test:coverage
+```
+
+### Test Structure
+
+Tests are organized by component type:
+
+```
+LocalCommunityNetwork/__tests__/
+├── services/
+│   ├── crypto/         # Cryptographic operations (Ed25519, signatures)
+│   ├── storage/        # Database and secure storage tests
+│   └── IdentityService.test.ts
+└── utils/              # Utility function tests (base58, crypto utils)
+```
+
+### What's Tested
+
+- **Cryptographic Security**: Key generation, signatures, encryption
+- **Data Integrity**: Database operations, secure key storage
+- **Identity Management**: User creation, authentication, profile updates
+- **Edge Cases**: Error handling, network failures, invalid inputs
+
+### Writing Tests
+
+When adding new features, include tests that verify:
+1. Normal operation (happy path)
+2. Error conditions
+3. Security implications
+4. Data validation
+
+Example:
+```javascript
+describe('NewFeature', () => {
+  it('should handle normal operation', async () => {
+    // Test implementation
+  });
+
+  it('should handle errors gracefully', async () => {
+    // Test error cases
+  });
+});
+```
+
+For more details, see [TESTING.md](LocalCommunityNetwork/TESTING.md).
 
 ## Contributing
 

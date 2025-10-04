@@ -13,21 +13,55 @@ Local Community Network is a privacy-first, peer-to-peer platform for discoverin
 ├── LocalCommunityNetwork/          # React Native mobile app
 │   ├── src/
 │   │   ├── components/            # Reusable UI components
-│   │   ├── screens/               # Screen components (Home, Connections, etc.)
+│   │   ├── screens/               # Screen components
+│   │   │   ├── HomeScreen.tsx
+│   │   │   ├── ConnectionsScreen.tsx
+│   │   │   ├── CreateEventScreen.tsx
+│   │   │   ├── ProfileScreen.tsx
+│   │   │   ├── SettingsScreen.tsx
+│   │   │   └── OnboardingScreen.tsx
 │   │   ├── navigation/            # React Navigation setup
 │   │   ├── services/              # Core services
-│   │   │   ├── bluetooth/        # BLE connection management
-│   │   │   ├── crypto/           # Encryption/decryption services
-│   │   │   ├── storage/          # Local SQLite database
-│   │   │   └── sync/             # P2P sync protocol
-│   │   ├── types/                # TypeScript type definitions
+│   │   │   ├── bluetooth/        # BLE connection management (planned)
+│   │   │   ├── crypto/           # Cryptographic services
+│   │   │   │   └── KeyManager.ts # Ed25519 key operations
+│   │   │   ├── storage/          # Data persistence
+│   │   │   │   ├── Database.ts   # SQLite operations
+│   │   │   │   └── SecureStorage.ts # Keychain storage
+│   │   │   ├── IdentityService.ts # Identity management
+│   │   │   └── sync/             # P2P sync protocol (planned)
+│   │   ├── types/                # TypeScript definitions
+│   │   │   ├── crypto.ts         # Crypto type definitions
+│   │   │   ├── models.ts         # Data models
+│   │   │   └── navigation.ts     # Navigation types
 │   │   └── utils/                # Utility functions
-│   ├── ios/                       # iOS native code
-│   └── android/                   # Android native code
-├── PRD.md                         # Product Requirements Document
-├── IMPLEMENTATION_PLAN.md         # 4-week development roadmap
-└── package.json                   # Root package with husky hooks
+│   │       ├── base58.ts         # Base58 encoding
+│   │       └── crypto.ts         # Crypto utilities
+│   ├── __tests__/                # Test suite
+│   │   ├── services/             # Service tests
+│   │   ├── utils/                # Utility tests
+│   │   └── setup.ts              # Test configuration
+│   ├── ios/                      # iOS native code
+│   └── android/                  # Android native code
+├── PRD.md                        # Product Requirements Document
+├── IMPLEMENTATION_PLAN.md        # 4-week development roadmap
+├── TESTING.md                    # Testing documentation
+└── package.json                  # Root package with scripts
 ```
+
+## ⚠️ IMPORTANT: Testing Policy
+
+**Always run tests after implementing new features or making changes:**
+```bash
+npm run mobile:test
+```
+
+If any tests fail after your changes:
+1. Fix the broken functionality
+2. Update tests if the behavior intentionally changed
+3. Never commit with failing tests
+
+Current test baseline: **94 tests passing out of 106 total**
 
 ## Development Commands
 
@@ -91,36 +125,63 @@ cd android && ./gradlew clean && cd ..
 ### Key Implementation Details
 
 - **MVP Scope**: BLE-only verification, no NFC, no server dependency
+- **Identity System**: Ed25519 key pairs with base58-encoded public keys as user IDs
+- **Secure Storage**: Private keys stored in iOS Keychain / Android KeyStore
+- **Database Schema**: SQLite with tables for users, connections, events, messages
 - **Event Flow**: Create locally → Encrypt for connections → Sync via BLE when nearby
 - **Connection Flow**: BLE advertise → Scan → Exchange keys → Mutual confirmation
 - **Simplifications**: No Signal Protocol (basic AES), no CRDTs (last-write-wins), single device only
 
 ### Current Implementation Status
 
-**Week 1 (Days 1-2) Completed:**
+**Week 1 Completed:**
 - ✅ React Native project setup with TypeScript
 - ✅ Project folder structure created
 - ✅ Core dependencies installed
 - ✅ Basic navigation with 5 screens (Home, Connections, Create Event, Profile, Settings)
 - ✅ Git hooks configured with husky and lint-staged
+- ✅ Ed25519 key generation and cryptographic identity system
+- ✅ Secure key storage using device keychain
+- ✅ SQLite database service with full schema
+- ✅ Identity creation flow with 4-step onboarding
+- ✅ Comprehensive test suite (106 tests, 94 passing)
 
-**Next Steps (Week 1, Days 3-7):**
-- Implement Ed25519 key generation and secure storage
+**Week 2 Next Steps:**
 - Build Bluetooth foundation (BLE advertising/scanning)
-- Create identity creation flow
+- Implement connection handshake protocol
+- Create event posting and encryption
 
 ## Testing
+
+### Test Suite Overview
+The project includes 106 tests covering cryptographic operations, secure storage, and identity management.
 
 ```bash
 # Run all tests
 npm run mobile:test
 
 # Run tests in watch mode
-cd LocalCommunityNetwork && npm test -- --watch
+npm run mobile:test:watch
+
+# Generate coverage report
+npm run mobile:test:coverage
 
 # Run specific test file
-cd LocalCommunityNetwork && npm test -- HomeScreen.test.tsx
+cd LocalCommunityNetwork && npm test -- KeyManager
+
+# Run tests matching pattern
+cd LocalCommunityNetwork && npm test -- --testPathPattern=crypto
 ```
+
+### Test Files
+- `__tests__/services/crypto/KeyManager.test.ts` - Ed25519 operations
+- `__tests__/services/storage/SecureStorage.test.ts` - Keychain storage
+- `__tests__/services/storage/Database.test.ts` - SQLite operations
+- `__tests__/services/IdentityService.test.ts` - Identity management
+- `__tests__/utils/base58.test.ts` - Base58 encoding
+- `__tests__/utils/crypto.test.ts` - Crypto utilities
+
+See `LocalCommunityNetwork/TESTING.md` for comprehensive testing documentation.
 
 ## Code Style & Linting
 
@@ -139,12 +200,34 @@ cd LocalCommunityNetwork && npx prettier --write "src/**/*.{ts,tsx}"
 
 ## Important Implementation Notes
 
-1. **Bluetooth Permissions**: Must request runtime permissions on both iOS and Android
-2. **Key Storage**: Use Keychain (iOS) / KeyStore (Android) via react-native-keychain
-3. **BLE Service UUID**: Define custom UUID for app identification during scanning
-4. **RSSI Threshold**: -70 dBm for proximity detection (1-3 meters)
-5. **Encryption Pattern**: Generate AES key per event, wrap with connection's shared secret
-6. **P2P Sync**: Exchange event IDs/timestamps first, then transfer missing events
+### Cryptographic Identity System
+1. **Key Generation**: Ed25519 key pairs generated using `@noble/ed25519`
+2. **User IDs**: Public keys encoded as base58 strings for human-readable IDs
+3. **Key Storage**: Private keys stored in iOS Keychain / Android KeyStore via `react-native-keychain`
+4. **Identity Persistence**: User profiles stored in SQLite, keys in secure storage
+5. **Signature Operations**: All events/messages signed with private key for authenticity
+
+### Bluetooth Implementation (Next Phase)
+1. **Permissions**: Must request runtime permissions on both iOS and Android
+2. **BLE Service UUID**: Define custom UUID for app identification during scanning
+3. **RSSI Threshold**: -70 dBm for proximity detection (1-3 meters)
+4. **Connection Protocol**: Exchange public keys, verify proximity, establish shared secret
+
+### Data Management
+1. **Database Schema**: 5 tables - users, connections, events, messages, app_state
+2. **Encryption Pattern**: Generate AES key per event, wrap with connection's shared secret
+3. **P2P Sync**: Exchange event IDs/timestamps first, then transfer missing events
+4. **Factory Reset**: `IdentityService.resetIdentity()` clears all data securely
+
+### Development Patterns
+1. **Service Pattern**: Singleton services for identity, database, crypto operations
+2. **Type Safety**: All models defined in `types/` with strict TypeScript interfaces
+3. **Error Handling**: Services throw specific errors, screens handle gracefully
+4. **Test-Driven Development**:
+   - Write tests for new features
+   - Run full test suite before committing
+   - Maintain or improve the 88% pass rate (94/106 tests)
+   - Never merge code with failing tests
 
 ## Common Issues & Solutions
 
@@ -175,9 +258,73 @@ rm -rf LocalCommunityNetwork/node_modules LocalCommunityNetwork/package-lock.jso
 npm run mobile:install
 ```
 
+## Quick Reference
+
+### Creating a New Feature
+1. Define types in `src/types/`
+2. Create service in `src/services/` if needed
+3. Build UI component in `src/components/` or screen in `src/screens/`
+4. Write tests in `__tests__/`
+5. Update navigation if adding new screen
+6. **IMPORTANT: Run `npm run mobile:test` after implementation to ensure nothing breaks**
+
+### Working with Identity
+```typescript
+import IdentityService from '../services/IdentityService';
+
+// Check if user has identity
+const hasIdentity = await IdentityService.hasIdentity();
+
+// Create new identity
+const identity = await IdentityService.createIdentity('Display Name');
+
+// Get current user
+const user = await IdentityService.getCurrentUser();
+
+// Sign data
+const signature = await IdentityService.signData(data);
+```
+
+### Database Operations
+```typescript
+import Database from '../services/storage/Database';
+
+// Save user
+await Database.saveUser(user);
+
+// Get connections
+const connections = await Database.getConnections();
+
+// Save event
+await Database.saveEvent(event);
+```
+
+### Secure Storage
+```typescript
+import SecureStorage from '../services/storage/SecureStorage';
+
+// Check for keys
+const hasKeys = await SecureStorage.hasKeys();
+
+// Store sensitive data
+await SecureStorage.storeSecureData('key', 'value');
+```
+
 ## Key Files to Understand
 
-- `LocalCommunityNetwork/src/navigation/AppNavigator.tsx` - Main app navigation structure
-- `LocalCommunityNetwork/App.tsx` - App entry point
+### Core Application
+- `LocalCommunityNetwork/App.tsx` - App entry point with navigation
+- `LocalCommunityNetwork/src/navigation/AppNavigator.tsx` - Main navigation structure
+- `LocalCommunityNetwork/src/screens/OnboardingScreen.tsx` - Identity creation flow
+
+### Cryptographic Identity System
+- `LocalCommunityNetwork/src/services/crypto/KeyManager.ts` - Ed25519 key operations
+- `LocalCommunityNetwork/src/services/storage/SecureStorage.ts` - Keychain integration
+- `LocalCommunityNetwork/src/services/storage/Database.ts` - SQLite database service
+- `LocalCommunityNetwork/src/services/IdentityService.ts` - Main identity management
+
+### Documentation
 - `PRD.md` - Detailed product requirements and user stories
 - `IMPLEMENTATION_PLAN.md` - Day-by-day development roadmap
+- `LocalCommunityNetwork/TESTING.md` - Comprehensive testing guide
+- `README.md` - Project overview and getting started

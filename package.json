@@ -10,7 +10,9 @@
     "mobile:android": "cd LocalCommunityNetwork && npm run android",
     "mobile:ios": "cd LocalCommunityNetwork && npm run ios",
     "mobile:lint": "cd LocalCommunityNetwork && npm run lint",
-    "mobile:test": "cd LocalCommunityNetwork && npm test"
+    "mobile:test": "cd LocalCommunityNetwork && npm test",
+    "mobile:test:watch": "cd LocalCommunityNetwork && npm run test:watch",
+    "mobile:test:coverage": "cd LocalCommunityNetwork && npm run test:coverage"
   },
   "devDependencies": {
     "husky": "^9.1.7",
