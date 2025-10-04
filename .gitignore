@@ -1,0 +1,70 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Build outputs
+build/
+dist/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Testing
+coverage/
+
+# Temporary files
+tmp/
+temp/
+
+# Package manager files
+package-lock.json.backup
+yarn.lock.backup
+
+# React Native specific (for LocalCommunityNetwork)
+LocalCommunityNetwork/ios/Pods/
+LocalCommunityNetwork/ios/build/
+LocalCommunityNetwork/android/app/build/
+LocalCommunityNetwork/android/build/
+LocalCommunityNetwork/android/gradle/
+LocalCommunityNetwork/android/gradlew
+LocalCommunityNetwork/android/gradlew.bat
+LocalCommunityNetwork/android/.gradle/
+LocalCommunityNetwork/android/local.properties
+LocalCommunityNetwork/*.hprof
+LocalCommunityNetwork/.bundle/
+
+# Metro
+LocalCommunityNetwork/.metro-health-check*
+
+# Xcode
+LocalCommunityNetwork/ios/*.xcworkspace
+LocalCommunityNetwork/ios/*.xcodeproj/xcuserdata
+LocalCommunityNetwork/ios/*.xcodeproj/project.xcworkspace
+
+# Android Studio
+LocalCommunityNetwork/android/.idea/
+LocalCommunityNetwork/android/*.iml
+
+# Buck
+LocalCommunityNetwork/buck-out/
+LocalCommunityNetwork/.buckd/
+LocalCommunityNetwork/*.keystore
+!LocalCommunityNetwork/debug.keystore

@@ -1,0 +1,28 @@
+{
+  "name": "local-first-community-network",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Privacy-first platform for discovering local events and building neighborhood connections",
+  "scripts": {
+    "prepare": "husky",
+    "mobile:install": "cd LocalCommunityNetwork && npm install",
+    "mobile:start": "cd LocalCommunityNetwork && npm start",
+    "mobile:android": "cd LocalCommunityNetwork && npm run android",
+    "mobile:ios": "cd LocalCommunityNetwork && npm run ios",
+    "mobile:lint": "cd LocalCommunityNetwork && npm run lint",
+    "mobile:test": "cd LocalCommunityNetwork && npm test"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.3"
+  },
+  "lint-staged": {
+    "LocalCommunityNetwork/**/*.{js,jsx,ts,tsx}": [
+      "cd LocalCommunityNetwork && npx eslint --fix",
+      "cd LocalCommunityNetwork && npx prettier --write"
+    ],
+    "**/*.{json,md}": [
+      "prettier --write"
+    ]
+  }
+}
