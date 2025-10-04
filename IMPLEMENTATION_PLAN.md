@@ -1,0 +1,407 @@
+# Local Community Network - Implementation Plan
+
+## Executive Summary
+
+This implementation plan outlines the development of a 1-month MVP for the Local Community Network - a privacy-first, peer-to-peer platform for discovering local events and building neighborhood connections through Bluetooth verification and end-to-end encryption.
+
+**Timeline:** 4 weeks (October 2025)
+**Target:** Working prototype with 20-30 beta users
+**Core Flow:** BLE connect → post event → discover → attend
+
+## Technology Stack
+
+### Mobile Application
+
+- **Framework:** React Native 0.72+ with TypeScript
+- **State Management:** Zustand for local state
+- **Database:** SQLite with react-native-sqlite-storage
+- **Crypto Libraries:**
+  - @noble/ed25519 for identity keys
+  - @noble/secp256k1 for ECDH key exchange
+  - react-native-crypto for AES-256-GCM
+- **BLE:** react-native-ble-plx
+- **Storage:**
+  - react-native-keychain (iOS/Android secure storage)
+  - @react-native-async-storage/async-storage
+
+### Backend (Minimal for MVP)
+
+- **Framework:** Express.js
+- **Database:** PostgreSQL for encrypted blob storage
+- **Deployment:** Single VPS or Railway.app
+- **Note:** MVP focuses on peer-to-peer sync via BLE, server is optional
+
+## Week 1: Core Foundation & Identity System
+
+### Day 1-2: Project Setup
+
+- [ ] Initialize React Native project with TypeScript
+- [ ] Configure development environment (iOS/Android)
+- [ ] Set up ESLint, Prettier, and Git hooks
+- [ ] Create basic folder structure:
+  ```
+  src/
+    components/
+    screens/
+    services/
+    crypto/
+    storage/
+    types/
+    utils/
+  ```
+- [ ] Install core dependencies
+- [ ] Set up basic navigation (React Navigation)
+
+### Day 3-4: Cryptographic Identity System
+
+- [ ] Implement Ed25519 key generation service
+- [ ] Create secure key storage service using Keychain/KeyStore
+- [ ] Build identity creation flow:
+  - Generate keypair on first launch
+  - Derive user ID from public key (base58)
+  - Store keys securely
+- [ ] Create Profile service:
+  - Name and photo storage
+  - Local SQLite database setup
+  - Profile CRUD operations
+
+### Day 5: Basic UI & Navigation
+
+- [ ] Create app shell with bottom tab navigation
+- [ ] Implement screens:
+  - Home/Feed screen (placeholder)
+  - Connections screen (placeholder)
+  - Profile screen
+  - Settings screen
+- [ ] Build onboarding flow (3 screens)
+- [ ] Create reusable UI components:
+  - Button, Input, Card, Avatar
+
+### Day 6-7: Bluetooth Foundation
+
+- [ ] Set up react-native-ble-plx
+- [ ] Request Bluetooth permissions
+- [ ] Create BLE service with custom UUID
+- [ ] Implement BLE advertising when in "Connect" mode
+- [ ] Basic BLE scanning functionality
+- [ ] RSSI filtering (>-70 dBm for proximity)
+
+## Week 2: Bluetooth Verification & Event System
+
+### Day 8-9: Complete BLE Connection Flow
+
+- [ ] Build connection handshake protocol:
+  - Device A advertises with profile data
+  - Device B scans and discovers
+  - Exchange public keys via BLE characteristic
+  - Both users confirm connection
+- [ ] Create Connection model and storage
+- [ ] Implement ECDH key derivation for shared secrets
+- [ ] Store connections in SQLite
+
+### Day 10-11: Connection UI & Management
+
+- [ ] Create "Connect" screen with:
+  - Large connect button
+  - Scanning animation
+  - Device list with RSSI indicators
+  - Connection confirmation dialog
+- [ ] Build connections list screen
+- [ ] Add connection details view
+- [ ] Implement disconnect functionality
+
+### Day 12-13: Event Posting System
+
+- [ ] Create Event data model
+- [ ] Build "Create Event" screen:
+  - Title input (required)
+  - Date/time picker (required)
+  - Location input (optional)
+  - Description textarea (optional)
+  - Photo capture/selection (single)
+- [ ] Implement event encryption:
+  - Generate AES-256 key for event
+  - Encrypt event content
+  - Wrap key for each connection
+- [ ] Store encrypted events locally
+
+### Day 14: Event Feed & Discovery
+
+- [ ] Build event feed screen:
+  - Chronological list view
+  - Event cards with all details
+  - Pull-to-refresh
+- [ ] Implement event decryption:
+  - Retrieve connection keys
+  - Decrypt event keys
+  - Decrypt and display content
+- [ ] Add "I'm Going" RSVP functionality
+- [ ] Show attendee counts
+
+## Week 3: P2P Sync & Messaging
+
+### Day 15-16: Peer-to-Peer Sync via BLE
+
+- [ ] Create sync protocol for nearby devices:
+  - Detect nearby connections via BLE
+  - Exchange event lists (IDs and timestamps)
+  - Transfer missing events
+  - Handle conflicts (last-write-wins)
+- [ ] Implement background sync when app is open
+- [ ] Add manual sync trigger (pull-to-refresh)
+
+### Day 17-18: Direct Messaging (Simplified)
+
+- [ ] Create Message model and storage
+- [ ] Build chat screen:
+  - Message list
+  - Input field
+  - Send button
+- [ ] Implement AES-256-GCM encryption with shared secrets
+- [ ] Store messages locally in SQLite
+- [ ] P2P message sync via BLE when nearby
+
+### Day 19-20: Testing & Bug Fixes
+
+- [ ] Test complete connection flow
+- [ ] Verify encryption/decryption
+- [ ] Test P2P sync between devices
+- [ ] Fix critical bugs
+- [ ] Performance optimization
+
+### Day 21: Polish & UX Improvements
+
+- [ ] Add loading states
+- [ ] Implement error handling
+- [ ] Create empty states
+- [ ] Add basic animations
+- [ ] Improve visual design
+
+## Week 4: Final Polish & Beta Launch
+
+### Day 22-23: Advanced Features & Settings
+
+- [ ] Implement settings screen:
+  - View connections list
+  - Disconnect from users
+  - Clear all data
+  - About section
+- [ ] Add connection notes feature
+- [ ] Implement data export (JSON)
+
+### Day 24-25: Security Hardening
+
+- [ ] Security audit of crypto implementation
+- [ ] Add input validation
+- [ ] Implement rate limiting
+- [ ] Test key storage security
+- [ ] Verify no plaintext logging
+
+### Day 26-27: Beta Testing Preparation
+
+- [ ] Create TestFlight/Play Console builds
+- [ ] Write beta testing instructions
+- [ ] Set up crash reporting (Sentry)
+- [ ] Create feedback collection mechanism
+- [ ] Prepare onboarding materials
+
+### Day 28: Launch Day
+
+- [ ] Deploy to beta testers
+- [ ] Host "Founding Block Party" event
+- [ ] On-site user onboarding
+- [ ] Collect initial feedback
+- [ ] Monitor for critical issues
+
+## File Structure
+
+```
+local-first-community-network/
+├── src/
+│   ├── components/
+│   │   ├── common/
+│   │   │   ├── Button.tsx
+│   │   │   ├── Input.tsx
+│   │   │   └── Card.tsx
+│   │   ├── events/
+│   │   │   ├── EventCard.tsx
+│   │   │   └── EventForm.tsx
+│   │   └── connections/
+│   │       ├── ConnectionCard.tsx
+│   │       └── ConnectionScanner.tsx
+│   ├── screens/
+│   │   ├── HomeScreen.tsx
+│   │   ├── ConnectionsScreen.tsx
+│   │   ├── CreateEventScreen.tsx
+│   │   ├── ProfileScreen.tsx
+│   │   └── SettingsScreen.tsx
+│   ├── services/
+│   │   ├── bluetooth/
+│   │   │   ├── BLEManager.ts
+│   │   │   └── ConnectionProtocol.ts
+│   │   ├── crypto/
+│   │   │   ├── KeyManager.ts
+│   │   │   ├── Encryption.ts
+│   │   │   └── ECDH.ts
+│   │   ├── storage/
+│   │   │   ├── Database.ts
+│   │   │   ├── SecureStorage.ts
+│   │   │   └── EventStorage.ts
+│   │   └── sync/
+│   │       └── P2PSync.ts
+│   ├── types/
+│   │   ├── models.ts
+│   │   └── crypto.ts
+│   └── utils/
+│       ├── base58.ts
+│       └── constants.ts
+├── ios/
+├── android/
+├── package.json
+└── tsconfig.json
+```
+
+## Critical Success Factors
+
+### Must Complete (Week 1-2)
+
+1. **Identity System**: Ed25519 key generation and secure storage
+2. **BLE Connection**: Working Bluetooth verification between devices
+3. **Basic UI**: Navigable app with core screens
+
+### Must Complete (Week 3)
+
+1. **Event Creation**: Encrypted event posting
+2. **Event Discovery**: Feed showing decrypted events
+3. **P2P Sync**: Events sync between nearby devices
+
+### Nice to Have (Week 4)
+
+1. **Direct Messaging**: Basic encrypted chat
+2. **Polish**: Animations and refined UX
+3. **Settings**: User management features
+
+## Risk Mitigation
+
+### Technical Risks
+
+- **BLE Complexity**: Use simple characteristic-based exchange, no GATT server
+- **Crypto Implementation**: Use well-tested libraries, no custom crypto
+- **P2P Sync**: Simple last-write-wins, no complex CRDTs for MVP
+
+### Timeline Risks
+
+- **Scope Creep**: Strictly follow MVP scope, defer all "nice to have"
+- **Platform Issues**: Focus on one platform (iOS) first if needed
+- **Testing Time**: Allocate full week 4 for testing and fixes
+
+## Development Priorities
+
+### P0 - Launch Blockers
+
+- Identity creation and key storage
+- BLE connection and verification
+- Event creation and encryption
+- Event feed and decryption
+- Basic P2P sync
+
+### P1 - Important but not Critical
+
+- Direct messaging
+- Connection notes
+- Photo support
+- RSVP functionality
+
+### P2 - Nice to Have
+
+- Animations
+- Advanced error handling
+- Data export
+- Multiple photo support
+
+## Testing Strategy
+
+### Unit Tests (Ongoing)
+
+- Crypto functions
+- Key derivation
+- Database operations
+
+### Integration Tests (Week 3)
+
+- BLE connection flow
+- Event encryption/decryption
+- P2P sync protocol
+
+### User Testing (Week 4)
+
+- 5-10 internal testers
+- 20-30 beta users
+- Focus on core flow completion
+
+## Launch Checklist
+
+### Technical
+
+- [ ] All P0 features working
+- [ ] No critical security issues
+- [ ] <5% crash rate
+- [ ] Successful P2P sync
+
+### Product
+
+- [ ] Onboarding flow complete
+- [ ] Core flow works end-to-end
+- [ ] Beta feedback mechanism ready
+
+### Community
+
+- [ ] 20+ beta testers recruited
+- [ ] Launch event planned
+- [ ] Support channel created
+
+## Success Metrics
+
+### Week 1
+
+- Working identity system
+- Basic app navigation
+
+### Week 2
+
+- 2+ successful BLE connections
+- 5+ encrypted events created
+
+### Week 3
+
+- Successful P2P sync between devices
+- 10+ test events in system
+
+### Week 4
+
+- 20+ beta users onboarded
+- 1+ real event coordinated
+- <5% crash rate
+
+## Next Steps After MVP
+
+### Month 2
+
+- iOS and Android polish
+- Cloud backup (encrypted)
+- Push notifications
+- Group events
+
+### Month 3
+
+- Multi-device sync
+- Advanced messaging (Signal Protocol)
+- Event reminders
+- Search and filtering
+
+### Future
+
+- Web companion app
+- Community moderation tools
+- Event categories
+- Location-based features
