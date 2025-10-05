@@ -34,7 +34,9 @@ export interface Event {
   photo?: string; // base64 encoded
   createdAt: Date;
   updatedAt: Date;
-  encryptedFor: string[]; // list of connection IDs this is encrypted for
+  // Note: This is the plaintext/decrypted event model
+  // For encrypted storage, see EncryptedEvent in EncryptionService
+  // Events use hybrid encryption: single encrypted content + wrapped keys per recipient
 }
 
 export interface Message {

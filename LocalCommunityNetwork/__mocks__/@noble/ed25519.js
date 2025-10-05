@@ -65,6 +65,9 @@ const getPublicKey = jest.fn(async (privateKey) => {
   return publicKey;
 });
 
+// Alias for getPublicKeyAsync (same as getPublicKey)
+const getPublicKeyAsync = getPublicKey;
+
 const sign = jest.fn(async (message, privateKey) => {
   // Return a mock 64-byte signature based on message and private key
   const signature = new Uint8Array(64);
@@ -103,6 +106,7 @@ const verify = jest.fn(async (signature, message, publicKey) => {
 module.exports = {
   utils,
   getPublicKey,
+  getPublicKeyAsync,
   sign,
   verify,
   keygen,

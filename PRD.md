@@ -134,7 +134,11 @@ Build a privacy-first platform for discovering local events and building neighbo
 **Technical Requirements:**
 
 - Event schema: `{title, datetime, location, description, photo_base64?}`
-- Simple encryption: generate AES key, encrypt event, wrap key with each connection's DH shared secret
+- Hybrid encryption:
+  - Generate random AES-256 key per event
+  - Encrypt event content once with this key
+  - For each connection: wrap key using HMAC(sharedSecret, postID) as recipient ID
+  - This prevents server metadata leakage (77x more efficient than encrypting content per recipient)
 - Local storage: SQLite with events table
 - No server upload for MVP - local sharing only via BLE when devices nearby
 - **SIMPLIFICATION:** Events sync peer-to-peer when users are nearby (no central server needed for 1-month MVP)
@@ -372,16 +376,19 @@ Build a privacy-first platform for discovering local events and building neighbo
   authorID: "base58(publicKey)",
   timestamp: number,
   postType: "event" | "post" | "recommendation",
-  encryptedContent: {
-    // One per connection
-    connectionID_1: {
-      encryptedPostKey: Uint8Array,  // Post key encrypted with connection key
-      encryptedData: Uint8Array       // Post data encrypted with post key
-    },
-    connectionID_2: { ... },
+  encryptedContent: Uint8Array,  // Post data encrypted once with random post key
+  wrappedKeys: {
+    // Privacy: Use HMAC(sharedSecret, postID) as key instead of userID
+    // This prevents server from learning social graph
+    "HMAC(sharedSecret_1, postID)": Uint8Array,  // 32-byte wrapped post key
+    "HMAC(sharedSecret_2, postID)": Uint8Array,  // 32-byte wrapped post key
     ...
   }
 }
+
+// Storage efficiency: 10KB post to 100 connections
+// Old approach: 10KB × 100 = 1000KB
+// New approach: 10KB + (32 bytes × 100) = ~13KB (77x more efficient)
 
 // Decrypted Event Content
 {
@@ -436,22 +443,30 @@ Build a privacy-first platform for discovering local events and building neighbo
 ```
 1. User creates post
 2. Generate random post key (AES-256 key)
-3. Encrypt post content with post key → encryptedContent
+3. Encrypt post content with post key → encryptedContent (once)
 4. For each connection:
    a. Derive connection key from shared secret
-   b. Encrypt post key with connection key → encryptedPostKey
-5. Upload to server: {postID, authorID, timestamp, {connectionID: {encryptedPostKey, encryptedContent}}}
+   b. Generate recipient lookup ID: HMAC(sharedSecret, postID)
+   c. Wrap post key with connection key → wrappedKey (32 bytes)
+5. Store/sync: {postID, authorID, timestamp, encryptedContent, wrappedKeys}
+
+Privacy benefit: Server cannot determine who can decrypt each post (no userID in wrappedKeys)
+Efficiency: Content encrypted once, not duplicated per recipient (77x smaller for 100 connections)
 ```
 
 #### Post Decryption
 
 ```
-1. Fetch encrypted post from server
-2. Find my connectionID in encryptedContent
-3. Retrieve connection key from local storage
-4. Decrypt encryptedPostKey → post key
-5. Decrypt encryptedContent with post key → original content
-6. Display to user
+1. Fetch/receive encrypted post
+2. For each of my connections (early termination on match):
+   a. Compute lookup ID: HMAC(sharedSecret, postID)
+   b. Check if wrappedKeys[lookupID] exists
+   c. If found, unwrap with connection key → post key
+3. Decrypt encryptedContent with post key → original content
+4. Display to user
+
+Performance: With 100 connections and 50 posts, ~2,500 HMAC ops = 25ms (imperceptible)
+Privacy: You learn the post is for you without revealing identity to server
 ```
 
 #### Connection Key Derivation (ECDH)
@@ -490,13 +505,23 @@ Body: {
   postID: "uuid",
   authorID: "base58",
   timestamp: number,
-  encryptedContent: {...}
+  encryptedContent: Uint8Array,  // Encrypted once
+  wrappedKeys: {
+    "HMAC(secret, postID)": Uint8Array,  // Privacy: no userIDs exposed
+    ...
+  }
 }
 Response: { success: true, postID }
 
 GET /api/posts?since={timestamp}&limit=50
 Response: {
-  posts: [{ postID, authorID, timestamp, encryptedContent }],
+  posts: [{
+    postID,
+    authorID,
+    timestamp,
+    encryptedContent,
+    wrappedKeys
+  }],
   nextCursor: "timestamp"
 }
 ```

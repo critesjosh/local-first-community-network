@@ -153,10 +153,15 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - Location input (optional)
   - Description textarea (optional)
   - Photo capture/selection (single)
-- [ ] Implement event encryption:
-  - Generate AES-256 key for event
-  - Encrypt event content
-  - Wrap key for each connection
+- [ ] Implement hybrid encryption:
+  - Generate random AES-256 key for event (once)
+  - Encrypt event content with this key (single encryption)
+  - For each connection:
+    - Compute recipient lookup ID: HMAC(sharedSecret, postID)
+    - Wrap the event key with connection's shared secret
+  - Store: {encryptedContent, wrappedKeys: {lookupID: wrappedKey, ...}}
+  - Privacy: Server cannot learn social graph (no userIDs in wrappedKeys)
+  - Efficiency: 77x smaller than encrypting content per recipient
 - [ ] Store encrypted events locally
 
 ### Day 14: Event Feed & Discovery
@@ -166,9 +171,13 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - Event cards with all details
   - Pull-to-refresh
 - [ ] Implement event decryption:
-  - Retrieve connection keys
-  - Decrypt event keys
-  - Decrypt and display content
+  - For each post, iterate through connections:
+    - Compute HMAC(sharedSecret, postID)
+    - Check if wrappedKeys[HMAC] exists
+    - If found, unwrap to get post key
+    - Decrypt content and stop (early termination)
+  - Performance: <100 connections × <100 posts = ~25ms (imperceptible)
+  - Cache decrypted posts to avoid recomputation
 - [ ] Add "I'm Going" RSVP functionality
 - [ ] Show attendee counts
 

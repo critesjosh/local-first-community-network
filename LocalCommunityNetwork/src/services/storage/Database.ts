@@ -4,6 +4,7 @@
 
 import SQLite, {SQLiteDatabase} from 'react-native-sqlite-storage';
 import {User, Connection, Event, Message} from '../../types/models';
+import {EncryptedEvent} from '../crypto/EncryptionService';
 
 // Enable promise-based API
 SQLite.enablePromise(true);
@@ -59,16 +60,26 @@ class Database {
       )`,
 
       // Events table
+      // Stores encrypted events using hybrid encryption:
+      // - encrypted_content: Event data encrypted once with random key
+      // - iv: Initialization vector for content encryption
+      // - wrapped_keys: JSON object with HMAC-based recipient lookup IDs
+      // For plaintext fields (title, description, etc.), store NULL when using encryption
       `CREATE TABLE IF NOT EXISTS events (
         id TEXT PRIMARY KEY,
         author_id TEXT NOT NULL,
-        title TEXT NOT NULL,
+        title TEXT,
         description TEXT,
         datetime INTEGER NOT NULL,
         location TEXT,
         photo TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
+        -- Hybrid encryption fields (new structure)
+        encrypted_content TEXT,
+        content_iv TEXT,
+        wrapped_keys TEXT,
+        -- Legacy field (for backward compatibility during transition)
         encrypted_for TEXT
       )`,
 
@@ -375,6 +386,88 @@ class Database {
 
     const query = 'DELETE FROM events WHERE id = ?';
     await this.db.executeSql(query, [eventId]);
+  }
+
+  /**
+   * Save encrypted event (hybrid encryption)
+   */
+  async saveEncryptedEvent(encryptedEvent: EncryptedEvent): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      INSERT OR REPLACE INTO events (
+        id, author_id, title, description, datetime, location,
+        photo, created_at, updated_at, encrypted_content, content_iv, wrapped_keys
+      ) VALUES (?, ?, NULL, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?)
+    `;
+
+    await this.db.executeSql(query, [
+      encryptedEvent.id,
+      encryptedEvent.authorId,
+      encryptedEvent.timestamp,
+      encryptedEvent.timestamp,
+      encryptedEvent.timestamp,
+      encryptedEvent.encryptedContent,
+      encryptedEvent.iv,
+      JSON.stringify(encryptedEvent.wrappedKeys),
+    ]);
+  }
+
+  /**
+   * Get all encrypted events
+   */
+  async getEncryptedEvents(
+    limit: number = 100,
+    offset: number = 0,
+  ): Promise<EncryptedEvent[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      SELECT * FROM events
+      WHERE encrypted_content IS NOT NULL
+      ORDER BY datetime DESC
+      LIMIT ? OFFSET ?
+    `;
+    const [results] = await this.db.executeSql(query, [limit, offset]);
+
+    const events: EncryptedEvent[] = [];
+    for (let i = 0; i < results.rows.length; i++) {
+      const row = results.rows.item(i);
+      events.push({
+        id: row.id,
+        authorId: row.author_id,
+        timestamp: row.created_at,
+        encryptedContent: row.encrypted_content,
+        iv: row.content_iv,
+        wrappedKeys: JSON.parse(row.wrapped_keys || '{}'),
+      });
+    }
+
+    return events;
+  }
+
+  /**
+   * Get encrypted event by ID
+   */
+  async getEncryptedEvent(eventId: string): Promise<EncryptedEvent | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'SELECT * FROM events WHERE id = ? AND encrypted_content IS NOT NULL';
+    const [results] = await this.db.executeSql(query, [eventId]);
+
+    if (results.rows.length === 0) {
+      return null;
+    }
+
+    const row = results.rows.item(0);
+    return {
+      id: row.id,
+      authorId: row.author_id,
+      timestamp: row.created_at,
+      encryptedContent: row.encrypted_content,
+      iv: row.content_iv,
+      wrappedKeys: JSON.parse(row.wrapped_keys || '{}'),
+    };
   }
 
   /**

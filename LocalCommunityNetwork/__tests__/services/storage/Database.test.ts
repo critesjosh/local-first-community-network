@@ -6,6 +6,7 @@ import '../../../__tests__/setup';
 import SQLite from 'react-native-sqlite-storage';
 import Database from '../../../src/services/storage/Database';
 import {User, Connection} from '../../../src/types/models';
+import {EncryptedEvent} from '../../../src/services/crypto/EncryptionService';
 
 describe('Database', () => {
   let mockExecuteSql: jest.Mock;
@@ -299,6 +300,172 @@ describe('Database', () => {
       mockExecuteSql.mockRejectedValueOnce(new Error('SQL Error'));
 
       await expect(Database.getUser('test')).rejects.toThrow();
+    });
+  });
+
+  describe('saveEncryptedEvent and getEncryptedEvents', () => {
+    it('should save encrypted event with hybrid encryption structure', async () => {
+      const encryptedEvent: EncryptedEvent = {
+        id: 'event-123',
+        authorId: 'author-456',
+        timestamp: Date.now(),
+        encryptedContent: 'base64_encrypted_content',
+        iv: 'base64_iv',
+        wrappedKeys: {
+          'hmac_lookup_id_1': {
+            wrappedKey: 'base64_wrapped_key_1',
+            keyWrapIV: 'base64_key_wrap_iv_1',
+          },
+          'hmac_lookup_id_2': {
+            wrappedKey: 'base64_wrapped_key_2',
+            keyWrapIV: 'base64_key_wrap_iv_2',
+          },
+        },
+      };
+
+      await Database.saveEncryptedEvent(encryptedEvent);
+
+      expect(mockExecuteSql).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT OR REPLACE INTO events'),
+        [
+          encryptedEvent.id,
+          encryptedEvent.authorId,
+          encryptedEvent.timestamp,
+          encryptedEvent.timestamp,
+          encryptedEvent.timestamp,
+          encryptedEvent.encryptedContent,
+          encryptedEvent.iv,
+          JSON.stringify(encryptedEvent.wrappedKeys),
+        ],
+      );
+    });
+
+    it('should retrieve all encrypted events', async () => {
+      const mockEvent = {
+        id: 'event-789',
+        author_id: 'author-123',
+        created_at: 1234567890000,
+        encrypted_content: 'base64_content',
+        content_iv: 'base64_iv',
+        wrapped_keys: JSON.stringify({
+          'lookup_1': {wrappedKey: 'key1', keyWrapIV: 'iv1'},
+        }),
+      };
+
+      mockExecuteSql.mockResolvedValueOnce([{
+        rows: {
+          length: 1,
+          item: jest.fn().mockReturnValue(mockEvent),
+        },
+      }]);
+
+      const events = await Database.getEncryptedEvents(50, 0);
+
+      expect(mockExecuteSql).toHaveBeenCalledWith(
+        expect.stringContaining('WHERE encrypted_content IS NOT NULL'),
+        [50, 0],
+      );
+
+      expect(events).toHaveLength(1);
+      expect(events[0].id).toBe(mockEvent.id);
+      expect(events[0].authorId).toBe(mockEvent.author_id);
+      expect(events[0].timestamp).toBe(mockEvent.created_at);
+      expect(events[0].encryptedContent).toBe(mockEvent.encrypted_content);
+      expect(events[0].iv).toBe(mockEvent.content_iv);
+      expect(events[0].wrappedKeys).toEqual(JSON.parse(mockEvent.wrapped_keys));
+    });
+
+    it('should retrieve encrypted event by ID', async () => {
+      const mockEvent = {
+        id: 'event-specific',
+        author_id: 'author-456',
+        created_at: 1234567890000,
+        encrypted_content: 'base64_content_specific',
+        content_iv: 'base64_iv_specific',
+        wrapped_keys: JSON.stringify({
+          'lookup_specific': {wrappedKey: 'key_specific', keyWrapIV: 'iv_specific'},
+        }),
+      };
+
+      mockExecuteSql.mockResolvedValueOnce([{
+        rows: {
+          length: 1,
+          item: jest.fn().mockReturnValue(mockEvent),
+        },
+      }]);
+
+      const event = await Database.getEncryptedEvent('event-specific');
+
+      expect(mockExecuteSql).toHaveBeenCalledWith(
+        expect.stringContaining('WHERE id = ? AND encrypted_content IS NOT NULL'),
+        ['event-specific'],
+      );
+
+      expect(event).not.toBeNull();
+      expect(event!.id).toBe(mockEvent.id);
+      expect(event!.encryptedContent).toBe(mockEvent.encrypted_content);
+      expect(event!.wrappedKeys).toEqual(JSON.parse(mockEvent.wrapped_keys));
+    });
+
+    it('should return null for non-existent encrypted event', async () => {
+      mockExecuteSql.mockResolvedValueOnce([{
+        rows: {
+          length: 0,
+          item: jest.fn(),
+        },
+      }]);
+
+      const event = await Database.getEncryptedEvent('non-existent');
+
+      expect(event).toBeNull();
+    });
+
+    it('should handle empty wrapped keys object', async () => {
+      const encryptedEvent: EncryptedEvent = {
+        id: 'event-empty-keys',
+        authorId: 'author-789',
+        timestamp: Date.now(),
+        encryptedContent: 'content',
+        iv: 'iv',
+        wrappedKeys: {},
+      };
+
+      await Database.saveEncryptedEvent(encryptedEvent);
+
+      expect(mockExecuteSql).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT OR REPLACE INTO events'),
+        expect.arrayContaining([
+          JSON.stringify({}),
+        ]),
+      );
+    });
+
+    it('should handle multiple wrapped keys (many recipients)', async () => {
+      const wrappedKeys: EncryptedEvent['wrappedKeys'] = {};
+      for (let i = 0; i < 100; i++) {
+        wrappedKeys[`hmac_lookup_${i}`] = {
+          wrappedKey: `key_${i}`,
+          keyWrapIV: `iv_${i}`,
+        };
+      }
+
+      const encryptedEvent: EncryptedEvent = {
+        id: 'event-many-recipients',
+        authorId: 'popular-user',
+        timestamp: Date.now(),
+        encryptedContent: 'shared_content',
+        iv: 'iv',
+        wrappedKeys,
+      };
+
+      await Database.saveEncryptedEvent(encryptedEvent);
+
+      expect(mockExecuteSql).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT OR REPLACE INTO events'),
+        expect.arrayContaining([
+          JSON.stringify(wrappedKeys),
+        ]),
+      );
     });
   });
 });
