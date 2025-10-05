@@ -13,6 +13,8 @@ Local Community Network is a privacy-first platform for discovering local events
 ├── LocalCommunityNetwork/          # React Native mobile app
 │   ├── src/
 │   │   ├── components/            # Reusable UI components
+│   │   │   └── events/            # Event-related components
+│   │   │       └── EventCard.tsx  # Event display card
 │   │   ├── screens/               # Screen components
 │   │   │   ├── HomeScreen.tsx
 │   │   │   ├── ConnectionsScreen.tsx
@@ -62,7 +64,7 @@ If any tests fail after your changes:
 2. Update tests if the behavior intentionally changed
 3. Never commit with failing tests
 
-Current test baseline: **164 tests passing (100%)**
+Current test baseline: **171 tests passing (100%)**
 
 ## Development Commands
 
@@ -149,16 +151,36 @@ cd android && ./gradlew clean && cd ..
 - ✅ Hybrid encryption with HMAC recipient lookup
 - ✅ BLE connection flow with ECDH key exchange
 
-**Week 2-3 Next Steps:**
-- Build connection UI and management
-- Create event posting UI
+**Week 2 Completed (Days 8-14):**
+- ✅ BLE connection UI and management
+  - ConnectionScanScreen with device discovery
+  - ConnectionsScreen with connections list
+  - ConnectionDetailScreen with disconnect functionality
+- ✅ Event posting system
+  - CreateEventScreen with full form (title, date/time, location, description, photo)
+  - Integration with EncryptionService for hybrid encryption
+  - Date/time picker and image picker integration
+  - Form validation and error handling
+- ✅ Event feed and discovery
+  - HomeScreen with event list and decryption
+  - EventCard component for displaying events
+  - Pull-to-refresh functionality
+  - RSVP functionality (UI only)
+  - Chronological sorting
+- ✅ Test coverage expanded to 171 tests (all passing)
+  - Screen rendering tests added
+  - Component tests added
+
+**Week 3 Next Steps:**
 - Implement server backend (Express.js + PostgreSQL)
 - Build API client for server sync
+- Direct messaging
+- Testing and polish
 
 ## Testing
 
 ### Test Suite Overview
-The project includes 164 tests covering cryptographic operations, hybrid encryption, secure storage, and identity management.
+The project includes 171 tests covering cryptographic operations, hybrid encryption, secure storage, identity management, and screen rendering.
 
 ```bash
 # Run all tests
@@ -179,11 +201,17 @@ cd LocalCommunityNetwork && npm test -- --testPathPattern=crypto
 
 ### Test Files
 - `__tests__/services/crypto/KeyManager.test.ts` - Ed25519 operations
+- `__tests__/services/crypto/EncryptionService.test.ts` - Hybrid encryption
+- `__tests__/services/crypto/ECDH.test.ts` - ECDH key exchange
+- `__tests__/services/bluetooth/BLEManager.test.ts` - BLE operations
 - `__tests__/services/storage/SecureStorage.test.ts` - Keychain storage
 - `__tests__/services/storage/Database.test.ts` - SQLite operations
 - `__tests__/services/IdentityService.test.ts` - Identity management
+- `__tests__/screens/CreateEventScreen.test.tsx` - Event creation UI
+- `__tests__/screens/HomeScreen.test.tsx` - Event feed UI
 - `__tests__/utils/base58.test.ts` - Base58 encoding
 - `__tests__/utils/crypto.test.ts` - Crypto utilities
+- `__tests__/App.test.tsx` - App initialization
 
 See `LocalCommunityNetwork/TESTING.md` for comprehensive testing documentation.
 
@@ -230,8 +258,11 @@ cd LocalCommunityNetwork && npx prettier --write "src/**/*.{ts,tsx}"
 4. **Test-Driven Development**:
    - Write tests for new features
    - Run full test suite before committing
-   - Maintain 100% pass rate (164/164 tests)
+   - Maintain 100% pass rate (171/171 tests)
    - Never merge code with failing tests
+   - Screen tests focus on rendering and structure
+   - Integration tests for service interactions
+   - E2E tests for full user flows (future)
 
 ## Common Issues & Solutions
 
