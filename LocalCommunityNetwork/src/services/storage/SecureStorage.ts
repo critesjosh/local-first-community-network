@@ -20,10 +20,10 @@ class SecureStorage {
         privateKey: uint8ArrayToHex(keyPair.privateKey),
       };
 
-      const result = await Keychain.setInternetCredentials(
-        SERVICE_NAME,
+      const result = await Keychain.setGenericPassword(
         KEY_USERNAME,
         JSON.stringify(storage),
+        {service: SERVICE_NAME},
       );
 
       if (result === false) {
@@ -42,7 +42,9 @@ class SecureStorage {
    */
   async getKeyPair(): Promise<KeyPair | null> {
     try {
-      const credentials = await Keychain.getInternetCredentials(SERVICE_NAME);
+      const credentials = await Keychain.getGenericPassword({
+        service: SERVICE_NAME,
+      });
 
       if (!credentials) {
         return null;
@@ -65,7 +67,9 @@ class SecureStorage {
    */
   async hasKeys(): Promise<boolean> {
     try {
-      const credentials = await Keychain.getInternetCredentials(SERVICE_NAME);
+      const credentials = await Keychain.getGenericPassword({
+        service: SERVICE_NAME,
+      });
       return credentials !== false;
     } catch (error) {
       console.error('Error checking for keys:', error);
@@ -78,7 +82,9 @@ class SecureStorage {
    */
   async deleteKeys(): Promise<boolean> {
     try {
-      const result = await Keychain.resetInternetCredentials(SERVICE_NAME);
+      const result = await Keychain.resetGenericPassword({
+        service: SERVICE_NAME,
+      });
       return result;
     } catch (error) {
       console.error('Error deleting keys:', error);
@@ -91,11 +97,9 @@ class SecureStorage {
    */
   async storeSecureData(key: string, value: string): Promise<boolean> {
     try {
-      const result = await Keychain.setInternetCredentials(
-        `${SERVICE_NAME}_${key}`,
-        key,
-        value,
-      );
+      const result = await Keychain.setGenericPassword(key, value, {
+        service: `${SERVICE_NAME}_${key}`,
+      });
       return result !== false;
     } catch (error) {
       console.error(`Error storing secure data for ${key}:`, error);
@@ -108,9 +112,9 @@ class SecureStorage {
    */
   async getSecureData(key: string): Promise<string | null> {
     try {
-      const credentials = await Keychain.getInternetCredentials(
-        `${SERVICE_NAME}_${key}`,
-      );
+      const credentials = await Keychain.getGenericPassword({
+        service: `${SERVICE_NAME}_${key}`,
+      });
 
       if (!credentials) {
         return null;

@@ -6,8 +6,8 @@
  */
 
 import * as ed25519 from '@noble/ed25519';
-import {sha256} from '@noble/hashes/sha256';
-import {hkdf} from '@noble/hashes/hkdf';
+import {sha256} from '@noble/hashes/sha2.js';
+import {hkdf} from '@noble/hashes/hkdf.js';
 
 /**
  * Convert Ed25519 public key to Curve25519 (X25519) format

@@ -6,9 +6,9 @@
  * - Message encryption: Simple AES-256-GCM with shared secret
  */
 
-import {randomBytes as randomBytesPolyfill} from '@noble/hashes/utils';
-import {Event, Connection, Message} from '../../types/models';
-import {sha256} from '@noble/hashes/sha256';
+import { randomBytes as randomBytesPolyfill } from '@noble/hashes/utils.js';
+import { Event, Connection } from '../../types/models';
+import { sha256 } from '@noble/hashes/sha2.js';
 import ECDHService from './ECDH';
 
 // AES-256-GCM encryption using Web Crypto API (available in React Native)
@@ -46,14 +46,14 @@ async function encryptAESGCM(
     const cryptoKey = await crypto.subtle.importKey(
       'raw',
       key,
-      {name: 'AES-GCM', length: 256},
+      { name: 'AES-GCM', length: 256 },
       false,
       ['encrypt'],
     );
 
     // Encrypt
     const ciphertext = await crypto.subtle.encrypt(
-      {name: 'AES-GCM', iv: iv},
+      { name: 'AES-GCM', iv: iv },
       cryptoKey,
       plaintext,
     );
@@ -78,14 +78,14 @@ async function decryptAESGCM(
     const cryptoKey = await crypto.subtle.importKey(
       'raw',
       key,
-      {name: 'AES-GCM', length: 256},
+      { name: 'AES-GCM', length: 256 },
       false,
       ['decrypt'],
     );
 
     // Decrypt
     const plaintext = await crypto.subtle.decrypt(
-      {name: 'AES-GCM', iv: iv},
+      { name: 'AES-GCM', iv: iv },
       cryptoKey,
       ciphertext,
     );
