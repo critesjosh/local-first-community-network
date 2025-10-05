@@ -35,6 +35,40 @@ jest.mock('react-native-gesture-handler', () => ({
   Directions: {},
 }));
 
+jest.mock('react-native-ble-plx', () => {
+  const mockDevice = {
+    id: 'mock-device-id',
+    name: 'Mock Device',
+    rssi: -60,
+    localName: 'Mock Local Name',
+  };
+
+  class MockBleManager {
+    state = jest.fn().mockResolvedValue('PoweredOn');
+    startDeviceScan = jest.fn();
+    stopDeviceScan = jest.fn();
+    onStateChange = jest.fn((callback, emitCurrentState) => {
+      if (emitCurrentState) {
+        callback('PoweredOn');
+      }
+      return { remove: jest.fn() };
+    });
+    destroy = jest.fn();
+  }
+
+  return {
+    BleManager: MockBleManager,
+    State: {
+      Unknown: 'Unknown',
+      Resetting: 'Resetting',
+      Unsupported: 'Unsupported',
+      Unauthorized: 'Unauthorized',
+      PoweredOff: 'PoweredOff',
+      PoweredOn: 'PoweredOn',
+    },
+  };
+});
+
 // Mock crypto for Node environment
 if (typeof global.crypto === 'undefined') {
   global.crypto = {
