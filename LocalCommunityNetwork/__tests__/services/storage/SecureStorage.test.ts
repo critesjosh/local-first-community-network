@@ -22,15 +22,15 @@ describe('SecureStorage', () => {
       const result = await SecureStorage.storeKeyPair(keyPair);
 
       expect(result).toBe(true);
-      expect(Keychain.setInternetCredentials).toHaveBeenCalledWith(
-        'LocalCommunityNetwork',
+      expect(Keychain.setGenericPassword).toHaveBeenCalledWith(
         'identity_keys',
         expect.stringContaining('publicKey'),
+        {service: 'LocalCommunityNetwork'},
       );
     });
 
     it('should handle storage failure', async () => {
-      (Keychain.setInternetCredentials as jest.Mock).mockResolvedValueOnce(false);
+      (Keychain.setGenericPassword as jest.Mock).mockResolvedValueOnce(false);
 
       const keyPair: KeyPair = {
         publicKey: new Uint8Array([1, 2, 3]),
@@ -50,7 +50,7 @@ describe('SecureStorage', () => {
         privateKey: '05060708',
       });
 
-      (Keychain.getInternetCredentials as jest.Mock).mockResolvedValueOnce({
+      (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce({
         password: storedData,
       });
 
@@ -62,7 +62,7 @@ describe('SecureStorage', () => {
     });
 
     it('should return null if no keys stored', async () => {
-      (Keychain.getInternetCredentials as jest.Mock).mockResolvedValueOnce(false);
+      (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce(false);
 
       const result = await SecureStorage.getKeyPair();
 
@@ -70,7 +70,7 @@ describe('SecureStorage', () => {
     });
 
     it('should handle retrieval errors gracefully', async () => {
-      (Keychain.getInternetCredentials as jest.Mock).mockRejectedValueOnce(
+      (Keychain.getGenericPassword as jest.Mock).mockRejectedValueOnce(
         new Error('Keychain error'),
       );
 
@@ -82,7 +82,7 @@ describe('SecureStorage', () => {
 
   describe('hasKeys', () => {
     it('should return true if keys exist', async () => {
-      (Keychain.getInternetCredentials as jest.Mock).mockResolvedValueOnce({
+      (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce({
         password: 'some_data',
       });
 
@@ -92,7 +92,7 @@ describe('SecureStorage', () => {
     });
 
     it('should return false if no keys exist', async () => {
-      (Keychain.getInternetCredentials as jest.Mock).mockResolvedValueOnce(false);
+      (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce(false);
 
       const result = await SecureStorage.hasKeys();
 
@@ -100,7 +100,7 @@ describe('SecureStorage', () => {
     });
 
     it('should handle errors and return false', async () => {
-      (Keychain.getInternetCredentials as jest.Mock).mockRejectedValueOnce(
+      (Keychain.getGenericPassword as jest.Mock).mockRejectedValueOnce(
         new Error('Error'),
       );
 
@@ -112,18 +112,18 @@ describe('SecureStorage', () => {
 
   describe('deleteKeys', () => {
     it('should delete keys successfully', async () => {
-      (Keychain.resetInternetCredentials as jest.Mock).mockResolvedValueOnce(true);
+      (Keychain.resetGenericPassword as jest.Mock).mockResolvedValueOnce(true);
 
       const result = await SecureStorage.deleteKeys();
 
       expect(result).toBe(true);
-      expect(Keychain.resetInternetCredentials).toHaveBeenCalledWith(
-        'LocalCommunityNetwork',
-      );
+      expect(Keychain.resetGenericPassword).toHaveBeenCalledWith({
+        service: 'LocalCommunityNetwork',
+      });
     });
 
     it('should handle deletion failure', async () => {
-      (Keychain.resetInternetCredentials as jest.Mock).mockResolvedValueOnce(false);
+      (Keychain.resetGenericPassword as jest.Mock).mockResolvedValueOnce(false);
 
       const result = await SecureStorage.deleteKeys();
 
@@ -138,13 +138,13 @@ describe('SecureStorage', () => {
 
       const storeResult = await SecureStorage.storeSecureData(key, value);
       expect(storeResult).toBe(true);
-      expect(Keychain.setInternetCredentials).toHaveBeenCalledWith(
-        `LocalCommunityNetwork_${key}`,
+      expect(Keychain.setGenericPassword).toHaveBeenCalledWith(
         key,
         value,
+        {service: `LocalCommunityNetwork_${key}`},
       );
 
-      (Keychain.getInternetCredentials as jest.Mock).mockResolvedValueOnce({
+      (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce({
         password: value,
       });
 
@@ -153,7 +153,7 @@ describe('SecureStorage', () => {
     });
 
     it('should return null for non-existent data', async () => {
-      (Keychain.getInternetCredentials as jest.Mock).mockResolvedValueOnce(false);
+      (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce(false);
 
       const result = await SecureStorage.getSecureData('non_existent');
 
@@ -209,10 +209,10 @@ describe('SecureStorage', () => {
       await SecureStorage.storeKeyPair(originalKeyPair);
 
       // Mock retrieval
-      const storedCall = (Keychain.setInternetCredentials as jest.Mock).mock.calls[0];
-      const storedData = storedCall[2];
+      const storedCall = (Keychain.setGenericPassword as jest.Mock).mock.calls[0];
+      const storedData = storedCall[1]; // password is second argument now
 
-      (Keychain.getInternetCredentials as jest.Mock).mockResolvedValueOnce({
+      (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce({
         password: storedData,
       });
 

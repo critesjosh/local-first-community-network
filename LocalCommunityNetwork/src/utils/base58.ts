@@ -33,7 +33,12 @@ export function encode(buffer: Uint8Array): string {
 
   // Build the encoded string
   let encoded = ALPHABET[0].repeat(leadingZeros);
+
+  // Skip the trailing zero digit if it's the only digit (all input was zeros)
   for (let i = digits.length - 1; i >= 0; i--) {
+    if (digits.length === 1 && digits[0] === 0) {
+      break; // Don't encode a trailing zero when all input was zeros
+    }
     encoded += ALPHABET[digits[i]];
   }
 
@@ -71,13 +76,19 @@ export function decode(encoded: string): Uint8Array {
     }
   }
 
-  // Add leading zeros and reverse
-  const result = new Uint8Array(leadingZeros + bytes.length - 1);
+  // If the input was all '1's (leading zeros), return just zeros
+  // Otherwise, bytes contains the decoded value in little-endian format
+  if (leadingZeros === encoded.length) {
+    return new Uint8Array(leadingZeros);
+  }
+
+  // Add leading zeros and reverse bytes (all bytes are significant)
+  const result = new Uint8Array(leadingZeros + bytes.length);
   let j = 0;
   for (let i = 0; i < leadingZeros; i++) {
     result[j++] = 0;
   }
-  for (let i = bytes.length - 1; i >= 1; i--) {
+  for (let i = bytes.length - 1; i >= 0; i--) {
     result[j++] = bytes[i];
   }
 

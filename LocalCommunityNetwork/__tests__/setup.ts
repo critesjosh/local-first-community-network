@@ -7,6 +7,9 @@ jest.mock('react-native-keychain', () => ({
   setInternetCredentials: jest.fn().mockResolvedValue(true),
   getInternetCredentials: jest.fn(),
   resetInternetCredentials: jest.fn().mockResolvedValue(true),
+  setGenericPassword: jest.fn().mockResolvedValue(true),
+  getGenericPassword: jest.fn(),
+  resetGenericPassword: jest.fn().mockResolvedValue(true),
   getSupportedBiometryType: jest.fn().mockResolvedValue('FaceID'),
 }));
 
@@ -25,6 +28,13 @@ jest.mock('react-native-sqlite-storage', () => ({
   }),
 }));
 
+jest.mock('react-native-gesture-handler', () => ({
+  GestureHandlerRootView: 'GestureHandlerRootView',
+  PanGestureHandler: 'PanGestureHandler',
+  State: {},
+  Directions: {},
+}));
+
 // Mock crypto for Node environment
 if (typeof global.crypto === 'undefined') {
   global.crypto = {
@@ -36,12 +46,5 @@ if (typeof global.crypto === 'undefined') {
     },
   } as any;
 }
-
-// Add a dummy test to prevent "must contain at least one test" error
-describe('Test Setup', () => {
-  it('should have mocks configured', () => {
-    expect(jest.isMockFunction(require('react-native-keychain').setInternetCredentials)).toBe(true);
-  });
-});
 
 export {};

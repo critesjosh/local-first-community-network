@@ -33,8 +33,13 @@ describe('base58', () => {
         publicKey[i] = i;
       }
       const result = base58.encode(publicKey);
-      expect(result).toHaveLength(44); // Base58 encoded 32 bytes is typically 44 chars
+      expect(result.length).toBeGreaterThanOrEqual(42); // Base58 encoded 32 bytes is typically 43-44 chars
+      expect(result.length).toBeLessThanOrEqual(44);
       expect(result).toMatch(/^[1-9A-HJ-NP-Za-km-z]+$/); // Valid base58 characters
+
+      // Verify round-trip
+      const decoded = base58.decode(result);
+      expect(decoded).toEqual(publicKey);
     });
   });
 

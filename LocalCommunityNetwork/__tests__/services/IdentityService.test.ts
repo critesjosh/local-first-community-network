@@ -89,11 +89,6 @@ describe('IdentityService', () => {
       const displayName = 'Test User';
       const profilePhoto = 'photo_base64';
 
-      // Mock key generation
-      const keyManager = new KeyManager();
-      jest.spyOn(keyManager, 'generateKeyPair').mockResolvedValue(mockKeyPair);
-      jest.spyOn(keyManager, 'createIdentity').mockReturnValue(mockIdentity);
-
       (SecureStorage.storeKeyPair as jest.Mock).mockResolvedValue(true);
       (Database.saveUser as jest.Mock).mockResolvedValue(undefined);
       (Database.setAppState as jest.Mock).mockResolvedValue(undefined);
@@ -102,8 +97,15 @@ describe('IdentityService', () => {
       const result = await IdentityService.createIdentity(displayName, profilePhoto);
 
       expect(result).toBeDefined();
-      expect(result.publicKey).toEqual(mockKeyPair.publicKey);
-      expect(SecureStorage.storeKeyPair).toHaveBeenCalledWith(mockKeyPair);
+      expect(result.publicKey).toBeInstanceOf(Uint8Array);
+      expect(result.publicKey.length).toBe(32);
+      expect(result.id).toBeTruthy();
+      expect(SecureStorage.storeKeyPair).toHaveBeenCalledWith(
+        expect.objectContaining({
+          publicKey: expect.any(Uint8Array),
+          privateKey: expect.any(Uint8Array),
+        })
+      );
       expect(Database.saveUser).toHaveBeenCalledWith(
         expect.objectContaining({
           displayName,
@@ -196,23 +198,25 @@ describe('IdentityService', () => {
 
   describe('getCurrentUser', () => {
     it('should return user profile for current identity', async () => {
+      // Load identity first
+      (SecureStorage.getKeyPair as jest.Mock).mockResolvedValue(mockKeyPair);
+      await IdentityService.loadIdentity();
+
+      // Get the actual identity ID that was created
+      const actualIdentity = await IdentityService.getCurrentIdentity();
       const mockUser: User = {
-        id: mockIdentity.id,
+        id: actualIdentity!.id,
         displayName: 'Test User',
         createdAt: new Date(),
         updatedAt: new Date(),
       };
-
-      // Load identity first
-      (SecureStorage.getKeyPair as jest.Mock).mockResolvedValue(mockKeyPair);
-      await IdentityService.loadIdentity();
 
       (Database.getUser as jest.Mock).mockResolvedValue(mockUser);
 
       const result = await IdentityService.getCurrentUser();
 
       expect(result).toEqual(mockUser);
-      expect(Database.getUser).toHaveBeenCalledWith(mockIdentity.id);
+      expect(Database.getUser).toHaveBeenCalledWith(actualIdentity!.id);
     });
 
     it('should return null if no identity loaded', async () => {
@@ -302,12 +306,18 @@ describe('IdentityService', () => {
 
     it('should verify signature', async () => {
       const data = new TextEncoder().encode('Test data');
-      const signature = new Uint8Array([9, 10, 11, 12]);
-      const publicKey = new Uint8Array([13, 14, 15, 16]);
+      const publicKey = new Uint8Array(32); // All zeros
+      // Derive private key (publicKey XOR 0xFF)
+      const privateKey = new Uint8Array(32);
+      for (let i = 0; i < 32; i++) {
+        privateKey[i] = 0xFF;
+      }
 
-      // Mock KeyManager's verifySignature
-      const keyManager = new KeyManager();
-      jest.spyOn(keyManager, 'verifySignature').mockResolvedValue(true);
+      // Create valid signature using the mock's sign logic
+      const signature = new Uint8Array(64);
+      for (let i = 0; i < 64; i++) {
+        signature[i] = (data[i % data.length] + privateKey[i % 32]) % 256;
+      }
 
       const isValid = await IdentityService.verifySignature(data, signature, publicKey);
 

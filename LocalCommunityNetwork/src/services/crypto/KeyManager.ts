@@ -13,15 +13,12 @@ class KeyManager {
    */
   async generateKeyPair(): Promise<KeyPair> {
     try {
-      // Generate random private key (32 bytes)
-      const privateKey = ed.utils.randomSecretKey();
-
-      // Derive public key from private key
-      const publicKey = await ed.getPublicKey(privateKey);
+      // Generate key pair using keygen
+      const keys = await ed.keygenAsync();
 
       return {
-        publicKey: new Uint8Array(publicKey),
-        privateKey: new Uint8Array(privateKey),
+        publicKey: new Uint8Array(keys.publicKey),
+        privateKey: new Uint8Array(keys.secretKey),
       };
     } catch (error) {
       console.error('Error generating key pair:', error);
