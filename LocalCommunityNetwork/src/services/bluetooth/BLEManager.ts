@@ -12,6 +12,8 @@ import {BleManager, Device, State} from 'react-native-ble-plx';
 import {Platform, PermissionsAndroid} from 'react-native';
 import {
   SERVICE_UUID,
+  CHARACTERISTIC_PROFILE_UUID,
+  CHARACTERISTIC_HANDSHAKE_UUID,
   RSSI_THRESHOLD,
   SCAN_TIMEOUT,
   DEVICE_EXPIRY_TIME,
@@ -21,6 +23,7 @@ import {
   BLEConnectionState,
   BLEScanListener,
   BLEStateListener,
+  ConnectionProfile,
 } from '../../types/bluetooth';
 
 class BLEManagerService {
@@ -315,6 +318,99 @@ class BLEManagerService {
         console.error('Error in state listener:', error);
       }
     });
+  }
+
+  /**
+   * Connect to a discovered device
+   */
+  async connectToDevice(deviceId: string): Promise<Device | null> {
+    try {
+      console.log(`Connecting to device ${deviceId}...`);
+      const device = await this.manager.connectToDevice(deviceId);
+
+      // Discover services and characteristics
+      await device.discoverAllServicesAndCharacteristics();
+
+      console.log(`Connected to device ${deviceId}`);
+      return device;
+    } catch (error) {
+      console.error('Error connecting to device:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Disconnect from a device
+   */
+  async disconnectFromDevice(deviceId: string): Promise<void> {
+    try {
+      await this.manager.cancelDeviceConnection(deviceId);
+      console.log(`Disconnected from device ${deviceId}`);
+    } catch (error) {
+      console.error('Error disconnecting from device:', error);
+    }
+  }
+
+  /**
+   * Read profile data from connected device
+   */
+  async readProfile(device: Device): Promise<ConnectionProfile | null> {
+    try {
+      const characteristic = await device.readCharacteristicForService(
+        SERVICE_UUID,
+        CHARACTERISTIC_PROFILE_UUID,
+      );
+
+      if (!characteristic.value) {
+        console.error('No profile data received');
+        return null;
+      }
+
+      // Decode base64 value
+      const profileJson = Buffer.from(characteristic.value, 'base64').toString('utf-8');
+      const profile: ConnectionProfile = JSON.parse(profileJson);
+
+      console.log('Profile received:', profile);
+      return profile;
+    } catch (error) {
+      console.error('Error reading profile:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Write handshake data to connected device
+   * @param device Connected device
+   * @param handshakeData Data to write (will be JSON stringified)
+   */
+  async writeHandshake(device: Device, handshakeData: any): Promise<boolean> {
+    try {
+      const dataJson = JSON.stringify(handshakeData);
+      const dataBase64 = Buffer.from(dataJson, 'utf-8').toString('base64');
+
+      await device.writeCharacteristicWithResponseForService(
+        SERVICE_UUID,
+        CHARACTERISTIC_HANDSHAKE_UUID,
+        dataBase64,
+      );
+
+      console.log('Handshake data written');
+      return true;
+    } catch (error) {
+      console.error('Error writing handshake:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if device is connected
+   */
+  async isDeviceConnected(deviceId: string): Promise<boolean> {
+    try {
+      return await this.manager.isDeviceConnected(deviceId);
+    } catch (error) {
+      return false;
+    }
   }
 
   /**

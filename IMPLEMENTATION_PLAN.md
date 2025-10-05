@@ -8,6 +8,36 @@ This implementation plan outlines the development of a 1-month MVP for the Local
 **Target:** Working prototype with 20-30 beta users
 **Core Flow:** BLE connect → post event → discover → attend
 
+## Current Status (Updated 2025-10-04)
+
+**Progress:** Week 2, Day 9 - BLE Connection Flow Complete
+
+**Completed:**
+- ✅ Week 1: Core Foundation & Identity System (100%)
+  - Project setup with React Native, TypeScript, navigation
+  - Ed25519 cryptographic identity system
+  - Secure key storage (iOS Keychain/Android KeyStore)
+  - SQLite database and models
+  - Onboarding flow with identity creation
+  - Basic UI screens and components
+  - Bluetooth foundation with scanning and RSSI filtering
+
+- ✅ Week 2, Days 8-9: BLE Connection Flow (100%)
+  - ECDH key exchange using secp256k1
+  - BLE device connection management
+  - Profile and handshake data exchange
+  - ConnectionService for peer connection management
+  - Comprehensive test suite (134 tests passing)
+
+**In Progress:**
+- Week 2, Days 10-11: Connection UI & Management
+
+**Next Up:**
+- Connection UI with scanning and device discovery
+- Event posting system with encryption
+
+**Test Status:** 134/134 passing ✅
+
 ## Technology Stack
 
 ### Mobile Application
@@ -31,14 +61,14 @@ This implementation plan outlines the development of a 1-month MVP for the Local
 - **Deployment:** Single VPS or Railway.app
 - **Note:** MVP focuses on peer-to-peer sync via BLE, server is optional
 
-## Week 1: Core Foundation & Identity System
+## Week 1: Core Foundation & Identity System ✅
 
-### Day 1-2: Project Setup
+### Day 1-2: Project Setup ✅
 
-- [ ] Initialize React Native project with TypeScript
-- [ ] Configure development environment (iOS/Android)
-- [ ] Set up ESLint, Prettier, and Git hooks
-- [ ] Create basic folder structure:
+- [x] Initialize React Native project with TypeScript
+- [x] Configure development environment (iOS/Android)
+- [x] Set up ESLint, Prettier, and Git hooks
+- [x] Create basic folder structure:
   ```
   src/
     components/
@@ -49,55 +79,59 @@ This implementation plan outlines the development of a 1-month MVP for the Local
     types/
     utils/
   ```
-- [ ] Install core dependencies
-- [ ] Set up basic navigation (React Navigation)
+- [x] Install core dependencies
+- [x] Set up basic navigation (React Navigation)
 
-### Day 3-4: Cryptographic Identity System
+### Day 3-4: Cryptographic Identity System ✅
 
-- [ ] Implement Ed25519 key generation service
-- [ ] Create secure key storage service using Keychain/KeyStore
-- [ ] Build identity creation flow:
+- [x] Implement Ed25519 key generation service
+- [x] Create secure key storage service using Keychain/KeyStore
+- [x] Build identity creation flow:
   - Generate keypair on first launch
   - Derive user ID from public key (base58)
   - Store keys securely
-- [ ] Create Profile service:
+- [x] Create Profile service:
   - Name and photo storage
   - Local SQLite database setup
   - Profile CRUD operations
 
-### Day 5: Basic UI & Navigation
+### Day 5: Basic UI & Navigation ✅
 
-- [ ] Create app shell with bottom tab navigation
-- [ ] Implement screens:
+- [x] Create app shell with bottom tab navigation
+- [x] Implement screens:
   - Home/Feed screen (placeholder)
   - Connections screen (placeholder)
   - Profile screen
   - Settings screen
-- [ ] Build onboarding flow (3 screens)
-- [ ] Create reusable UI components:
+- [x] Build onboarding flow (4 screens)
+- [x] Create reusable UI components:
   - Button, Input, Card, Avatar
 
-### Day 6-7: Bluetooth Foundation
+### Day 6-7: Bluetooth Foundation ✅
 
-- [ ] Set up react-native-ble-plx
-- [ ] Request Bluetooth permissions
-- [ ] Create BLE service with custom UUID
-- [ ] Implement BLE advertising when in "Connect" mode
-- [ ] Basic BLE scanning functionality
-- [ ] RSSI filtering (>-70 dBm for proximity)
+- [x] Set up react-native-ble-plx
+- [x] Request Bluetooth permissions
+- [x] Create BLE service with custom UUID
+- [x] Implement BLE advertising when in "Connect" mode
+- [x] Basic BLE scanning functionality
+- [x] RSSI filtering (>-70 dBm for proximity)
 
 ## Week 2: Bluetooth Verification & Event System
 
-### Day 8-9: Complete BLE Connection Flow
+### Day 8-9: Complete BLE Connection Flow ✅
 
-- [ ] Build connection handshake protocol:
+- [x] Build connection handshake protocol:
   - Device A advertises with profile data
   - Device B scans and discovers
   - Exchange public keys via BLE characteristic
   - Both users confirm connection
-- [ ] Create Connection model and storage
-- [ ] Implement ECDH key derivation for shared secrets
-- [ ] Store connections in SQLite
+- [x] Create Connection model and storage
+- [x] Implement ECDH key derivation for shared secrets
+- [x] Store connections in SQLite
+- [x] Added ConnectionService for managing peer connections
+- [x] Implemented BLE device connection/disconnection
+- [x] Added profile and handshake data exchange via BLE characteristics
+- [x] Comprehensive test coverage (134 tests passing)
 
 ### Day 10-11: Connection UI & Management
 

@@ -3,11 +3,8 @@
  */
 
 import '../../../__tests__/setup';
-import {BleManager} from 'react-native-ble-plx';
-import {Platform, PermissionsAndroid} from 'react-native';
 import BLEManager from '../../../src/services/bluetooth/BLEManager';
 import {RSSI_THRESHOLD} from '../../../src/services/bluetooth/BLEConstants';
-import {DiscoveredDevice} from '../../../src/types/bluetooth';
 
 // Note: Platform and PermissionsAndroid are already mocked in setup.ts
 // We rely on those mocks for this test file
@@ -319,6 +316,68 @@ describe('BLEManager', () => {
 
       expect(errorListener).toHaveBeenCalled();
       expect(normalListener).toHaveBeenCalled();
+    });
+  });
+
+  describe('connection management', () => {
+    beforeEach(async () => {
+      await BLEManager.init();
+    });
+
+    it('should connect to a device', async () => {
+      const deviceId = 'test-device-id';
+      const device = await BLEManager.connectToDevice(deviceId);
+
+      expect(device).not.toBeNull();
+      expect(mockManager.connectToDevice).toHaveBeenCalledWith(deviceId);
+      expect(device?.discoverAllServicesAndCharacteristics).toHaveBeenCalled();
+    });
+
+    it('should disconnect from a device', async () => {
+      const deviceId = 'test-device-id';
+
+      await BLEManager.disconnectFromDevice(deviceId);
+
+      expect(mockManager.cancelDeviceConnection).toHaveBeenCalledWith(deviceId);
+    });
+
+    it('should check if device is connected', async () => {
+      const deviceId = 'test-device-id';
+
+      const isConnected = await BLEManager.isDeviceConnected(deviceId);
+
+      expect(mockManager.isDeviceConnected).toHaveBeenCalledWith(deviceId);
+      expect(typeof isConnected).toBe('boolean');
+    });
+
+    it('should read profile from connected device', async () => {
+      const device = await BLEManager.connectToDevice('test-device');
+
+      if (device) {
+        const profile = await BLEManager.readProfile(device);
+
+        expect(profile).not.toBeNull();
+        expect(profile?.userId).toBe('mockUserId123');
+        expect(profile?.displayName).toBe('Mock User');
+        expect(device.readCharacteristicForService).toHaveBeenCalled();
+      }
+    });
+
+    it('should write handshake data to connected device', async () => {
+      const device = await BLEManager.connectToDevice('test-device');
+
+      if (device) {
+        const handshakeData = {
+          userId: 'myUserId',
+          displayName: 'My Name',
+          ecdhPublicKey: 'mockPublicKey',
+        };
+
+        const success = await BLEManager.writeHandshake(device, handshakeData);
+
+        expect(success).toBe(true);
+        expect(device.writeCharacteristicWithResponseForService).toHaveBeenCalled();
+      }
     });
   });
 

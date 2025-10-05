@@ -3,6 +3,7 @@
  */
 
 import * as ed from '@noble/ed25519';
+import * as secp from '@noble/secp256k1';
 import {KeyPair, Identity} from '../../types/crypto';
 import * as base58 from '../../utils/base58';
 import {uint8ArrayToHex, hexToUint8Array} from '../../utils/crypto';
@@ -103,6 +104,44 @@ class KeyManager {
       publicKey: hexToUint8Array(serialized.publicKey),
       privateKey: hexToUint8Array(serialized.privateKey),
     };
+  }
+
+  /**
+   * Generate an ECDH key pair (secp256k1) for key exchange
+   */
+  async generateECDHKeyPair(): Promise<KeyPair> {
+    try {
+      const privateKey = secp.utils.randomPrivateKey();
+      const publicKey = secp.getPublicKey(privateKey, true); // compressed
+
+      return {
+        publicKey: new Uint8Array(publicKey),
+        privateKey: new Uint8Array(privateKey),
+      };
+    } catch (error) {
+      console.error('Error generating ECDH key pair:', error);
+      throw new Error('Failed to generate ECDH key pair');
+    }
+  }
+
+  /**
+   * Derive shared secret using ECDH
+   * @param ourPrivateKey Our ECDH private key
+   * @param theirPublicKey Their ECDH public key
+   * @returns Shared secret (32 bytes)
+   */
+  async deriveSharedSecret(
+    ourPrivateKey: Uint8Array,
+    theirPublicKey: Uint8Array,
+  ): Promise<Uint8Array> {
+    try {
+      const sharedPoint = secp.getSharedSecret(ourPrivateKey, theirPublicKey, true);
+      // Use x-coordinate of shared point as secret (skip first byte which is format)
+      return new Uint8Array(sharedPoint.slice(1));
+    } catch (error) {
+      console.error('Error deriving shared secret:', error);
+      throw new Error('Failed to derive shared secret');
+    }
   }
 }
 

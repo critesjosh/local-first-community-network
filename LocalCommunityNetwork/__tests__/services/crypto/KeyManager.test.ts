@@ -198,4 +198,66 @@ describe('KeyManager', () => {
       expect(isNewValid).toBe(true);
     });
   });
+
+  describe('ECDH key exchange', () => {
+    it('should generate ECDH key pair', async () => {
+      const keyPair = await keyManager.generateECDHKeyPair();
+
+      expect(keyPair).toBeDefined();
+      expect(keyPair.publicKey).toBeInstanceOf(Uint8Array);
+      expect(keyPair.privateKey).toBeInstanceOf(Uint8Array);
+      expect(keyPair.privateKey.length).toBe(32); // secp256k1 private key
+      expect(keyPair.publicKey.length).toBe(33); // compressed public key
+    });
+
+    it('should generate different ECDH key pairs', async () => {
+      const keyPair1 = await keyManager.generateECDHKeyPair();
+      const keyPair2 = await keyManager.generateECDHKeyPair();
+
+      expect(keyPair1.publicKey).not.toEqual(keyPair2.publicKey);
+      expect(keyPair1.privateKey).not.toEqual(keyPair2.privateKey);
+    });
+
+    it('should derive same shared secret from both sides', async () => {
+      // Alice generates her key pair
+      const aliceKeyPair = await keyManager.generateECDHKeyPair();
+
+      // Bob generates his key pair
+      const bobKeyPair = await keyManager.generateECDHKeyPair();
+
+      // Alice derives shared secret with Bob's public key
+      const aliceSharedSecret = await keyManager.deriveSharedSecret(
+        aliceKeyPair.privateKey,
+        bobKeyPair.publicKey,
+      );
+
+      // Bob derives shared secret with Alice's public key
+      const bobSharedSecret = await keyManager.deriveSharedSecret(
+        bobKeyPair.privateKey,
+        aliceKeyPair.publicKey,
+      );
+
+      // Both should have the same shared secret
+      expect(aliceSharedSecret).toEqual(bobSharedSecret);
+      expect(aliceSharedSecret.length).toBe(32); // 256-bit secret
+    });
+
+    it('should derive different secrets for different key pairs', async () => {
+      const alice = await keyManager.generateECDHKeyPair();
+      const bob = await keyManager.generateECDHKeyPair();
+      const charlie = await keyManager.generateECDHKeyPair();
+
+      const aliceBobSecret = await keyManager.deriveSharedSecret(
+        alice.privateKey,
+        bob.publicKey,
+      );
+
+      const aliceCharlieSecret = await keyManager.deriveSharedSecret(
+        alice.privateKey,
+        charlie.publicKey,
+      );
+
+      expect(aliceBobSecret).not.toEqual(aliceCharlieSecret);
+    });
+  });
 });

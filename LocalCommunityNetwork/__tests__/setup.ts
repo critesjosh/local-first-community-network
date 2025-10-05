@@ -36,13 +36,6 @@ jest.mock('react-native-gesture-handler', () => ({
 }));
 
 jest.mock('react-native-ble-plx', () => {
-  const mockDevice = {
-    id: 'mock-device-id',
-    name: 'Mock Device',
-    rssi: -60,
-    localName: 'Mock Local Name',
-  };
-
   class MockBleManager {
     state = jest.fn().mockResolvedValue('PoweredOn');
     startDeviceScan = jest.fn();
@@ -54,6 +47,20 @@ jest.mock('react-native-ble-plx', () => {
       return { remove: jest.fn() };
     });
     destroy = jest.fn();
+    connectToDevice = jest.fn().mockResolvedValue({
+      id: 'mock-device-id',
+      discoverAllServicesAndCharacteristics: jest.fn().mockResolvedValue(true),
+      readCharacteristicForService: jest.fn().mockResolvedValue({
+        value: Buffer.from(JSON.stringify({
+          userId: 'mockUserId123',
+          displayName: 'Mock User',
+          publicKey: Buffer.from(new Uint8Array(32)).toString('base64'),
+        })).toString('base64'),
+      }),
+      writeCharacteristicWithResponseForService: jest.fn().mockResolvedValue(true),
+    });
+    cancelDeviceConnection = jest.fn().mockResolvedValue(true);
+    isDeviceConnected = jest.fn().mockResolvedValue(false);
   }
 
   return {

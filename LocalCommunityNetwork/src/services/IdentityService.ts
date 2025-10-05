@@ -176,7 +176,7 @@ class IdentityService {
   /**
    * Export identity for backup (WARNING: Contains private key!)
    */
-  async exportIdentity(password: string): Promise<string> {
+  async exportIdentity(_password: string): Promise<string> {
     if (!this.keyPair) {
       throw new Error('No key pair loaded');
     }
