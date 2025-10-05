@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Local Community Network is a privacy-first, peer-to-peer platform for discovering local events and building neighborhood connections through Bluetooth verification and end-to-end encryption. This is a 1-month MVP focused on proving the core concept: Bluetooth-verified connections + encrypted event discovery without relying on centralized servers.
+Local Community Network is a privacy-first platform for discovering local events and building neighborhood connections through Bluetooth verification, end-to-end encryption, and a simple server backend. This is a 1-month MVP focused on proving the core concept: Bluetooth-verified connections + encrypted event discovery with server-based sync.
 
 ## Repository Structure
 
@@ -29,7 +29,8 @@ Local Community Network is a privacy-first, peer-to-peer platform for discoverin
 │   │   │   │   ├── Database.ts   # SQLite operations
 │   │   │   │   └── SecureStorage.ts # Keychain storage
 │   │   │   ├── IdentityService.ts # Identity management
-│   │   │   └── sync/             # P2P sync protocol (planned)
+│   │   │   ├── api/              # Server API client (planned)
+│   │   │   └── sync/             # Future: P2P BLE sync (deferred to Month 2)
 │   │   ├── types/                # TypeScript definitions
 │   │   │   ├── crypto.ts         # Crypto type definitions
 │   │   │   ├── models.ts         # Data models
@@ -61,7 +62,7 @@ If any tests fail after your changes:
 2. Update tests if the behavior intentionally changed
 3. Never commit with failing tests
 
-Current test baseline: **94 tests passing out of 106 total**
+Current test baseline: **164 tests passing (100%)**
 
 ## Development Commands
 
@@ -119,18 +120,18 @@ cd android && ./gradlew clean && cd ..
 1. **Identity System**: Ed25519 key pairs generated on-device, never leave device
 2. **Connection Protocol**: Bluetooth proximity verification (RSSI > -70 dBm)
 3. **Encryption**: All events/messages encrypted with AES-256-GCM using shared secrets from ECDH
-4. **Storage**: Local-first with SQLite, optional encrypted cloud backup
-5. **P2P Sync**: Direct device-to-device sync via BLE when nearby (no server required for MVP)
+4. **Storage**: Local-first with SQLite cache, server for sync
+5. **Server Sync**: REST API for posting/fetching encrypted data (server cannot decrypt)
 
 ### Key Implementation Details
 
-- **MVP Scope**: BLE-only verification, no NFC, no server dependency
+- **MVP Scope**: BLE for verification, simple REST API server for sync
 - **Identity System**: Ed25519 key pairs with base58-encoded public keys as user IDs
 - **Secure Storage**: Private keys stored in iOS Keychain / Android KeyStore
 - **Database Schema**: SQLite with tables for users, connections, events, messages
-- **Event Flow**: Create locally → Encrypt for connections → Sync via BLE when nearby
+- **Event Flow**: Create locally → Encrypt for connections → POST to server → Others GET from server
 - **Connection Flow**: BLE advertise → Scan → Exchange keys → Mutual confirmation
-- **Simplifications**: No Signal Protocol (basic AES), no CRDTs (last-write-wins), single device only
+- **Simplifications**: No Signal Protocol (basic AES), no CRDTs (last-write-wins), single device only, poll-based refresh
 
 ### Current Implementation Status
 
@@ -144,17 +145,20 @@ cd android && ./gradlew clean && cd ..
 - ✅ Secure key storage using device keychain
 - ✅ SQLite database service with full schema
 - ✅ Identity creation flow with 4-step onboarding
-- ✅ Comprehensive test suite (106 tests, 94 passing)
+- ✅ Comprehensive test suite (164 tests, all passing)
+- ✅ Hybrid encryption with HMAC recipient lookup
+- ✅ BLE connection flow with ECDH key exchange
 
-**Week 2 Next Steps:**
-- Build Bluetooth foundation (BLE advertising/scanning)
-- Implement connection handshake protocol
-- Create event posting and encryption
+**Week 2-3 Next Steps:**
+- Build connection UI and management
+- Create event posting UI
+- Implement server backend (Express.js + PostgreSQL)
+- Build API client for server sync
 
 ## Testing
 
 ### Test Suite Overview
-The project includes 106 tests covering cryptographic operations, secure storage, and identity management.
+The project includes 164 tests covering cryptographic operations, hybrid encryption, secure storage, and identity management.
 
 ```bash
 # Run all tests
@@ -207,16 +211,16 @@ cd LocalCommunityNetwork && npx prettier --write "src/**/*.{ts,tsx}"
 4. **Identity Persistence**: User profiles stored in SQLite, keys in secure storage
 5. **Signature Operations**: All events/messages signed with private key for authenticity
 
-### Bluetooth Implementation (Next Phase)
-1. **Permissions**: Must request runtime permissions on both iOS and Android
-2. **BLE Service UUID**: Define custom UUID for app identification during scanning
+### Bluetooth Implementation (Completed)
+1. **Permissions**: Runtime permissions requested on both iOS and Android
+2. **BLE Service UUID**: Custom UUID for app identification during scanning
 3. **RSSI Threshold**: -70 dBm for proximity detection (1-3 meters)
-4. **Connection Protocol**: Exchange public keys, verify proximity, establish shared secret
+4. **Connection Protocol**: Exchange public keys, verify proximity, establish shared secret via ECDH
 
 ### Data Management
 1. **Database Schema**: 5 tables - users, connections, events, messages, app_state
-2. **Encryption Pattern**: Generate AES key per event, wrap with connection's shared secret
-3. **P2P Sync**: Exchange event IDs/timestamps first, then transfer missing events
+2. **Encryption Pattern**: Hybrid encryption - generate AES key per event, wrap with HMAC(sharedSecret, postID) for each connection
+3. **Server Sync**: POST encrypted events to server, GET to fetch new events (server stores blobs, cannot decrypt)
 4. **Factory Reset**: `IdentityService.resetIdentity()` clears all data securely
 
 ### Development Patterns
@@ -226,7 +230,7 @@ cd LocalCommunityNetwork && npx prettier --write "src/**/*.{ts,tsx}"
 4. **Test-Driven Development**:
    - Write tests for new features
    - Run full test suite before committing
-   - Maintain or improve the 88% pass rate (94/106 tests)
+   - Maintain 100% pass rate (164/164 tests)
    - Never merge code with failing tests
 
 ## Common Issues & Solutions

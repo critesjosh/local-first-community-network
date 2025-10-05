@@ -14,11 +14,11 @@ title: "Product Requirements Document: Local Community Network (1-Month MVP)"
 
 ## 1. Product Vision
 
-Build a privacy-first platform for discovering local events and building neighborhood connections in just 4 weeks. Focus on proving core value: Bluetooth-verified connections + encrypted event discovery.
+Build a privacy-first platform for discovering local events and building neighborhood connections in just 4 weeks. Focus on proving core value: Bluetooth-verified connections + encrypted event discovery via simple server backend.
 
 **The killer use case:** Answer "What's happening in my neighborhood this weekend?" in under 30 seconds.
 
-**1-Month Scope:** Ruthlessly minimal. Bluetooth verification only, basic encryption, single device, core event features. Prove the concept, then iterate.
+**1-Month Scope:** Ruthlessly minimal. Bluetooth verification, simple REST API server, basic encryption, single device, core event features. Prove the concept, then iterate.
 
 ### Success Criteria (by Oct 30)
 
@@ -140,8 +140,8 @@ Build a privacy-first platform for discovering local events and building neighbo
   - For each connection: wrap key using HMAC(sharedSecret, postID) as recipient ID
   - This prevents server metadata leakage (77x more efficient than encrypting content per recipient)
 - Local storage: SQLite with events table
-- No server upload for MVP - local sharing only via BLE when devices nearby
-- **SIMPLIFICATION:** Events sync peer-to-peer when users are nearby (no central server needed for 1-month MVP)
+- **Server sync:** POST encrypted events to server, GET to fetch new events
+- **SIMPLIFICATION:** Use simple REST API for MVP (no WebSockets, no real-time updates)
 
 #### US-3.2: Discover Events in Feed (SIMPLIFIED)
 
@@ -154,15 +154,16 @@ Build a privacy-first platform for discovering local events and building neighbo
 - Feed shows events in chronological order (newest first)
 - Basic list view - no fancy filtering
 - Decrypt and display events from connections
-- Pull down to manually sync with nearby users
+- Pull down to manually fetch new events from server
 - No real-time updates - manual refresh only
 - Show event date/time prominently
 - "Going" button only (no maybe/no for MVP)
 
 **Technical Requirements:**
 
-- Query local SQLite for events
-- Decrypt with connection's shared key
+- Fetch encrypted events from server via GET /api/posts
+- Query local SQLite for cached events
+- Decrypt with connection's shared key using HMAC lookup
 - Sort by datetime client-side
 - Basic list rendering (no virtual scroll needed for <100 events)
 
@@ -183,7 +184,7 @@ Build a privacy-first platform for discovering local events and building neighbo
 
 - RSVP stored as `{eventID, userID, status: 'going'}`
 - Encrypted with same pattern as events
-- Sync RSVPs when devices are nearby
+- POST RSVPs to server, fetch via GET /api/rsvps
 
 ### Epic 4 (Optional): Direct Messaging (SIMPLIFIED - Week 3)
 
@@ -200,23 +201,21 @@ Build a privacy-first platform for discovering local events and building neighbo
 - Messages encrypted with shared secret from BLE connection
 - No delivery receipts or read status for MVP
 - No typing indicators
-- Messages sync when both users online and nearby (BLE proximity)
-- No server - peer-to-peer messaging only
+- POST messages to server, poll for new messages on refresh
 
 **Technical Requirements:**
 
 - Use simple AES-256-GCM encryption with shared secret from DH key exchange
 - Store messages in local SQLite: `{messageID, conversationID, senderID, ciphertext, timestamp}`
-- When devices are nearby (BLE), sync messages via BLE characteristic
+- POST /api/messages to send, GET /api/messages to fetch
 - **NO Signal Protocol** (too complex for 1-month MVP)
-- **NO cloud storage** - messages local only
+- Server stores encrypted messages, cannot decrypt
 
 **1-Month Simplifications:**
 
-- Both users must have app open to receive messages
+- Manual refresh to fetch new messages (no push notifications)
 - No message history when switching devices
-- No backup/restore
-- Messages lost if app deleted
+- No backup/restore for MVP
 
 ### Epic 5: Profile & Settings (MINIMAL - Week 1)
 
@@ -646,25 +645,30 @@ Server → Client: {
 
 ### In Scope (Event Discovery Core)
 
-✅ In-person verification (NFC + Bluetooth)  
-✅ **Event posting with rich details** (title, date/time, location, description, photo)  
-✅ **Event discovery feed** (chronological, filter for events only)  
-✅ **Quick RSVP** (going/maybe/no)  
-✅ General posts (text + photos) for recommendations/updates  
-✅ Direct messaging (optional) (Signal Protocol) for event coordination  
-✅ Profile management  
-✅ Multi-device sync  
+✅ In-person verification (Bluetooth only for MVP)
+✅ **Simple server backend** (REST API for encrypted posts/messages)
+✅ **Event posting with rich details** (title, date/time, location, description, photo)
+✅ **Event discovery feed** (chronological, filter for events only)
+✅ **Quick RSVP** (going/maybe/no)
+✅ General posts (text + photos) for recommendations/updates
+✅ Direct messaging (basic) for event coordination
+✅ Profile management
 ✅ **Single neighborhood pilot focused on event adoption**
 
 ### Out of Scope (Future Phases)
 
-❌ Advanced event features (recurring events, reminders, calendar sync)  
-❌ Neighborhood-wide bulletin board (beyond verified connections)  
-❌ Group chats for event planning  
-❌ Marketplace for garage sales/classifieds  
-❌ Web app  
-❌ Video/voice calls  
+❌ Advanced event features (recurring events, reminders, calendar sync)
+❌ Neighborhood-wide bulletin board (beyond verified connections)
+❌ Group chats for event planning
+❌ Marketplace for garage sales/classifieds
+❌ Web app
+❌ Video/voice calls
 ❌ Location-based auto-discovery (stays 100% in-person verification)
+❌ **P2P BLE sync** (nice-to-have for offline scenarios, but not MVP priority)
+❌ **Multi-device sync** (single device only for MVP)
+❌ **NFC verification** (Bluetooth only for MVP)
+❌ **Signal Protocol** (basic AES-GCM sufficient for MVP)
+❌ **Real-time WebSocket updates** (poll-based refresh for MVP)
 
 ### Success Metrics for MVP
 

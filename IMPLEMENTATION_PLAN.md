@@ -2,11 +2,11 @@
 
 ## Executive Summary
 
-This implementation plan outlines the development of a 1-month MVP for the Local Community Network - a privacy-first, peer-to-peer platform for discovering local events and building neighborhood connections through Bluetooth verification and end-to-end encryption.
+This implementation plan outlines the development of a 1-month MVP for the Local Community Network - a privacy-first platform for discovering local events and building neighborhood connections through Bluetooth verification, end-to-end encryption, and a simple server backend.
 
 **Timeline:** 4 weeks (October 2025)
 **Target:** Working prototype with 20-30 beta users
-**Core Flow:** BLE connect → post event → discover → attend
+**Core Flow:** BLE connect → post event to server → fetch from server → discover → attend
 
 ## Current Status (Updated 2025-10-04)
 
@@ -34,9 +34,10 @@ This implementation plan outlines the development of a 1-month MVP for the Local
 
 **Next Up:**
 - Connection UI with scanning and device discovery
-- Event posting system with encryption
+- Event posting system with hybrid encryption
+- Simple server backend for encrypted post storage/retrieval
 
-**Test Status:** 134/134 passing ✅
+**Test Status:** 164/164 passing ✅
 
 ## Technology Stack
 
@@ -54,12 +55,14 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - react-native-keychain (iOS/Android secure storage)
   - @react-native-async-storage/async-storage
 
-### Backend (Minimal for MVP)
+### Backend (Required for MVP)
 
-- **Framework:** Express.js
+- **Framework:** Express.js or Fastify
 - **Database:** PostgreSQL for encrypted blob storage
-- **Deployment:** Single VPS or Railway.app
-- **Note:** MVP focuses on peer-to-peer sync via BLE, server is optional
+- **Authentication:** Signature-based (no passwords)
+- **Deployment:** Railway.app, Render, or single VPS
+- **API:** Simple REST endpoints (POST/GET for events, messages, RSVPs)
+- **Note:** Server stores encrypted data, cannot decrypt content
 
 ## Week 1: Core Foundation & Identity System ✅
 
@@ -153,7 +156,7 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - Location input (optional)
   - Description textarea (optional)
   - Photo capture/selection (single)
-- [ ] Implement hybrid encryption:
+- [x] Implement hybrid encryption (COMPLETED):
   - Generate random AES-256 key for event (once)
   - Encrypt event content with this key (single encryption)
   - For each connection:
@@ -162,15 +165,16 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - Store: {encryptedContent, wrappedKeys: {lookupID: wrappedKey, ...}}
   - Privacy: Server cannot learn social graph (no userIDs in wrappedKeys)
   - Efficiency: 77x smaller than encrypting content per recipient
-- [ ] Store encrypted events locally
+- [x] Database support for encrypted events (COMPLETED)
+- [ ] Build UI to create and submit events
 
-### Day 14: Event Feed & Discovery
+### Day 14: Event Feed & Discovery (UI Only)
 
 - [ ] Build event feed screen:
   - Chronological list view
   - Event cards with all details
-  - Pull-to-refresh
-- [ ] Implement event decryption:
+  - Pull-to-refresh (will connect to server in Week 3)
+- [x] Implement event decryption (COMPLETED):
   - For each post, iterate through connections:
     - Compute HMAC(sharedSecret, postID)
     - Check if wrappedKeys[HMAC] exists
@@ -178,22 +182,40 @@ This implementation plan outlines the development of a 1-month MVP for the Local
     - Decrypt content and stop (early termination)
   - Performance: <100 connections × <100 posts = ~25ms (imperceptible)
   - Cache decrypted posts to avoid recomputation
-- [ ] Add "I'm Going" RSVP functionality
-- [ ] Show attendee counts
+- [ ] Add "I'm Going" RSVP functionality (UI only)
+- [ ] Show attendee counts (UI only)
+- [ ] Note: Server integration happens in Week 3
 
-## Week 3: P2P Sync & Messaging
+## Week 3: Server Backend & API Integration
 
-### Day 15-16: Peer-to-Peer Sync via BLE
+### Day 15-16: Server Backend Setup
 
-- [ ] Create sync protocol for nearby devices:
-  - Detect nearby connections via BLE
-  - Exchange event lists (IDs and timestamps)
-  - Transfer missing events
-  - Handle conflicts (last-write-wins)
-- [ ] Implement background sync when app is open
-- [ ] Add manual sync trigger (pull-to-refresh)
+- [ ] Initialize Express.js/Fastify server project
+- [ ] Set up PostgreSQL database
+- [ ] Create database schema:
+  - `posts` table: (id, author_id, timestamp, encrypted_content, iv, wrapped_keys_json)
+  - `messages` table: (id, sender_id, recipient_id, timestamp, ciphertext, iv)
+  - `rsvps` table: (id, post_id, user_id, status, timestamp)
+- [ ] Implement signature-based authentication
+- [ ] Create API endpoints:
+  - POST /api/posts (upload encrypted event)
+  - GET /api/posts?since={timestamp} (fetch new events)
+  - POST /api/messages (send encrypted message)
+  - GET /api/messages?conversationId={id}&since={timestamp}
+  - POST /api/rsvps
+  - GET /api/rsvps?postId={id}
+- [ ] Deploy to Railway.app or Render
 
-### Day 17-18: Direct Messaging (Simplified)
+### Day 17-18: Client-Server Integration
+
+- [ ] Create API client service in mobile app
+- [ ] Implement POST event to server after local encryption
+- [ ] Implement GET events from server with polling
+- [ ] Add pull-to-refresh to fetch new events
+- [ ] Cache fetched events in local SQLite
+- [ ] Handle network errors gracefully
+
+### Day 19: Direct Messaging (Simplified)
 
 - [ ] Create Message model and storage
 - [ ] Build chat screen:
@@ -201,24 +223,26 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - Input field
   - Send button
 - [ ] Implement AES-256-GCM encryption with shared secrets
+- [ ] POST messages to server
+- [ ] Poll for new messages (GET /api/messages)
 - [ ] Store messages locally in SQLite
-- [ ] P2P message sync via BLE when nearby
 
-### Day 19-20: Testing & Bug Fixes
+### Day 20: Testing & Bug Fixes
 
-- [ ] Test complete connection flow
-- [ ] Verify encryption/decryption
-- [ ] Test P2P sync between devices
+- [ ] Test complete flow: connect → post → fetch → decrypt
+- [ ] Verify encryption/decryption with server
+- [ ] Test with multiple users
 - [ ] Fix critical bugs
 - [ ] Performance optimization
 
 ### Day 21: Polish & UX Improvements
 
-- [ ] Add loading states
-- [ ] Implement error handling
+- [ ] Add loading states for server requests
+- [ ] Implement error handling for network failures
 - [ ] Create empty states
 - [ ] Add basic animations
 - [ ] Improve visual design
+- [ ] Offline mode indicator
 
 ## Week 4: Final Polish & Beta Launch
 
@@ -232,13 +256,15 @@ This implementation plan outlines the development of a 1-month MVP for the Local
 - [ ] Add connection notes feature
 - [ ] Implement data export (JSON)
 
-### Day 24-25: Security Hardening
+### Day 24-25: Security Hardening & Server
 
 - [ ] Security audit of crypto implementation
-- [ ] Add input validation
-- [ ] Implement rate limiting
+- [ ] Add input validation to server endpoints
+- [ ] Implement rate limiting on server
 - [ ] Test key storage security
 - [ ] Verify no plaintext logging
+- [ ] Server hardening (CORS, helmet.js, etc.)
+- [ ] Set up SSL certificates for production
 
 ### Day 26-27: Beta Testing Preparation
 
@@ -330,7 +356,8 @@ local-first-community-network/
 
 - **BLE Complexity**: Use simple characteristic-based exchange, no GATT server
 - **Crypto Implementation**: Use well-tested libraries, no custom crypto
-- **P2P Sync**: Simple last-write-wins, no complex CRDTs for MVP
+- **Server Backend**: Keep it simple - basic REST API, no real-time features
+- **Network Reliability**: Handle offline gracefully, cache locally
 
 ### Timeline Risks
 
@@ -345,8 +372,9 @@ local-first-community-network/
 - Identity creation and key storage
 - BLE connection and verification
 - Event creation and encryption
+- Server backend with POST/GET endpoints
 - Event feed and decryption
-- Basic P2P sync
+- Server sync (fetch/post encrypted data)
 
 ### P1 - Important but not Critical
 
@@ -374,7 +402,8 @@ local-first-community-network/
 
 - BLE connection flow
 - Event encryption/decryption
-- P2P sync protocol
+- Server API integration
+- Multi-user event sharing
 
 ### User Testing (Week 4)
 
@@ -389,7 +418,8 @@ local-first-community-network/
 - [ ] All P0 features working
 - [ ] No critical security issues
 - [ ] <5% crash rate
-- [ ] Successful P2P sync
+- [ ] Server deployed and accessible
+- [ ] Successful multi-user event sharing
 
 ### Product
 
@@ -417,8 +447,9 @@ local-first-community-network/
 
 ### Week 3
 
-- Successful P2P sync between devices
-- 10+ test events in system
+- Server backend deployed and functional
+- Successful multi-user event sharing via server
+- 10+ test events synced across users
 
 ### Week 4
 
@@ -431,9 +462,10 @@ local-first-community-network/
 ### Month 2
 
 - iOS and Android polish
+- Push notifications for new events/messages
 - Cloud backup (encrypted)
-- Push notifications
 - Group events
+- **P2P BLE sync** (offline fallback)
 
 ### Month 3
 
@@ -441,10 +473,12 @@ local-first-community-network/
 - Advanced messaging (Signal Protocol)
 - Event reminders
 - Search and filtering
+- Real-time updates (WebSockets)
 
 ### Future
 
 - Web companion app
 - Community moderation tools
 - Event categories
+- NFC verification support
 - Location-based features
