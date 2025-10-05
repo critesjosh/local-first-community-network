@@ -4,15 +4,20 @@ import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {createStackNavigator} from '@react-navigation/stack';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 
-// Placeholder screens - we'll create these next
+// Screens
 import HomeScreen from '../screens/HomeScreen';
 import ConnectionsScreen from '../screens/ConnectionsScreen';
 import CreateEventScreen from '../screens/CreateEventScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import ConnectionScanScreen from '../screens/ConnectionScanScreen';
+import ConnectionDetailScreen from '../screens/ConnectionDetailScreen';
 
-const Tab = createBottomTabNavigator();
-const Stack = createStackNavigator();
+// Type imports
+import {RootStackParamList, MainTabParamList} from '../types/navigation';
+
+const Tab = createBottomTabNavigator<MainTabParamList>();
+const Stack = createStackNavigator<RootStackParamList>();
 
 const MainTabs = () => {
   return (
@@ -66,6 +71,15 @@ const AppNavigator = () => {
       <NavigationContainer>
         <Stack.Navigator screenOptions={{headerShown: false}}>
           <Stack.Screen name="MainTabs" component={MainTabs} />
+          <Stack.Screen
+            name="ConnectionScan"
+            component={ConnectionScanScreen}
+            options={{presentation: 'modal'}}
+          />
+          <Stack.Screen
+            name="ConnectionDetail"
+            component={ConnectionDetailScreen}
+          />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

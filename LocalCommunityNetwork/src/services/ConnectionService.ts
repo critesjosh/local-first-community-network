@@ -188,9 +188,8 @@ class ConnectionServiceClass {
    */
   async deleteConnection(connectionId: string): Promise<boolean> {
     try {
-      // In a real implementation, we'd delete from database
-      // For now, just log
-      console.log('Deleting connection:', connectionId);
+      await Database.deleteConnection(connectionId);
+      console.log('Connection deleted:', connectionId);
       return true;
     } catch (error) {
       console.error('Error deleting connection:', error);

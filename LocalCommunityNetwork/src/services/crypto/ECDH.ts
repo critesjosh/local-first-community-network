@@ -15,7 +15,10 @@ import {hmac} from '@noble/hashes/hmac.js';
  *
  * Ed25519 keys are used for signing, but we need Curve25519 for ECDH.
  * This conversion is cryptographically sound and widely used.
+ *
+ * Currently unused but kept for future use.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ed25519PublicKeyToCurve25519(ed25519PublicKey: Uint8Array): Uint8Array {
   // For now, we'll use a direct approach
   // In production, consider using @noble/curves for proper conversion
@@ -30,15 +33,21 @@ function ed25519PublicKeyToCurve25519(ed25519PublicKey: Uint8Array): Uint8Array 
 
 /**
  * Convert Ed25519 private key to Curve25519 (X25519) format
+ *
+ * Currently unused but kept for future use.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ed25519PrivateKeyToCurve25519(ed25519PrivateKey: Uint8Array): Uint8Array {
   // Hash the Ed25519 private key to get a Curve25519-compatible private key
   // This is a simplified approach for MVP
   const hash = sha256(ed25519PrivateKey);
 
   // Clamp the bits as required by X25519
+  // eslint-disable-next-line no-bitwise
   hash[0] &= 248;
+  // eslint-disable-next-line no-bitwise
   hash[31] &= 127;
+  // eslint-disable-next-line no-bitwise
   hash[31] |= 64;
 
   return hash.slice(0, 32);

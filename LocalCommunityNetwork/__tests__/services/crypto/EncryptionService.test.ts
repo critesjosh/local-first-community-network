@@ -262,7 +262,6 @@ describe('EncryptionService - Hybrid Encryption', () => {
 
       // Dave (unrelated user) tries to decrypt
       const davePrivateKey = ed25519.utils.randomSecretKey();
-      const davePublicKey = await ed25519.getPublicKeyAsync(davePrivateKey);
       const daveAliceSecret = await ECDHService.deriveSharedSecret(
         davePrivateKey,
         alicePublicKey,
