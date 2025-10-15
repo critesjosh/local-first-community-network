@@ -17,12 +17,16 @@ class KeyManager {
    */
   async generateKeyPair(): Promise<KeyPair> {
     try {
-      // Generate key pair using keygen
-      const keys = await ed.keygenAsync();
-
+      // Generate random private key (uses crypto.getRandomValues under the hood)
+      const privateKey = ed.utils.randomSecretKey();
+      console.log('privateKey', privateKey);
+      // Derive public key from private key
+      // (uses crypto.subtle.digest which is polyfilled in cryptoConfig.ts)
+      const publicKey = await ed.getPublicKeyAsync(privateKey);
+      console.log('publicKey', publicKey);
       return {
-        publicKey: new Uint8Array(keys.publicKey),
-        privateKey: new Uint8Array(keys.secretKey),
+        publicKey: new Uint8Array(publicKey),
+        privateKey: new Uint8Array(privateKey),
       };
     } catch (error) {
       console.error('Error generating key pair:', error);
@@ -114,7 +118,10 @@ class KeyManager {
    */
   async generateECDHKeyPair(): Promise<KeyPair> {
     try {
-      const privateKey = secp.utils.randomPrivateKey();
+      // Generate random 32 bytes for private key using crypto.getRandomValues
+      const privateKey = new Uint8Array(32);
+      crypto.getRandomValues(privateKey);
+      
       const publicKey = secp.getPublicKey(privateKey, true); // compressed
 
       return {
