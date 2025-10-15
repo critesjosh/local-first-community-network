@@ -138,7 +138,7 @@ const HomeScreen = () => {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={[]}>
       <View style={styles.header}>
         <Text style={styles.title}>Event Feed</Text>
         <Text style={styles.subtitle}>
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 8,
+    paddingTop: 68,
     paddingBottom: 12,
     backgroundColor: '#F2F2F7',
   },
