@@ -2,6 +2,9 @@
  * Test setup and configuration
  */
 
+// Polyfill crypto.getRandomValues for tests
+import 'react-native-get-random-values';
+
 // Mock Expo modules
 jest.mock('expo-secure-store');
 jest.mock('expo-sqlite');

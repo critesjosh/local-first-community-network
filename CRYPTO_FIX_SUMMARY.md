@@ -1,17 +1,26 @@
 # Crypto Fix Summary
 
 ## Problem
-The app was failing with `TypeError: Cannot read property 'getRandomValues' of undefined` because `@noble/ed25519` and `@noble/secp256k1` require secure random number generation, which wasn't available in React Native.
+The app was failing with `TypeError: c.getRandomValues is not a function (it is undefined)` because `@noble/ed25519` and `@noble/secp256k1` require the `crypto.getRandomValues()` function, which is not available in React Native by default.
 
 ## Solution
-Integrated `expo-crypto` to provide secure random bytes for all cryptographic operations.
+Installed and configured `react-native-get-random-values` to polyfill the `crypto.getRandomValues()` function for React Native. This package provides a synchronous, cryptographically secure random number generator that the `@noble` libraries require.
 
 ## Changes Made
 
-### 1. Installed expo-crypto
+### 1. Installed react-native-get-random-values
 ```bash
-npm install expo-crypto
+npm install react-native-get-random-values
 ```
+
+### 2. Added Polyfill Import to Entry Point
+**File:** `index.js`
+- Added `import 'react-native-get-random-values';` as the very first import
+- This polyfills `crypto.getRandomValues()` globally before any crypto operations
+
+### 3. Added Polyfill Import to Test Setup  
+**File:** `__tests__/setup.ts`
+- Added the same import to ensure tests work properly
 
 ### 2. Created Shared Crypto Configuration
 **File:** `src/services/crypto/cryptoConfig.ts`
@@ -46,9 +55,18 @@ npm test
 ```
 
 ## Running the App
-Stop your current server and restart with:
+Stop your current server and restart with a clean cache:
 ```bash
 npx expo start --clear
+```
+
+If you're using a development build, you may need to rebuild the app since we added a new native dependency:
+```bash
+# For iOS
+npx expo run:ios
+
+# For Android  
+npx expo run:android
 ```
 
 Then try creating your identity again!
