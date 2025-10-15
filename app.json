@@ -13,7 +13,15 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.localcommunity.network",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to verify nearby connections and build your local community network.",
+        "NSBluetoothPeripheralUsageDescription": "This app uses Bluetooth to verify nearby connections and build your local community network.",
+        "NSLocationWhenInUseUsageDescription": "Location is required for Bluetooth scanning to discover nearby community members.",
+        "NSPhotoLibraryUsageDescription": "We need access to your photo library so you can add photos to events and your profile.",
+        "NSCameraUsageDescription": "We need access to your camera so you can take photos for events and your profile."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +29,19 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "first.app"
+      "package": "com.localcommunity.network",
+      "permissions": [
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_SCAN",
+        "BLUETOOTH_CONNECT",
+        "BLUETOOTH_ADVERTISE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -30,6 +50,25 @@
       "eas": {
         "projectId": "a69c1e3a-c65c-4200-9c37-98434d6687f6"
       }
-    }
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app needs access to your photos to let you add images to events and your profile.",
+          "cameraPermission": "The app needs access to your camera to let you take photos for events and your profile."
+        }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": ["peripheral", "central"],
+          "bluetoothAlwaysPermission": "Allow $(PRODUCT_NAME) to connect to nearby community members via Bluetooth"
+        }
+      ]
+    ]
   }
 }
