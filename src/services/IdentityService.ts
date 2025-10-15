@@ -135,11 +135,15 @@ class IdentityService {
    * Get current user profile
    */
   async getCurrentUser(): Promise<User | null> {
+    console.log('[IdentityService] getCurrentUser called, identity exists:', !!this.identity);
     if (!this.identity) {
       return null;
     }
 
-    return await Database.getUser(this.identity.id);
+    console.log('[IdentityService] Getting user with ID:', this.identity.id);
+    const user = await Database.getUser(this.identity.id);
+    console.log('[IdentityService] User from database:', user ? 'found' : 'NOT FOUND');
+    return user;
   }
 
   /**
@@ -163,6 +167,31 @@ class IdentityService {
     };
 
     await Database.saveUser(updatedUser);
+  }
+
+  /**
+   * Clear identity (for recovery/reset scenarios)
+   */
+  async clearIdentity(): Promise<void> {
+    try {
+      console.log('[IdentityService] Clearing identity...');
+      
+      // Clear from secure storage
+      await SecureStorage.deleteKeys();
+      
+      // Clear from memory
+      this.identity = null;
+      this.keyPair = null;
+      
+      // Clear from app state
+      await AsyncStorage.removeItem('isFirstLaunch');
+      await Database.setAppState('identity_created', 'false');
+      
+      console.log('[IdentityService] Identity cleared successfully');
+    } catch (error) {
+      console.error('[IdentityService] Error clearing identity:', error);
+      throw error;
+    }
   }
 
   /**

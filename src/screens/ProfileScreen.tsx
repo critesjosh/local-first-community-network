@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  ScrollView,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import IdentityService from '../services/IdentityService';
@@ -29,6 +30,34 @@ const ProfileScreen = () => {
       if (currentUser) {
         setUser(currentUser);
         setDisplayName(currentUser.displayName);
+      } else {
+        // Identity exists but user profile not found in database
+        // This can happen if identity creation partially failed
+        console.warn('[ProfileScreen] User profile not found, clearing identity to restart onboarding');
+        
+        // Clear the corrupted identity
+        await IdentityService.clearIdentity();
+        
+        Alert.alert(
+          'Profile Not Found',
+          'Your profile data was not found. The app will now restart and you can create your identity again.',
+          [
+            {
+              text: 'Restart',
+              onPress: () => {
+                // The simplest way to restart: close the app
+                // User will need to manually reopen it
+                if (Platform.OS === 'ios') {
+                  // On iOS, we can't programmatically restart, so just show a message
+                  Alert.alert('Please Restart', 'Please close and reopen the app to continue.');
+                } else {
+                  // On Android, we could use BackHandler.exitApp() but it's not ideal
+                  Alert.alert('Please Restart', 'Please close and reopen the app to continue.');
+                }
+              },
+            },
+          ],
+        );
       }
     } catch (error) {
       console.error('Error loading user profile:', error);
@@ -84,13 +113,18 @@ const ProfileScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Profile</Text>
-        <Text style={styles.subtitle}>
-          Your identity in the neighborhood network
-        </Text>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.content}>
+          <Text style={styles.title}>Profile</Text>
+          <Text style={styles.subtitle}>
+            Your identity in the neighborhood network
+          </Text>
 
-        <View style={styles.profileCard}>
+          <View style={styles.profileCard}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>
               {displayName ? displayName[0].toUpperCase() : '?'}
@@ -138,7 +172,8 @@ const ProfileScreen = () => {
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -152,6 +187,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   content: {
     padding: 20,

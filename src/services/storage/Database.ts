@@ -96,20 +96,28 @@ class Database {
   async saveUser(user: User): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
+    console.log('[Database] Saving user:', user.id, user.displayName);
+
     const query = `
       INSERT OR REPLACE INTO users (
         id, display_name, profile_photo, bio, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?)
     `;
 
-    await this.db.runAsync(query, [
-      user.id,
-      user.displayName,
-      user.profilePhoto || null,
-      user.bio || null,
-      user.createdAt.getTime(),
-      user.updatedAt.getTime(),
-    ]);
+    try {
+      await this.db.runAsync(query, [
+        user.id,
+        user.displayName,
+        user.profilePhoto || null,
+        user.bio || null,
+        user.createdAt.getTime(),
+        user.updatedAt.getTime(),
+      ]);
+      console.log('[Database] User saved successfully');
+    } catch (error) {
+      console.error('[Database] Error saving user:', error);
+      throw error;
+    }
   }
 
   /**
@@ -118,21 +126,30 @@ class Database {
   async getUser(userId: string): Promise<User | null> {
     if (!this.db) throw new Error('Database not initialized');
 
+    console.log('[Database] Getting user with ID:', userId);
     const query = 'SELECT * FROM users WHERE id = ?';
-    const row = await this.db.getFirstAsync<any>(query, [userId]);
+    
+    try {
+      const row = await this.db.getFirstAsync<any>(query, [userId]);
 
-    if (!row) {
-      return null;
+      if (!row) {
+        console.log('[Database] No user found with ID:', userId);
+        return null;
+      }
+
+      console.log('[Database] User found:', row.display_name);
+      return {
+        id: row.id,
+        displayName: row.display_name,
+        profilePhoto: row.profile_photo,
+        bio: row.bio,
+        createdAt: new Date(row.created_at),
+        updatedAt: new Date(row.updated_at),
+      };
+    } catch (error) {
+      console.error('[Database] Error getting user:', error);
+      throw error;
     }
-
-    return {
-      id: row.id,
-      displayName: row.display_name,
-      profilePhoto: row.profile_photo,
-      bio: row.bio,
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at),
-    };
   }
 
   /**

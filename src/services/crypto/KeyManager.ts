@@ -19,11 +19,11 @@ class KeyManager {
     try {
       // Generate random private key (uses crypto.getRandomValues under the hood)
       const privateKey = ed.utils.randomSecretKey();
-      console.log('privateKey', privateKey);
+      // console.log('privateKey', privateKey);
       // Derive public key from private key
       // (uses crypto.subtle.digest which is polyfilled in cryptoConfig.ts)
       const publicKey = await ed.getPublicKeyAsync(privateKey);
-      console.log('publicKey', publicKey);
+      // console.log('publicKey', publicKey);
       return {
         publicKey: new Uint8Array(publicKey),
         privateKey: new Uint8Array(privateKey),
