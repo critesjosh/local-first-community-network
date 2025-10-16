@@ -25,6 +25,7 @@ import {
   BLEStateListener,
   ConnectionProfile,
 } from '../../types/bluetooth';
+import BLEAdvertiser from './BLEAdvertiser';
 
 class BLEManagerService {
   private manager: BleManager;
@@ -65,6 +66,12 @@ class BLEManagerService {
       // Wait for Bluetooth to be powered on
       if (state !== State.PoweredOn) {
         await this.waitForPoweredOn();
+      }
+
+      // Initialize BLE Advertiser
+      const advertiserInit = await BLEAdvertiser.init();
+      if (!advertiserInit) {
+        console.warn('BLE Advertiser initialization failed - advertising may not work');
       }
 
       console.log('BLE Manager initialized successfully');
@@ -185,6 +192,38 @@ class BLEManagerService {
     this.state.isScanning = false;
     this.stopDeviceExpiryTimer();
     this.notifyStateListeners();
+  }
+
+  /**
+   * Start advertising as a BLE peripheral
+   */
+  async startAdvertising(): Promise<boolean> {
+    try {
+      const success = await BLEAdvertiser.startAdvertising();
+
+      if (success) {
+        this.state.isAdvertising = true;
+        this.notifyStateListeners();
+      }
+
+      return success;
+    } catch (error) {
+      console.error('Error starting advertising:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Stop advertising
+   */
+  async stopAdvertising(): Promise<void> {
+    try {
+      await BLEAdvertiser.stopAdvertising();
+      this.state.isAdvertising = false;
+      this.notifyStateListeners();
+    } catch (error) {
+      console.error('Error stopping advertising:', error);
+    }
   }
 
   /**
@@ -416,8 +455,10 @@ class BLEManagerService {
   /**
    * Cleanup and destroy manager
    */
-  destroy(): void {
+  async destroy(): Promise<void> {
     this.stopScanning();
+    await this.stopAdvertising();
+    await BLEAdvertiser.destroy();
     this.scanListeners.clear();
     this.stateListeners.clear();
     this.manager.destroy();

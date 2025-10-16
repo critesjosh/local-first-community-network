@@ -67,20 +67,31 @@ const ConnectionScanScreen = ({navigation}: Props) => {
       BLEManager.removeScanListener(scanListener);
       BLEManager.removeStateListener(stateListener);
       BLEManager.stopScanning();
+      BLEManager.stopAdvertising();
     };
   }, [navigation]);
 
   const handleStartScanning = async () => {
     try {
       setDevices([]);
+
+      // Start advertising so other devices can see us
+      console.log('Starting advertising...');
+      const advertisingStarted = await BLEManager.startAdvertising();
+      if (!advertisingStarted) {
+        console.warn('Failed to start advertising, but continuing with scan');
+      }
+
+      // Start scanning for other devices
       await BLEManager.startScanning();
     } catch (error) {
       Alert.alert('Error', 'Failed to start scanning. Please try again.');
     }
   };
 
-  const handleStopScanning = () => {
+  const handleStopScanning = async () => {
     BLEManager.stopScanning();
+    await BLEManager.stopAdvertising();
   };
 
   const handleDevicePress = async (device: DiscoveredDevice) => {
