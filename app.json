@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.localcommunity.network",
+      "bundleIdentifier": "xyz.builddetroit.pulse",
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to verify nearby connections and build your local community network.",
         "NSBluetoothPeripheralUsageDescription": "This app uses Bluetooth to verify nearby connections and build your local community network.",

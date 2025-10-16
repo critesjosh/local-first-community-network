@@ -31,6 +31,15 @@
         "developmentClient": true,
         "distribution": "internal"
       }
+    },
+    "production": {
+      "distribution": "store",
+      "ios": {
+        "buildConfiguration": "Release"
+      },
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {
