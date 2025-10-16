@@ -8,9 +8,9 @@ This implementation plan outlines the development of a 1-month MVP for the Local
 **Target:** Working prototype with 20-30 beta users
 **Core Flow:** BLE connect → post event to server → fetch from server → discover → attend
 
-## Current Status (Updated 2025-10-05)
+## Current Status (Updated 2025-10-15)
 
-**Progress:** Week 2, Day 11 - Connection UI & Management Complete
+**Progress:** Week 2, Day 11-12 - BLE Advertising Complete, Ready for Event System
 
 **Completed:**
 - ✅ Week 1: Core Foundation & Identity System (100%)
@@ -36,15 +36,23 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - Navigation types and screen routing
   - Disconnect functionality
 
+- ✅ Week 2, Day 12: BLE Advertising (100%) **[NEW]**
+  - Installed react-native-ble-advertiser for peripheral mode
+  - Created BLEAdvertiser service for broadcasting presence
+  - Integrated advertising with BLEManager
+  - Updated ConnectionScanScreen for simultaneous scan+advertise
+  - Fixed build issues with patch-package
+  - Both phones can now discover each other in real-world testing
+
 **In Progress:**
-- Week 2, Days 12-13: Event Posting System
+- Week 2, Days 12-13: Event Posting System (Backend complete, UI pending)
 
 **Next Up:**
-- Create Event UI with form inputs
-- Event posting system integration
-- Simple server backend for encrypted post storage/retrieval
+- Create Event UI with form inputs (Day 12-13)
+- Event Feed UI (Day 14)
+- Simple server backend for encrypted post storage/retrieval (Week 3)
 
-**Test Status:** 164/164 passing ✅
+**Test Status:** 171/171 passing ✅
 
 ## Technology Stack
 
@@ -122,9 +130,10 @@ This implementation plan outlines the development of a 1-month MVP for the Local
 - [x] Set up react-native-ble-plx
 - [x] Request Bluetooth permissions
 - [x] Create BLE service with custom UUID
-- [x] Implement BLE advertising when in "Connect" mode
 - [x] Basic BLE scanning functionality
 - [x] RSSI filtering (>-70 dBm for proximity)
+
+**Note:** BLE advertising was completed later in Week 2, Day 12 (see below)
 
 ## Week 2: Bluetooth Verification & Event System
 
@@ -155,6 +164,30 @@ This implementation plan outlines the development of a 1-month MVP for the Local
 - [x] Implement disconnect functionality
 - [x] Navigation types and screen routing
 - [x] All tests passing (164 tests)
+
+### Day 12: BLE Advertising Implementation ✅
+
+- [x] Install react-native-ble-advertiser package
+- [x] Create BLEAdvertiser service for peripheral mode:
+  - Broadcasting with service UUID
+  - Start/stop advertising methods
+  - Listener management for state changes
+- [x] Integrate advertising with BLEManager:
+  - Added startAdvertising() and stopAdvertising()
+  - Initialized advertiser on BLE init
+  - Cleanup on destroy
+- [x] Update ConnectionScanScreen:
+  - Start advertising when scanning begins
+  - Stop advertising when scanning stops
+  - Simultaneous scan + advertise for peer discovery
+- [x] Build fixes:
+  - Added patch-package to fix react-native-ble-advertiser
+  - Updated Android SDK configuration (28 → 36)
+  - Created permanent patch for compilation errors
+- [x] Real-world testing: Both phones can now discover each other
+- [x] All tests passing (171 tests)
+
+**Note:** This was critical blocking work - devices couldn't discover each other without advertising. This is now fully functional on physical devices (emulators don't support BLE advertising).
 
 ### Day 12-13: Event Posting System
 
