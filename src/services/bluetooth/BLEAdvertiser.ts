@@ -64,16 +64,14 @@ class BLEAdvertiserService {
         includeTxPowerLevel: false,
       };
 
-      // Service UUIDs to advertise
-      const serviceUUIDs = [SERVICE_UUID];
-
       // Manufacturer data (optional - can include user info)
       // Format: [length, ...data]
       const manufacturerData = [];
 
       // Start advertising
+      // Note: First parameter must be a string UUID, not an array
       await BleAdvertiser.broadcast(
-        serviceUUIDs,
+        SERVICE_UUID,  // String UUID, not array
         manufacturerData,
         advertisingOptions,
       );
