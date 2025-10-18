@@ -8,14 +8,18 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  ScrollView,
+  Image,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 import IdentityService from '../services/IdentityService';
 import {User} from '../types/models';
 
 const ProfileScreen = () => {
   const [user, setUser] = useState<User | null>(null);
   const [displayName, setDisplayName] = useState('');
+  const [profilePhoto, setProfilePhoto] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -29,6 +33,35 @@ const ProfileScreen = () => {
       if (currentUser) {
         setUser(currentUser);
         setDisplayName(currentUser.displayName);
+        setProfilePhoto(currentUser.profilePhoto);
+      } else {
+        // Identity exists but user profile not found in database
+        // This can happen if identity creation partially failed
+        console.warn('[ProfileScreen] User profile not found, clearing identity to restart onboarding');
+        
+        // Clear the corrupted identity
+        await IdentityService.clearIdentity();
+        
+        Alert.alert(
+          'Profile Not Found',
+          'Your profile data was not found. The app will now restart and you can create your identity again.',
+          [
+            {
+              text: 'Restart',
+              onPress: () => {
+                // The simplest way to restart: close the app
+                // User will need to manually reopen it
+                if (Platform.OS === 'ios') {
+                  // On iOS, we can't programmatically restart, so just show a message
+                  Alert.alert('Please Restart', 'Please close and reopen the app to continue.');
+                } else {
+                  // On Android, we could use BackHandler.exitApp() but it's not ideal
+                  Alert.alert('Please Restart', 'Please close and reopen the app to continue.');
+                }
+              },
+            },
+          ],
+        );
       }
     } catch (error) {
       console.error('Error loading user profile:', error);
@@ -47,6 +80,7 @@ const ProfileScreen = () => {
     try {
       await IdentityService.updateProfile({
         displayName: displayName.trim(),
+        profilePhoto: profilePhoto,
       });
       Alert.alert('Success', 'Profile updated successfully');
       await loadUserProfile();
@@ -58,11 +92,49 @@ const ProfileScreen = () => {
     }
   };
 
-  const handleAddPhoto = () => {
-    Alert.alert(
-      'Coming Soon',
-      'Photo upload will be available in the next update',
-    );
+  const handleAddPhoto = async () => {
+    try {
+      // Request permissions
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert(
+          'Permission Required',
+          'Please allow access to your photo library to upload a profile picture.',
+        );
+        return;
+      }
+
+      // Launch image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const imageUri = result.assets[0].uri;
+        setProfilePhoto(imageUri);
+        
+        // Auto-save the profile with the new photo
+        setIsSaving(true);
+        try {
+          await IdentityService.updateProfile({
+            profilePhoto: imageUri,
+          });
+          await loadUserProfile();
+        } catch (error) {
+          Alert.alert('Error', 'Failed to save profile photo');
+          console.error('Error saving profile photo:', error);
+        } finally {
+          setIsSaving(false);
+        }
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to select image');
+    }
   };
 
   const copyUserId = () => {
@@ -74,7 +146,7 @@ const ProfileScreen = () => {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={[]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#007AFF" />
         </View>
@@ -83,19 +155,37 @@ const ProfileScreen = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Profile</Text>
-        <Text style={styles.subtitle}>
-          Your identity in the neighborhood network
-        </Text>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        bounces={true}
+      >
+        <View style={styles.content}>
+          <Text style={styles.title}>Profile</Text>
+          <Text style={styles.subtitle}>
+            Your identity in the neighborhood network
+          </Text>
 
-        <View style={styles.profileCard}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {displayName ? displayName[0].toUpperCase() : '?'}
-            </Text>
-          </View>
+          <View style={styles.profileCard}>
+          <TouchableOpacity 
+            style={styles.avatar}
+            onPress={handleAddPhoto}
+            disabled={isSaving}
+          >
+            {profilePhoto ? (
+              <Image 
+                source={{uri: profilePhoto}} 
+                style={styles.avatarImage}
+              />
+            ) : (
+              <Text style={styles.avatarText}>
+                {displayName ? displayName[0].toUpperCase() : '?'}
+              </Text>
+            )}
+          </TouchableOpacity>
 
           <Text style={styles.label}>Display Name</Text>
           <TextInput
@@ -109,8 +199,11 @@ const ProfileScreen = () => {
 
           <TouchableOpacity
             style={styles.photoButton}
-            onPress={handleAddPhoto}>
-            <Text style={styles.photoButtonText}>Add Profile Photo</Text>
+            onPress={handleAddPhoto}
+            disabled={isSaving}>
+            <Text style={styles.photoButtonText}>
+              {profilePhoto ? 'Change Profile Photo' : 'Add Profile Photo'}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -138,7 +231,8 @@ const ProfileScreen = () => {
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -152,9 +246,17 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingTop: 60,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingTop: 60,
+    paddingBottom: 60,
   },
   content: {
-    padding: 20,
+    paddingHorizontal: 20,
   },
   title: {
     fontSize: 34,
@@ -181,6 +283,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
   },
   avatarText: {
     fontSize: 40,
@@ -236,6 +344,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E5E5EA',
     borderRadius: 12,
     padding: 16,
+    marginTop: 20,
   },
   infoTitle: {
     fontSize: 16,

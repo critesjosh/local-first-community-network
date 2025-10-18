@@ -94,7 +94,7 @@ const ConnectionsScreen = ({navigation}: Props) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={[]}>
       <View style={styles.content}>
         <Text style={styles.title}>People Nearby</Text>
         <Text style={styles.subtitle}>
@@ -137,6 +137,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
+    paddingTop: 80,
     flex: 1,
   },
   title: {

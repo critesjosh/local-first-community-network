@@ -208,8 +208,14 @@ const CreateEventScreen = ({navigation}: Props) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentInsetAdjustmentBehavior="automatic">
+    <SafeAreaView style={styles.container} edges={[]}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        bounces={true}
+      >
         <View style={styles.content}>
           <Text style={styles.title}>Create Event</Text>
           <Text style={styles.subtitle}>
@@ -337,6 +343,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F2F2F7',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingTop: 60,
+    paddingBottom: 60,
   },
   content: {
     padding: 20,
