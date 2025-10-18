@@ -10,6 +10,7 @@
 
 import {BleManager, Device, State} from 'react-native-ble-plx';
 import {Platform, PermissionsAndroid} from 'react-native';
+import {Buffer} from 'buffer';
 import {
   SERVICE_UUID,
   CHARACTERISTIC_PROFILE_UUID,
@@ -17,6 +18,8 @@ import {
   RSSI_THRESHOLD,
   SCAN_TIMEOUT,
   DEVICE_EXPIRY_TIME,
+  USER_HASH_LENGTH,
+  FOLLOW_TOKEN_LENGTH,
 } from './BLEConstants';
 import {
   DiscoveredDevice,
@@ -24,7 +27,9 @@ import {
   BLEScanListener,
   BLEStateListener,
   ConnectionProfile,
+  BroadcastPayload,
 } from '../../types/bluetooth';
+import BLEBroadcastService from './BLEBroadcastService';
 
 class BLEManagerService {
   private manager: BleManager;
@@ -205,17 +210,75 @@ class BLEManagerService {
       return; // Device too far away
     }
 
+    const broadcastPayload = this.parseManufacturerData(device.manufacturerData);
+    const localFingerprint = BLEBroadcastService.getLocalFingerprint();
+    if (
+      broadcastPayload &&
+      localFingerprint &&
+      broadcastPayload.userHash === localFingerprint
+    ) {
+      // Ignore our own broadcast
+      return;
+    }
+
+    const deviceKey = broadcastPayload?.userHash || device.id;
+    const displayName =
+      broadcastPayload?.displayName || device.name || device.localName || null;
+
     // Create or update discovered device
     const discoveredDevice: DiscoveredDevice = {
-      id: device.id,
-      name: device.name || device.localName || null,
+      id: deviceKey,
+      deviceId: device.id,
+      name: displayName,
       rssi: device.rssi || -100,
       device,
       lastSeen: new Date(),
+      broadcastPayload: broadcastPayload,
     };
 
-    this.state.discoveredDevices.set(device.id, discoveredDevice);
+    this.state.discoveredDevices.set(deviceKey, discoveredDevice);
     this.notifyScanListeners(discoveredDevice);
+  }
+
+  /**
+   * Decode manufacturer data payload into broadcast metadata
+   */
+  private parseManufacturerData(data?: string | null): BroadcastPayload | undefined {
+    if (!data) {
+      return undefined;
+    }
+
+    try {
+      const bytes = Buffer.from(data, 'base64');
+      if (bytes.length < 2) {
+        return undefined;
+      }
+
+      const version = bytes[0];
+      const nameLength = bytes[1];
+      const expectedLength = 2 + nameLength + USER_HASH_LENGTH + FOLLOW_TOKEN_LENGTH;
+      if (bytes.length < expectedLength) {
+        return undefined;
+      }
+
+      const nameBytes = bytes.slice(2, 2 + nameLength);
+      const displayName = nameBytes.length ? nameBytes.toString('utf8') : null;
+
+      const hashStart = 2 + nameLength;
+      const userHashBytes = bytes.slice(hashStart, hashStart + USER_HASH_LENGTH);
+      const tokenStart = hashStart + USER_HASH_LENGTH;
+      const followTokenBytes = bytes.slice(tokenStart, tokenStart + FOLLOW_TOKEN_LENGTH);
+
+      return {
+        version,
+        displayName,
+        userHash: Buffer.from(userHashBytes).toString('hex'),
+        followToken: Buffer.from(followTokenBytes).toString('hex'),
+      };
+    } catch (error) {
+      console.warn('Failed to parse manufacturer data', error);
+      return undefined;
+    }
   }
 
   /**

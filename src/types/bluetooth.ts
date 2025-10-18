@@ -5,11 +5,20 @@
 import {Device} from 'react-native-ble-plx';
 
 export interface DiscoveredDevice {
-  id: string;
+  id: string; // stable identifier for UI (broadcast hash or device id)
+  deviceId: string; // underlying BLE device id used for connections
   name: string | null;
   rssi: number;
   device: Device;
   lastSeen: Date;
+  broadcastPayload?: BroadcastPayload;
+}
+
+export interface BroadcastPayload {
+  version: number;
+  displayName: string | null;
+  userHash: string;
+  followToken: string;
 }
 
 export interface BLEConnectionState {

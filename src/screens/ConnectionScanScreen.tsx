@@ -92,7 +92,7 @@ const ConnectionScanScreen = ({navigation}: Props) => {
       // Stop scanning first
       BLEManager.stopScanning();
 
-      const result = await ConnectionService.followDevice(device.id);
+      const result = await ConnectionService.followDevice(device.deviceId);
 
       if (!result) {
         throw new Error('Failed to follow device');
@@ -147,7 +147,7 @@ const ConnectionScanScreen = ({navigation}: Props) => {
         onPress={() => handleDevicePress(item)}
         disabled={isProcessing}>
         <View style={styles.deviceInfo}>
-          <Text style={styles.deviceName}>{item.name || 'Unknown Device'}</Text>
+          <Text style={styles.deviceName}>{item.name || 'Broadcasting Member'}</Text>
           <Text style={styles.deviceId}>{item.id.substring(0, 8)}...</Text>
         </View>
         <View style={styles.deviceSignal}>
