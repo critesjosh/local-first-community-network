@@ -64,53 +64,52 @@ Build a privacy-first platform for discovering local events and building neighbo
 
 ### Epic 2: Bluetooth Verification (Week 1 Priority)
 
-#### US-2.1: Connect via Bluetooth (PRIMARY METHOD)
+#### US-2.1: Follow via Bluetooth (PRIMARY METHOD)
 
 **As a** user  
-**I want to** hold my phone near someone to connect  
-**So that** I can verify we're physically together
+**I want to** walk into a space and follow nearby people instantly  
+**So that** I can start seeing their posts without waiting for approval
 
 **Acceptance Criteria:**
 
 - "Connect" button prominently visible on home screen
 - Tapping opens Bluetooth scanner
-- Shows list of detected devices within 1-3 meters (RSSI > -70 dBm)
-- User selects correct person from list
-- Visual confirmation: shows their profile name
-- Both users confirm connection
-- Connection saved locally within 3 seconds
+- Shows list of broadcasting profiles within ~1-3 meters (RSSI > -70 dBm) with live updates
+- User taps a profile to follow it; no confirmation modal required from the broadcaster
+- Immediate in-app feedback (haptics + toast) confirms follow request succeeded
+- Follow saved locally within 3 seconds and marked as "Following" in list
 - Works offline-only for MVP (no server sync)
 
 **Technical Requirements:**
 
 - Use BLE (Bluetooth Low Energy)
 - RSSI threshold: -70 dBm minimum for detection
-- Advertise service UUID when in "Connect" mode
-- Exchange public keys via BLE characteristic write
-- 30-second timeout if no confirmation
-- Store connection in local SQLite
+- Advertise service UUID + rotating follow token whenever user opts into broadcast mode
+- Tapping "Follow" performs BLE characteristic write that includes follower's public key + profile bundle
+- Auto-acknowledge follow writes and enqueue notification for broadcaster (no UI blocking)
+- Store follow relationship in local SQLite as `following`
 - No NFC fallback - BLE only for MVP
 
 **1-Month Simplifications:**
 
 - No background scanning (app must be open)
-- No retry logic (connection fails = start over)
-- Manual device selection (no auto-pairing)
+- No retry logic (follow fails = start over)
+- Manual profile selection (no auto-follow)
 - Basic error messages only
 
-#### US-2.3: Connection Confirmation
+#### US-2.3: Follow Feedback
 
 **As a** user  
-**I want to** see confirmation after connecting  
-**So that** I know it worked and can verify the right person
+**I want to** know who I’m following and whether they follow me back  
+**So that** I can decide who to engage with
 
 **Acceptance Criteria:**
 
-- Show connected user's profile (name, photo)
-- Display connection timestamp
-- Option to add personal note about person
-- Send first message immediately from confirmation screen
-- Connection appears in contacts list within 1 second
+- Show followed user's profile (name, photo) immediately after follow succeeds
+- Display follow timestamp and label if the follow is mutual or one-way
+- Option to add personal note about the person
+- Offer quick actions: send message (if mutual) or request follow-back
+- Follow appears in contacts list within 1 second
 
 ### Epic 3: Event Posting (Week 2-3 Priority)
 

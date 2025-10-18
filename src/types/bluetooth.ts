@@ -22,6 +22,7 @@ export interface ConnectionProfile {
   userId: string;
   displayName: string;
   publicKey: string; // base58 encoded
+  profilePhoto?: string;
 }
 
 export type BLEScanListener = (device: DiscoveredDevice) => void;

@@ -61,45 +61,56 @@ const ConnectionsScreen = ({navigation}: Props) => {
     return `${Math.floor(diffDays / 30)} months ago`;
   };
 
-  const renderConnection = ({item}: {item: Connection}) => (
-    <TouchableOpacity
-      style={styles.connectionCard}
-      onPress={() => handleConnectionPress(item)}>
-      <View style={styles.connectionAvatar}>
-        <Text style={styles.connectionInitial}>
-          {item.displayName.charAt(0).toUpperCase()}
-        </Text>
-      </View>
-      <View style={styles.connectionInfo}>
-        <Text style={styles.connectionName}>{item.displayName}</Text>
-        <Text style={styles.connectionDate}>
-          Connected {formatDate(item.connectedAt)}
-        </Text>
-      </View>
-      <View style={styles.trustBadge}>
-        <Text style={styles.trustBadgeText}>✓ Verified</Text>
-      </View>
-    </TouchableOpacity>
-  );
+  const renderConnection = ({item}: {item: Connection}) => {
+    const followLabel =
+      item.trustLevel === 'verified'
+        ? `Mutual since ${formatDate(item.connectedAt)}`
+        : `Following since ${formatDate(item.connectedAt)}`;
+    const isMutual = item.trustLevel === 'verified';
+    const badgeText = isMutual ? '✓ Mutual' : 'Following';
+    const badgeStyle = isMutual ? styles.trustBadgeVerified : styles.trustBadgePending;
+    const badgeTextStyle = isMutual
+      ? styles.trustBadgeTextVerified
+      : styles.trustBadgeTextPending;
+
+    return (
+      <TouchableOpacity
+        style={styles.connectionCard}
+        onPress={() => handleConnectionPress(item)}>
+        <View style={styles.connectionAvatar}>
+          <Text style={styles.connectionInitial}>
+            {item.displayName.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <View style={styles.connectionInfo}>
+          <Text style={styles.connectionName}>{item.displayName}</Text>
+          <Text style={styles.connectionDate}>{followLabel}</Text>
+        </View>
+        <View style={[styles.trustBadge, badgeStyle]}>
+          <Text style={[styles.trustBadgeText, badgeTextStyle]}>{badgeText}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.title}>Connections</Text>
+        <Text style={styles.title}>People Nearby</Text>
         <Text style={styles.subtitle}>
-          Connect with neighbors to discover local events
+          Follow neighbors you meet to see their updates and events
         </Text>
 
         <TouchableOpacity
           style={styles.connectButton}
           onPress={handleConnectPress}>
-          <Text style={styles.connectButtonText}>Connect via Bluetooth</Text>
+          <Text style={styles.connectButtonText}>Discover Nearby Profiles</Text>
         </TouchableOpacity>
 
         {connections.length === 0 ? (
           <View style={styles.placeholder}>
             <Text style={styles.placeholderText}>
-              No connections yet. Tap the button above to connect with someone
+              No follows yet. Tap the button above to discover people broadcasting
               nearby.
             </Text>
           </View>
@@ -205,15 +216,25 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
   },
   trustBadge: {
-    backgroundColor: '#E8F5E9',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
   },
+  trustBadgeVerified: {
+    backgroundColor: '#E8F5E9',
+  },
+  trustBadgePending: {
+    backgroundColor: '#E5F1FF',
+  },
   trustBadgeText: {
-    color: '#34C759',
     fontSize: 12,
     fontWeight: '600',
+  },
+  trustBadgeTextVerified: {
+    color: '#34C759',
+  },
+  trustBadgeTextPending: {
+    color: '#007AFF',
   },
 });
 

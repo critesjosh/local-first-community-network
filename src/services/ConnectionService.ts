@@ -1,45 +1,31 @@
 /**
- * ConnectionService - Manages peer connections and handshake protocol
+ * ConnectionService - Manages social relationships established over BLE
  *
  * Handles:
- * - Connection initiation and handshake
- * - ECDH key exchange
- * - Connection storage and management
- * - Connection state tracking
+ * - Initiating unilateral follows over Bluetooth
+ * - Storing follow relationships in the local database
+ * - Providing access to saved relationships
  */
 
 import BLEManager from './bluetooth/BLEManager';
 import Database from './storage/Database';
 import IdentityService from './IdentityService';
-import KeyManager from './crypto/KeyManager';
 import {Connection} from '../types/models';
 import {ConnectionProfile} from '../types/bluetooth';
 import {generateUUID} from '../utils/crypto';
 
-export interface PendingConnection {
-  deviceId: string;
-  profile: ConnectionProfile;
-  ourECDHPublicKey: Uint8Array;
-  ourECDHPrivateKey: Uint8Array;
-  timestamp: Date;
-}
-
 class ConnectionServiceClass {
-  private keyManager: KeyManager;
-  private pendingConnections: Map<string, PendingConnection> = new Map();
-
-  constructor() {
-    this.keyManager = new KeyManager();
-  }
-
   /**
-   * Initiate connection to a discovered device
+   * Follow a discovered device (unilateral follow)
    * @param deviceId BLE device ID
-   * @returns Connection profile if successful
+   * @returns Saved connection record if successful
    */
-  async initiateConnection(deviceId: string): Promise<ConnectionProfile | null> {
+  async followDevice(deviceId: string): Promise<{
+    profile: ConnectionProfile;
+    connection: Connection;
+  } | null> {
     try {
-      console.log(`Initiating connection to ${deviceId}...`);
+      console.log(`Following device ${deviceId}...`);
 
       // Connect to device
       const device = await BLEManager.connectToDevice(deviceId);
@@ -54,112 +40,55 @@ class ConnectionServiceClass {
         throw new Error('Failed to read profile from device');
       }
 
-      // Generate ECDH key pair for this connection
-      const ecdhKeyPair = await this.keyManager.generateECDHKeyPair();
-
-      // Store as pending connection
-      this.pendingConnections.set(deviceId, {
-        deviceId,
-        profile: theirProfile,
-        ourECDHPublicKey: ecdhKeyPair.publicKey,
-        ourECDHPrivateKey: ecdhKeyPair.privateKey,
-        timestamp: new Date(),
-      });
-
-      console.log('Connection initiated, awaiting user confirmation');
-      return theirProfile;
-    } catch (error) {
-      console.error('Error initiating connection:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Complete connection handshake after user confirmation
-   * @param deviceId BLE device ID
-   * @returns Completed connection
-   */
-  async confirmConnection(deviceId: string): Promise<Connection | null> {
-    try {
-      const pending = this.pendingConnections.get(deviceId);
-      if (!pending) {
-        throw new Error('No pending connection found');
-      }
-
-      // Get current user identity
+      // Get current user identity and profile
+      const identity = IdentityService.getCurrentIdentity();
       const currentUser = await IdentityService.getCurrentUser();
-      if (!currentUser) {
+      if (!identity || !currentUser) {
         throw new Error('No current user identity');
       }
 
-      // Send our ECDH public key via handshake characteristic
-      const device = await BLEManager.connectToDevice(deviceId);
-      if (!device) {
-        throw new Error('Failed to reconnect to device');
-      }
-
-      // Prepare handshake data
-      const handshakeData = {
-        userId: currentUser.id,
-        displayName: currentUser.displayName,
-        ecdhPublicKey: Buffer.from(pending.ourECDHPublicKey).toString('base64'),
+      // Prepare follow payload
+      const followPayload = {
+        type: 'follow-request',
+        follower: {
+          userId: currentUser.id,
+          displayName: currentUser.displayName,
+          publicKey: Buffer.from(identity.publicKey).toString('base64'),
+          profilePhoto: currentUser.profilePhoto,
+        },
+        timestamp: new Date().toISOString(),
       };
 
-      // Write handshake
-      const success = await BLEManager.writeHandshake(device, handshakeData);
-      if (!success) {
-        throw new Error('Failed to write handshake data');
+      // Send follow payload (fire-and-forget)
+      const payloadWritten = await BLEManager.writeHandshake(device, followPayload);
+      if (!payloadWritten) {
+        throw new Error('Failed to send follow payload');
       }
 
-      // Derive shared secret
-      // In a real implementation, we'd receive their ECDH public key too
-      // For MVP, we'll simulate this - in production, both sides exchange ECDH keys
-      const theirPublicKeyBytes = Buffer.from(pending.profile.publicKey, 'base64');
-      const sharedSecret = await this.keyManager.deriveSharedSecret(
-        pending.ourECDHPrivateKey,
-        theirPublicKeyBytes,
-      );
-
-      // Create connection record
+      // Save relationship locally as one-way follow
       const connection: Connection = {
         id: generateUUID(),
-        userId: pending.profile.userId,
-        displayName: pending.profile.displayName,
-        sharedSecret,
+        userId: theirProfile.userId,
+        displayName: theirProfile.displayName,
+        profilePhoto: theirProfile.profilePhoto,
         connectedAt: new Date(),
-        trustLevel: 'verified', // Bluetooth proximity = verified
+        trustLevel: 'pending',
       };
 
-      // Save to database
       await Database.saveConnection(connection);
-
-      // Cleanup
       await BLEManager.disconnectFromDevice(deviceId);
-      this.pendingConnections.delete(deviceId);
 
-      console.log('Connection confirmed and saved:', connection.id);
-      return connection;
+      console.log('Follow saved and payload sent:', connection.id);
+
+      return {profile: theirProfile, connection};
     } catch (error) {
-      console.error('Error confirming connection:', error);
+      console.error('Error following device:', error);
       return null;
     }
   }
 
   /**
-   * Cancel pending connection
-   */
-  async cancelConnection(deviceId: string): Promise<void> {
-    try {
-      await BLEManager.disconnectFromDevice(deviceId);
-      this.pendingConnections.delete(deviceId);
-      console.log('Connection cancelled');
-    } catch (error) {
-      console.error('Error cancelling connection:', error);
-    }
-  }
-
-  /**
-   * Get all connections from database
+   * Get all connections (followers/following) from database
    */
   async getConnections(): Promise<Connection[]> {
     try {
@@ -195,13 +124,6 @@ class ConnectionServiceClass {
       console.error('Error deleting connection:', error);
       return false;
     }
-  }
-
-  /**
-   * Get pending connections
-   */
-  getPendingConnections(): PendingConnection[] {
-    return Array.from(this.pendingConnections.values());
   }
 }
 
