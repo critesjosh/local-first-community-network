@@ -1,0 +1,21 @@
+{
+  "name": "@localcommunity/rn-bluetooth",
+  "version": "1.0.0",
+  "description": "Custom Bluetooth TurboModule for Local Community Network",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "jest"
+  },
+  "keywords": ["react-native", "bluetooth", "ble", "turbomodule"],
+  "author": "Local Community Network",
+  "license": "MIT",
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.10",
+    "@types/react-native": "^0.73.0",
+    "typescript": "^5.9.3"
+  }
+}

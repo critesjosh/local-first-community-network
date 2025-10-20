@@ -1,0 +1,93 @@
+/**
+ * EventEmitter.swift
+ * Handles event emission to JavaScript layer
+ */
+
+import Foundation
+import React
+
+@objc(EventEmitter)
+class EventEmitter: RCTEventEmitter {
+
+  /// Shared singleton instance
+  static var shared: EventEmitter?
+
+  override init() {
+    super.init()
+    EventEmitter.shared = self
+  }
+
+  @objc override static func requiresMainQueueSetup() -> Bool {
+    return true
+  }
+
+  @objc override func supportedEvents() -> [String]! {
+    return ["RNLCBluetoothEvent"]
+  }
+
+  /// Send an event to JavaScript
+  /// - Parameter payload: Dictionary containing event data
+  func send(_ payload: [String: Any]) {
+    sendEvent(withName: "RNLCBluetoothEvent", body: payload)
+  }
+
+  /// Send a device discovered event
+  func sendDeviceDiscovered(
+    deviceId: String,
+    rssi: Int,
+    payload: [String: Any]
+  ) {
+    send([
+      "type": "deviceDiscovered",
+      "deviceId": deviceId,
+      "rssi": rssi,
+      "payload": payload
+    ])
+  }
+
+  /// Send a connection state changed event
+  func sendConnectionStateChanged(
+    deviceId: String,
+    state: String
+  ) {
+    send([
+      "type": "connectionStateChanged",
+      "deviceId": deviceId,
+      "state": state
+    ])
+  }
+
+  /// Send a follow request received event
+  func sendFollowRequestReceived(
+    fromDeviceId: String,
+    payloadJson: String
+  ) {
+    guard let payloadData = payloadJson.data(using: .utf8),
+          let payload = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any] else {
+      return
+    }
+
+    send([
+      "type": "followRequestReceived",
+      "fromDeviceId": fromDeviceId,
+      "payload": payload
+    ])
+  }
+
+  /// Send a scan stopped event
+  func sendScanStopped() {
+    send(["type": "scanStopped"])
+  }
+
+  /// Send an error event
+  func sendError(message: String, code: String? = nil) {
+    var payload: [String: Any] = [
+      "type": "error",
+      "message": message
+    ]
+    if let code = code {
+      payload["code"] = code
+    }
+    send(payload)
+  }
+}

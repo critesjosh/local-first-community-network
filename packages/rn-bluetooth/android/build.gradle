@@ -1,0 +1,53 @@
+apply plugin: "com.android.library"
+apply plugin: "kotlin-android"
+
+def safeExtGet(prop, fallback) {
+  rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
+android {
+  namespace "com.rnbluetooth"
+  ndkVersion safeExtGet("ndkVersion", "27.1.12297006")
+  compileSdk safeExtGet("compileSdk", 36)
+
+  defaultConfig {
+    minSdk safeExtGet("minSdk", 24)
+    targetSdk safeExtGet("targetSdk", 36)
+  }
+
+  buildTypes {
+    release {
+      minifyEnabled false
+    }
+  }
+
+  lintOptions {
+    disable "GradleCompatible"
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = "17"
+  }
+
+  sourceSets {
+    main {
+      manifest.srcFile "src/main/AndroidManifest.xml"
+      java.srcDirs = ["src/main/java"]
+    }
+  }
+}
+
+repositories {
+  mavenCentral()
+  google()
+}
+
+dependencies {
+  implementation "org.jetbrains.kotlin:kotlin-stdlib:${safeExtGet("kotlinVersion", "2.1.20")}"
+  implementation "com.facebook.react:react-android"
+}

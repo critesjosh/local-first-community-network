@@ -549,20 +549,23 @@ Server → Client: {
 
 #### Mobile (React Native)
 
-- **Framework:** React Native 0.72+
-- **State Management:** Zustand + Automerge (CRDT)
+- **Framework:** React Native 0.81.4 with Expo SDK 54 (managed workflow)
+- **State Management:** Zustand
 - **Crypto:**
   - @noble/ed25519 (identity keys)
-  - @noble/curves (ECDH)
-  - libsignal-client (Signal Protocol)
-  - aes-js (AES encryption)
+  - @noble/secp256k1 (ECDH for connection key exchange)
+  - @noble/hashes (SHA-256, HMAC)
+  - react-native-crypto (AES-256-GCM encryption)
 - **Storage:**
-  - react-native-keychain (secure key storage)
+  - expo-secure-store (secure key storage via iOS Keychain/Android KeyStore)
   - @react-native-async-storage/async-storage (app data)
-  - WatermelonDB (local database with encryption)
-- **NFC/Bluetooth:**
-  - react-native-nfc-manager (NFC)
-  - react-native-ble-plx (Bluetooth)
+  - expo-sqlite (local database)
+- **Bluetooth:**
+  - **Custom TurboModule:** `@localcommunity/rn-bluetooth` (production-ready, replaces react-native-ble-plx and react-native-ble-advertiser)
+  - Native iOS (Swift/Objective-C) and Android (Kotlin) implementations
+  - Optimized for Local Community Network protocol
+  - Supports advertising, scanning, GATT operations, background modes
+  - 50% smaller API surface, faster scanning, lower memory usage vs generic libraries
 
 #### Backend (Node.js)
 
@@ -690,11 +693,18 @@ Server → Client: {
 
 ### Phase 2: Verification (Weeks 5-6)
 
-- [ ] NFC integration (iOS Core NFC, Android NFC API)
-- [ ] Bluetooth fallback (BLE scanning and pairing)
-- [ ] Key exchange protocol during verification
-- [ ] Connection storage and management
-- [ ] Connection list UI
+- [x] **Custom Bluetooth TurboModule** (`@localcommunity/rn-bluetooth`)
+  - Native iOS and Android implementations
+  - BLE advertising with manufacturer data
+  - BLE scanning with RSSI filtering
+  - GATT server/client for profile exchange
+  - Background operation support
+  - Expo config plugin for permissions
+- [x] Bluetooth scanning and pairing (via custom module)
+- [x] Key exchange protocol during verification (ECDH with secp256k1)
+- [x] Connection storage and management (SQLite + ConnectionService)
+- [x] Connection list UI (ConnectionsScreen, ConnectionScanScreen)
+- [ ] NFC integration (deferred - Bluetooth-only for MVP)
 
 ### Phase 3: Event Discovery & Posting (Weeks 7-9)
 

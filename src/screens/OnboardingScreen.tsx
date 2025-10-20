@@ -9,9 +9,11 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import IdentityService from '../services/IdentityService';
+import {Bluetooth} from '@localcommunity/rn-bluetooth';
 
 interface OnboardingScreenProps {
   onComplete: () => void;
@@ -30,7 +32,26 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({onComplete}) => {
 
     setIsCreating(true);
     try {
+      // Create identity first
       await IdentityService.createIdentity(displayName.trim());
+
+      // Request Bluetooth permissions
+      console.log('Requesting Bluetooth permissions...');
+      const hasPermissions = await Bluetooth.requestPermissions();
+
+      if (!hasPermissions) {
+        Alert.alert(
+          'Bluetooth Permissions Required',
+          'This app needs Bluetooth permissions to discover nearby neighbors. Please grant permissions in your device settings.',
+          [
+            {text: 'Open Settings', onPress: () => Linking.openSettings()},
+            {text: 'Continue Anyway', onPress: () => onComplete()},
+          ]
+        );
+        return;
+      }
+
+      console.log('Bluetooth permissions granted');
       onComplete();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';

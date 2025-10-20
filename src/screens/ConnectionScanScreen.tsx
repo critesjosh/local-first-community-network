@@ -12,6 +12,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {RootStackScreenProps} from '../types/navigation';
 import BLEManager from '../services/bluetooth/BLEManager';
 import ConnectionService from '../services/ConnectionService';
+import BLEBroadcastService from '../services/bluetooth/BLEBroadcastService';
 import {DiscoveredDevice} from '../types/bluetooth';
 
 type Props = RootStackScreenProps<'ConnectionScan'>;
@@ -75,6 +76,33 @@ const ConnectionScanScreen = ({navigation}: Props) => {
       await BLEManager.startScanning();
     } catch (error) {
       Alert.alert('Error', 'Failed to start scanning. Please try again.');
+    }
+  };
+
+  const handleTestScanWithoutAdvertising = async () => {
+    try {
+      // Stop advertising first
+      console.log('[TEST] Stopping BLE advertising before scanning...');
+      await BLEBroadcastService.stop();
+      console.log('[TEST] Advertising stopped, waiting 1 second...');
+
+      // Wait a moment for advertising to fully stop
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Start scanning
+      console.log('[TEST] Starting scan WITHOUT advertising...');
+      setDevices([]);
+      await BLEManager.startScanning();
+      console.log('[TEST] Scan started. Check if devices are now detected.');
+
+      Alert.alert(
+        'Test Mode',
+        'Advertising stopped. Scanning without advertising. If devices appear now, it confirms advertise+scan conflict.',
+        [{text: 'OK'}]
+      );
+    } catch (error) {
+      console.error('[TEST] Error:', error);
+      Alert.alert('Error', 'Test failed. Check console for details.');
     }
   };
 
@@ -180,11 +208,19 @@ const ConnectionScanScreen = ({navigation}: Props) => {
         </Text>
 
         {!isScanning && !isProcessing && (
-          <TouchableOpacity
-            style={styles.scanButton}
-            onPress={handleStartScanning}>
-            <Text style={styles.scanButtonText}>Start Scanning</Text>
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity
+              style={styles.scanButton}
+              onPress={handleStartScanning}>
+              <Text style={styles.scanButtonText}>Start Scanning</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.scanButton, styles.testButton]}
+              onPress={handleTestScanWithoutAdvertising}>
+              <Text style={styles.scanButtonText}>🧪 Test: Stop Advertising & Scan</Text>
+            </TouchableOpacity>
+          </>
         )}
 
         {isScanning && (
@@ -281,6 +317,9 @@ const styles = StyleSheet.create({
   },
   stopButton: {
     backgroundColor: '#FF3B30',
+  },
+  testButton: {
+    backgroundColor: '#FF9500',
   },
   scanButtonText: {
     color: 'white',
