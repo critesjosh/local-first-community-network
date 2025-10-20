@@ -3,31 +3,27 @@
  */
 
 import '../../../__tests__/setup';
-import SQLite from 'react-native-sqlite-storage';
+import * as SQLite from 'expo-sqlite';
 import Database from '../../../src/services/storage/Database';
 import {User, Connection} from '../../../src/types/models';
 import {EncryptedEvent} from '../../../src/services/crypto/EncryptionService';
 
 describe('Database', () => {
-  let mockExecuteSql: jest.Mock;
-  let mockClose: jest.Mock;
+  let mockDb: any;
 
   beforeEach(async () => {
     jest.clearAllMocks();
 
-    mockExecuteSql = jest.fn().mockResolvedValue([{
-      rows: {
-        length: 0,
-        item: jest.fn(),
-      },
-    }]);
+    // Create mock database object
+    mockDb = {
+      execAsync: jest.fn().mockResolvedValue(undefined),
+      runAsync: jest.fn().mockResolvedValue({ changes: 1, lastInsertRowId: 1 }),
+      getFirstAsync: jest.fn().mockResolvedValue(null),
+      getAllAsync: jest.fn().mockResolvedValue([]),
+      closeAsync: jest.fn().mockResolvedValue(undefined),
+    };
 
-    mockClose = jest.fn().mockResolvedValue(true);
-
-    (SQLite.openDatabase as jest.Mock).mockResolvedValue({
-      executeSql: mockExecuteSql,
-      close: mockClose,
-    });
+    (SQLite.openDatabaseAsync as jest.Mock).mockResolvedValue(mockDb);
 
     await Database.init();
   });
@@ -39,24 +35,18 @@ describe('Database', () => {
   describe('init', () => {
     it('should initialize database and create tables', async () => {
       // Database is already initialized in beforeEach
-      expect(SQLite.openDatabase).toHaveBeenCalledWith({
-        name: 'localcommunity.db',
-        location: 'default',
-      });
+      expect(SQLite.openDatabaseAsync).toHaveBeenCalledWith('localcommunity.db');
 
-      // Should create all required tables
-      const createTableCalls = mockExecuteSql.mock.calls.filter(call =>
-        call[0].includes('CREATE TABLE'),
-      );
-      expect(createTableCalls.length).toBeGreaterThan(0);
+      // Should create tables using execAsync
+      expect(mockDb.execAsync).toHaveBeenCalled();
 
-      // Check specific tables are created
-      const tableQueries = createTableCalls.map(call => call[0]);
-      expect(tableQueries.some(q => q.includes('users'))).toBe(true);
-      expect(tableQueries.some(q => q.includes('connections'))).toBe(true);
-      expect(tableQueries.some(q => q.includes('events'))).toBe(true);
-      expect(tableQueries.some(q => q.includes('messages'))).toBe(true);
-      expect(tableQueries.some(q => q.includes('app_state'))).toBe(true);
+      // Check that the SQL contains CREATE TABLE statements
+      const execCall = mockDb.execAsync.mock.calls[0][0];
+      expect(execCall).toContain('CREATE TABLE IF NOT EXISTS users');
+      expect(execCall).toContain('CREATE TABLE IF NOT EXISTS connections');
+      expect(execCall).toContain('CREATE TABLE IF NOT EXISTS events');
+      expect(execCall).toContain('CREATE TABLE IF NOT EXISTS messages');
+      expect(execCall).toContain('CREATE TABLE IF NOT EXISTS app_state');
     });
   });
 
@@ -73,7 +63,7 @@ describe('Database', () => {
 
       await Database.saveUser(user);
 
-      expect(mockExecuteSql).toHaveBeenCalledWith(
+      expect(mockDb.runAsync).toHaveBeenCalledWith(
         expect.stringContaining('INSERT OR REPLACE INTO users'),
         [
           user.id,
@@ -86,19 +76,14 @@ describe('Database', () => {
       );
 
       // Mock retrieval
-      mockExecuteSql.mockResolvedValueOnce([{
-        rows: {
-          length: 1,
-          item: jest.fn().mockReturnValue({
-            id: user.id,
-            display_name: user.displayName,
-            profile_photo: user.profilePhoto,
-            bio: user.bio,
-            created_at: user.createdAt.getTime(),
-            updated_at: user.updatedAt.getTime(),
-          }),
-        },
-      }]);
+      mockDb.getFirstAsync.mockResolvedValueOnce({
+        id: user.id,
+        display_name: user.displayName,
+        profile_photo: user.profilePhoto,
+        bio: user.bio,
+        created_at: user.createdAt.getTime(),
+        updated_at: user.updatedAt.getTime(),
+      });
 
       const retrievedUser = await Database.getUser(user.id);
 
@@ -109,12 +94,7 @@ describe('Database', () => {
     });
 
     it('should return null for non-existent user', async () => {
-      mockExecuteSql.mockResolvedValueOnce([{
-        rows: {
-          length: 0,
-          item: jest.fn(),
-        },
-      }]);
+      mockDb.getFirstAsync.mockResolvedValueOnce(null);
 
       const result = await Database.getUser('non_existent');
 
@@ -131,7 +111,7 @@ describe('Database', () => {
 
       await Database.saveUser(user);
 
-      expect(mockExecuteSql).toHaveBeenCalledWith(
+      expect(mockDb.runAsync).toHaveBeenCalledWith(
         expect.stringContaining('INSERT OR REPLACE INTO users'),
         expect.arrayContaining([
           user.id,
@@ -158,7 +138,7 @@ describe('Database', () => {
 
       await Database.saveConnection(connection);
 
-      expect(mockExecuteSql).toHaveBeenCalledWith(
+      expect(mockDb.runAsync).toHaveBeenCalledWith(
         expect.stringContaining('INSERT OR REPLACE INTO connections'),
         expect.arrayContaining([
           connection.id,
@@ -168,20 +148,15 @@ describe('Database', () => {
       );
 
       // Mock retrieval
-      mockExecuteSql.mockResolvedValueOnce([{
-        rows: {
-          length: 1,
-          item: jest.fn().mockReturnValue({
-            id: connection.id,
-            user_id: connection.userId,
-            display_name: connection.displayName,
-            profile_photo: connection.profilePhoto,
-            shared_secret: '01020304',
-            connected_at: connection.connectedAt.getTime(),
-            notes: connection.notes,
-            trust_level: connection.trustLevel,
-          }),
-        },
+      mockDb.getAllAsync.mockResolvedValueOnce([{
+        id: connection.id,
+        user_id: connection.userId,
+        display_name: connection.displayName,
+        profile_photo: connection.profilePhoto,
+        shared_secret: '01020304',
+        connected_at: connection.connectedAt.getTime(),
+        notes: connection.notes,
+        trust_level: connection.trustLevel,
       }]);
 
       const connections = await Database.getConnections();
@@ -193,12 +168,7 @@ describe('Database', () => {
     });
 
     it('should return empty array when no connections', async () => {
-      mockExecuteSql.mockResolvedValueOnce([{
-        rows: {
-          length: 0,
-          item: jest.fn(),
-        },
-      }]);
+      mockDb.getAllAsync.mockResolvedValueOnce([]);
 
       const connections = await Database.getConnections();
 
@@ -216,7 +186,7 @@ describe('Database', () => {
 
       await Database.saveConnection(connection);
 
-      const callArgs = mockExecuteSql.mock.calls.find(call =>
+      const callArgs = mockDb.runAsync.mock.calls.find(call =>
         call[0].includes('INSERT OR REPLACE INTO connections'),
       );
 
@@ -228,20 +198,15 @@ describe('Database', () => {
     it('should set and get app state', async () => {
       await Database.setAppState('test_key', 'test_value');
 
-      expect(mockExecuteSql).toHaveBeenCalledWith(
+      expect(mockDb.runAsync).toHaveBeenCalledWith(
         expect.stringContaining('INSERT OR REPLACE INTO app_state'),
         ['test_key', 'test_value'],
       );
 
       // Mock retrieval
-      mockExecuteSql.mockResolvedValueOnce([{
-        rows: {
-          length: 1,
-          item: jest.fn().mockReturnValue({
-            value: 'test_value',
-          }),
-        },
-      }]);
+      mockDb.getFirstAsync.mockResolvedValueOnce({
+        value: 'test_value',
+      });
 
       const value = await Database.getAppState('test_key');
 
@@ -249,12 +214,7 @@ describe('Database', () => {
     });
 
     it('should return null for non-existent state', async () => {
-      mockExecuteSql.mockResolvedValueOnce([{
-        rows: {
-          length: 0,
-          item: jest.fn(),
-        },
-      }]);
+      mockDb.getFirstAsync.mockResolvedValueOnce(null);
 
       const value = await Database.getAppState('non_existent');
 
@@ -269,7 +229,7 @@ describe('Database', () => {
       const expectedTables = ['users', 'connections', 'events', 'messages', 'app_state'];
 
       expectedTables.forEach(table => {
-        expect(mockExecuteSql).toHaveBeenCalledWith(`DELETE FROM ${table}`);
+        expect(mockDb.execAsync).toHaveBeenCalledWith(`DELETE FROM ${table}`);
       });
     });
   });
@@ -278,7 +238,7 @@ describe('Database', () => {
     it('should close database connection', async () => {
       await Database.close();
 
-      expect(mockClose).toHaveBeenCalled();
+      expect(mockDb.closeAsync).toHaveBeenCalled();
     });
   });
 
@@ -297,7 +257,7 @@ describe('Database', () => {
     });
 
     it('should handle database errors gracefully', async () => {
-      mockExecuteSql.mockRejectedValueOnce(new Error('SQL Error'));
+      mockDb.getFirstAsync.mockRejectedValueOnce(new Error('SQL Error'));
 
       await expect(Database.getUser('test')).rejects.toThrow();
     });
@@ -325,7 +285,7 @@ describe('Database', () => {
 
       await Database.saveEncryptedEvent(encryptedEvent);
 
-      expect(mockExecuteSql).toHaveBeenCalledWith(
+      expect(mockDb.runAsync).toHaveBeenCalledWith(
         expect.stringContaining('INSERT OR REPLACE INTO events'),
         [
           encryptedEvent.id,
@@ -352,16 +312,11 @@ describe('Database', () => {
         }),
       };
 
-      mockExecuteSql.mockResolvedValueOnce([{
-        rows: {
-          length: 1,
-          item: jest.fn().mockReturnValue(mockEvent),
-        },
-      }]);
+      mockDb.getAllAsync.mockResolvedValueOnce([mockEvent]);
 
       const events = await Database.getEncryptedEvents(50, 0);
 
-      expect(mockExecuteSql).toHaveBeenCalledWith(
+      expect(mockDb.getAllAsync).toHaveBeenCalledWith(
         expect.stringContaining('WHERE encrypted_content IS NOT NULL'),
         [50, 0],
       );
@@ -387,16 +342,11 @@ describe('Database', () => {
         }),
       };
 
-      mockExecuteSql.mockResolvedValueOnce([{
-        rows: {
-          length: 1,
-          item: jest.fn().mockReturnValue(mockEvent),
-        },
-      }]);
+      mockDb.getFirstAsync.mockResolvedValueOnce(mockEvent);
 
       const event = await Database.getEncryptedEvent('event-specific');
 
-      expect(mockExecuteSql).toHaveBeenCalledWith(
+      expect(mockDb.getFirstAsync).toHaveBeenCalledWith(
         expect.stringContaining('WHERE id = ? AND encrypted_content IS NOT NULL'),
         ['event-specific'],
       );
@@ -408,12 +358,7 @@ describe('Database', () => {
     });
 
     it('should return null for non-existent encrypted event', async () => {
-      mockExecuteSql.mockResolvedValueOnce([{
-        rows: {
-          length: 0,
-          item: jest.fn(),
-        },
-      }]);
+      mockDb.getFirstAsync.mockResolvedValueOnce(null);
 
       const event = await Database.getEncryptedEvent('non-existent');
 
@@ -432,7 +377,7 @@ describe('Database', () => {
 
       await Database.saveEncryptedEvent(encryptedEvent);
 
-      expect(mockExecuteSql).toHaveBeenCalledWith(
+      expect(mockDb.runAsync).toHaveBeenCalledWith(
         expect.stringContaining('INSERT OR REPLACE INTO events'),
         expect.arrayContaining([
           JSON.stringify({}),
@@ -460,7 +405,7 @@ describe('Database', () => {
 
       await Database.saveEncryptedEvent(encryptedEvent);
 
-      expect(mockExecuteSql).toHaveBeenCalledWith(
+      expect(mockDb.runAsync).toHaveBeenCalledWith(
         expect.stringContaining('INSERT OR REPLACE INTO events'),
         expect.arrayContaining([
           JSON.stringify(wrappedKeys),
