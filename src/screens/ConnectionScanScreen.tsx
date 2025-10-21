@@ -120,18 +120,24 @@ const ConnectionScanScreen = ({navigation}: Props) => {
       // Stop scanning first
       BLEManager.stopScanning();
 
-      const result = await ConnectionService.followDevice(device.deviceId);
+      const result = await ConnectionService.requestConnection(device.deviceId);
 
       if (!result) {
-        throw new Error('Failed to follow device');
+        throw new Error('Failed to request connection');
       }
 
       setIsProcessing(false);
       setSelectedDevice(null);
 
+      // Show different message based on connection status
+      const statusMessage =
+        result.connection.status === 'mutual'
+          ? 'You are now connected!'
+          : 'Connection request sent. Waiting for acceptance.';
+
       Alert.alert(
-        'Following',
-        `You are now following ${result.profile.displayName}`,
+        'Connection Request',
+        `${statusMessage}\n\nConnected with: ${result.profile.displayName}`,
         [
           {
             text: 'OK',
@@ -140,8 +146,8 @@ const ConnectionScanScreen = ({navigation}: Props) => {
         ],
       );
     } catch (error) {
-      console.error('Error following device:', error);
-      Alert.alert('Follow Error', 'Failed to follow device. Please try again.');
+      console.error('Error requesting connection:', error);
+      Alert.alert('Connection Error', 'Failed to request connection. Please try again.');
       setIsProcessing(false);
       setSelectedDevice(null);
       BLEManager.startScanning().catch(() => {
@@ -195,7 +201,7 @@ const ConnectionScanScreen = ({navigation}: Props) => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.cancelButton}>Cancel</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Follow Nearby</Text>
+        <Text style={styles.headerTitle}>Connect Nearby</Text>
         <View style={{width: 60}} />
       </View>
 
@@ -235,7 +241,7 @@ const ConnectionScanScreen = ({navigation}: Props) => {
         {isProcessing && (
           <View style={styles.connectingContainer}>
             <ActivityIndicator size="large" color="#007AFF" />
-            <Text style={styles.connectingText}>Completing follow...</Text>
+            <Text style={styles.connectingText}>Connecting...</Text>
           </View>
         )}
 

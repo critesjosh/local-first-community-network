@@ -17,6 +17,7 @@ import Database from '../services/storage/Database';
 import EncryptionService from '../services/crypto/EncryptionService';
 import ConnectionService from '../services/ConnectionService';
 import BLEBroadcastService from '../services/bluetooth/BLEBroadcastService';
+import BLEConnectionHandler from '../services/bluetooth/BLEConnectionHandler';
 import IdentityService from '../services/IdentityService';
 import {addBluetoothListener} from '@localcommunity/rn-bluetooth';
 
@@ -108,6 +109,10 @@ const HomeScreen = () => {
           });
 
           console.log('✅ BLE advertising started successfully');
+
+          // Start listening for incoming connection requests
+          BLEConnectionHandler.start();
+          console.log('✅ BLE connection handler started');
         } else {
           console.warn('No user identity found, skipping BLE advertising');
         }
@@ -118,11 +123,12 @@ const HomeScreen = () => {
 
     startAdvertising();
 
-    // Cleanup: stop advertising when component unmounts
+    // Cleanup: stop advertising and connection handler when component unmounts
     return () => {
       BLEBroadcastService.stop().catch(err =>
         console.warn('Error stopping advertising:', err)
       );
+      BLEConnectionHandler.stop();
     };
   }, []);
 
