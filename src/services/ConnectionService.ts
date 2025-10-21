@@ -7,6 +7,7 @@
  * - Providing access to saved relationships
  */
 
+import {Buffer} from 'buffer';
 import BLEManager from './bluetooth/BLEManager';
 import Database from './storage/Database';
 import IdentityService from './IdentityService';

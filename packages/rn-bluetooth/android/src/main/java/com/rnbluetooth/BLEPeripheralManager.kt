@@ -53,6 +53,10 @@ class BLEPeripheralManager(
     private var isAdvertising = false
     private var profileData: ByteArray? = null
 
+    init {
+        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] 📍 BLEPeripheralManager created - initial isAdvertising: $isAdvertising")
+    }
+
     // MARK: - Profile Data
 
     fun setProfileData(profileJson: String, promise: Promise) {
@@ -74,23 +78,30 @@ class BLEPeripheralManager(
         promise: Promise
     ) {
         val timestamp = System.currentTimeMillis()
-        Log.d("BLEPeripheralManager", "[" + System.currentTimeMillis() + "] [$timestamp] startAdvertising called - displayName: $displayName")
+        Log.d("BLEPeripheralManager", "[$timestamp] 🎯 startAdvertising called")
+        Log.d("BLEPeripheralManager", "[$timestamp] displayName: $displayName")
+        Log.d("BLEPeripheralManager", "[$timestamp] userHashHex: $userHashHex")
+        Log.d("BLEPeripheralManager", "[$timestamp] followTokenHex: $followTokenHex")
+        eventEmitter.sendError("🎯 startAdvertising called: name=$displayName, hash=$userHashHex", "ADVERTISE_DEBUG")
 
         if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
             val msg = "Bluetooth is ${if (bluetoothAdapter == null) "not available" else "disabled"}"
-            Log.d("BLEPeripheralManager", "[" + System.currentTimeMillis() + "]  ERROR: $msg")
+            Log.d("BLEPeripheralManager", "[$timestamp] ERROR: $msg")
+            eventEmitter.sendError("ERROR: $msg", "ADVERTISE_DEBUG")
             promise.reject("bluetooth_unavailable", msg)
             return
         }
 
         if (bluetoothLeAdvertiser == null) {
-            Log.d("BLEPeripheralManager", "[" + System.currentTimeMillis() + "]  ERROR: Bluetooth LE advertiser not available")
+            Log.d("BLEPeripheralManager", "[$timestamp] ERROR: Bluetooth LE advertiser not available")
+            eventEmitter.sendError("ERROR: BLE advertiser not available", "ADVERTISE_DEBUG")
             promise.reject("advertiser_unavailable", "Bluetooth LE advertiser not available")
             return
         }
 
         if (isAdvertising) {
-            Log.d("BLEPeripheralManager", "[" + System.currentTimeMillis() + "]  Already advertising, resolving")
+            Log.d("BLEPeripheralManager", "[$timestamp] Already advertising, resolving")
+            eventEmitter.sendError("Already advertising, skipping", "ADVERTISE_DEBUG")
             promise.resolve(null)
             return
         }
@@ -142,15 +153,24 @@ class BLEPeripheralManager(
         followTokenHex: String,
         promise: Promise
     ) {
+        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] 🔄 updateAdvertisement called")
+        eventEmitter.sendError("🔄 updateAdvertisement called: name=$displayName, hash=$userHashHex", "ADVERTISE_DEBUG")
+
         if (!isAdvertising) {
+            Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] ERROR: Not currently advertising")
+            eventEmitter.sendError("ERROR: Not advertising, cannot update", "ADVERTISE_DEBUG")
             promise.reject("not_advertising", "Not currently advertising")
             return
         }
 
         // Stop current advertising
+        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] Stopping current advertising...")
         bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
+        isAdvertising = false  // Reset state immediately so startAdvertising can proceed
+        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] Advertising stopped, isAdvertising reset to false")
 
         // Start with new data
+        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] Calling startAdvertising with new data...")
         startAdvertising(displayName, userHashHex, followTokenHex, promise)
     }
 
@@ -164,6 +184,18 @@ class BLEPeripheralManager(
     }
 
     fun getIsAdvertising(): Boolean = isAdvertising
+
+    /**
+     * Reset state (called when module loads to clear stale state from previous sessions)
+     */
+    fun resetState() {
+        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] 🔄 Resetting state - was advertising: $isAdvertising")
+        if (isAdvertising) {
+            bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
+        }
+        isAdvertising = false
+        profileData = null
+    }
 
     private val advertiseCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {

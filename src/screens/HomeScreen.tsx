@@ -36,10 +36,7 @@ const HomeScreen = () => {
   // Listen for Bluetooth events from native layer
   useEffect(() => {
     const unsubscribe = addBluetoothListener((event) => {
-      console.log('📡 Bluetooth Event:', event);
-
       if (event.type === 'error') {
-        console.error('❌ Bluetooth Error:', event.message, 'Code:', event.code);
 
         // Check if this is a Location Services warning
         if (event.code === 'SCAN_DEBUG' &&

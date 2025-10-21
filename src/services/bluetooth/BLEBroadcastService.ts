@@ -88,12 +88,6 @@ class BLEBroadcastService {
     const payload = this.buildManufacturerPayload(this.currentProfile);
     this.localFingerprint = payload.fingerprint;
 
-    // Log the payload being broadcast
-    console.log(`[BLEBroadcast] Broadcasting for user: ${this.currentProfile.displayName}`);
-    console.log(`[BLEBroadcast] userHashHex: ${payload.userHashHex}`);
-    console.log(`[BLEBroadcast] followTokenHex: ${payload.followTokenHex}`);
-    console.log(`[BLEBroadcast] fingerprint: ${payload.fingerprint}`);
-
     try {
       // Check native advertising state (more reliable than local state)
       const isCurrentlyAdvertising = await Bluetooth.isAdvertising();
@@ -122,7 +116,7 @@ class BLEBroadcastService {
         }
       }
     } catch (error) {
-      console.error('Error advertising BLE presence', error);
+      console.error('Error advertising BLE presence:', error);
       this.isBroadcasting = false;
       throw error;
     }

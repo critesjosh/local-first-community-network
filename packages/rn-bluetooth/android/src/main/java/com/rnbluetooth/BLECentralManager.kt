@@ -68,11 +68,9 @@ class BLECentralManager(
         // Check if Bluetooth is enabled
         val isBluetoothEnabled = bluetoothAdapter?.isEnabled == true
         android.util.Log.d("BLECentralManager", "[$timestamp] Bluetooth enabled: $isBluetoothEnabled")
-        eventEmitter.sendError("Bluetooth enabled: $isBluetoothEnabled", "SCAN_DEBUG")
 
         if (!isBluetoothEnabled) {
             android.util.Log.d("BLECentralManager", "[$timestamp] ERROR: Bluetooth is disabled")
-            eventEmitter.sendError("ERROR: Bluetooth is disabled - please enable it in system settings", "SCAN_DEBUG")
             promise.reject("bluetooth_disabled", "Bluetooth is disabled")
             return
         }
@@ -86,11 +84,9 @@ class BLECentralManager(
                     locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
         }
         android.util.Log.d("BLECentralManager", "[$timestamp] Location Services enabled: $isLocationEnabled")
-        eventEmitter.sendError("Location Services enabled: $isLocationEnabled", "SCAN_DEBUG")
 
         if (!isLocationEnabled) {
             android.util.Log.d("BLECentralManager", "[$timestamp] WARNING: Location Services disabled - BLE scan may not work")
-            eventEmitter.sendError("WARNING: Location Services are disabled - BLE scanning requires Location to be enabled in system settings", "SCAN_DEBUG")
         }
 
         // Check runtime permissions
@@ -115,13 +111,11 @@ class BLECentralManager(
         if (missingPermissions.isNotEmpty()) {
             val permList = missingPermissions.joinToString(", ")
             android.util.Log.d("BLECentralManager", "[$timestamp] ERROR: Missing permissions: $permList")
-            eventEmitter.sendError("ERROR: Missing Bluetooth permissions: $permList", "SCAN_DEBUG")
             promise.reject("missing_permissions", "Missing required permissions: $permList")
             return
         }
 
         android.util.Log.d("BLECentralManager", "[$timestamp] ✅ All required permissions granted")
-        eventEmitter.sendError("✅ All Bluetooth permissions granted", "SCAN_DEBUG")
 
         if (bluetoothLeScanner == null) {
             android.util.Log.d("BLECentralManager", "[$timestamp] ERROR: Scanner not available")
@@ -133,8 +127,8 @@ class BLECentralManager(
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
-        // TEMPORARILY REMOVED FILTER FOR DEBUGGING - scan for ALL devices
-        // Filter by manufacturer ID instead of service UUID to match advertising data
+        // TEMPORARILY: Scan without hardware filter to debug
+        // We'll filter by manufacturer ID in the callback instead
         // val scanFilter = ScanFilter.Builder()
         //     .setManufacturerData(
         //         MANUFACTURER_ID,
@@ -144,26 +138,10 @@ class BLECentralManager(
         //     .build()
 
         try {
-            android.util.Log.d("BLECentralManager", "[$timestamp] Starting scan WITHOUT FILTER (debugging)")
-            bluetoothLeScanner.startScan(null, scanSettings, scanCallback) // null = no filter
+            android.util.Log.d("BLECentralManager", "[$timestamp] Starting scan WITHOUT hardware filter (will filter in callback)")
+            bluetoothLeScanner.startScan(null, scanSettings, scanCallback)
             isScanning = true
             android.util.Log.d("BLECentralManager", "[$timestamp] ✅ Scan started successfully")
-
-            // Emit debug event to JavaScript
-            eventEmitter.sendError("Scan started WITHOUT FILTER (debugging - will detect ALL BLE devices)", "SCAN_DEBUG")
-
-            // Check scan state after 2 seconds to verify it's still running
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                android.util.Log.d("BLECentralManager", "[${System.currentTimeMillis()}] 🔍 Scan state check: isScanning=$isScanning")
-                eventEmitter.sendError("🔍 Scan state after 2s: isScanning=$isScanning", "SCAN_DEBUG")
-
-                // Try to detect if Android silently stopped the scan
-                if (isScanning) {
-                    eventEmitter.sendError("⚠️ Scan appears to be running, but no devices detected yet. Possible issues: (1) No BLE devices nearby (2) Android battery optimization blocking scan (3) Simultaneous advertise+scan conflict", "SCAN_DEBUG")
-                } else {
-                    eventEmitter.sendError("❌ Scan was stopped by Android! Check battery optimization settings.", "SCAN_DEBUG")
-                }
-            }, 2000)
 
             promise.resolve(null)
         } catch (e: Exception) {
@@ -197,42 +175,35 @@ class BLECentralManager(
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
-            // IMMEDIATE CALLBACK CONFIRMATION - Send this FIRST before anything else
             val timestamp = System.currentTimeMillis()
-            android.util.Log.d("BLECentralManager", "[$timestamp] 🔥🔥🔥 CALLBACK FIRED! onScanResult invoked!")
-            eventEmitter.sendError("🔥 CALLBACK FIRED! Device detected!", "SCAN_DEBUG")
-
-            android.util.Log.d("BLECentralManager", "[$timestamp] 📱 onScanResult: device=${result.device.address}, rssi=${result.rssi}")
-
-            // Send debug event for ALL discoveries
-            eventEmitter.sendError("Scan result: device=${result.device.address}, rssi=${result.rssi}", "SCAN_DEBUG")
+            android.util.Log.d("BLECentralManager", "[$timestamp] onScanResult: device=${result.device.address}, rssi=${result.rssi}")
 
             // Filter by RSSI
             if (result.rssi < RSSI_THRESHOLD) {
-                android.util.Log.d("BLECentralManager", "[$timestamp] ⚠️ Filtered out: RSSI ${result.rssi} < threshold $RSSI_THRESHOLD")
-                eventEmitter.sendError("Filtered: RSSI ${result.rssi} < $RSSI_THRESHOLD", "SCAN_DEBUG")
                 return
             }
 
             // Parse manufacturer data
             val manufacturerData = result.scanRecord?.getManufacturerSpecificData(MANUFACTURER_ID)
-            android.util.Log.d("BLECentralManager", "[$timestamp] Manufacturer data: ${if (manufacturerData != null) "${manufacturerData.size} bytes" else "null"}")
+            android.util.Log.d("BLECentralManager", "[$timestamp] Checking manufacturer data for ID $MANUFACTURER_ID: ${if (manufacturerData != null) "${manufacturerData.size} bytes" else "null"}")
 
-            val payload = if (manufacturerData != null) {
-                val hexData = manufacturerData.joinToString("") { "%02x".format(it) }
-                eventEmitter.sendError("Found manufacturer data ($MANUFACTURER_ID): $hexData", "SCAN_DEBUG")
-                parseManufacturerData(manufacturerData)
-            } else {
-                // Empty payload if no manufacturer data
-                android.util.Log.d("BLECentralManager", "[$timestamp] ⚠️ No manufacturer data for our ID ($MANUFACTURER_ID)")
-                eventEmitter.sendError("No manufacturer data for ID $MANUFACTURER_ID", "SCAN_DEBUG")
-                Arguments.createMap().apply {
-                    putInt("version", 0)
-                    putNull("displayName")
-                    putString("userHashHex", "")
-                    putString("followTokenHex", "")
+            // Skip devices without valid manufacturer data
+            if (manufacturerData == null) {
+                android.util.Log.d("BLECentralManager", "[$timestamp] ⚠️ Skipping device: no manufacturer data with ID $MANUFACTURER_ID")
+
+                // Debug: Log ALL manufacturer data present
+                val allManufacturerData = result.scanRecord?.bytes
+                if (allManufacturerData != null) {
+                    android.util.Log.d("BLECentralManager", "[$timestamp] Raw scan record: ${allManufacturerData.size} bytes")
                 }
+                return
             }
+
+            android.util.Log.d("BLECentralManager", "[$timestamp] ✅ Valid manufacturer data found: ${manufacturerData.size} bytes")
+            val hexData = manufacturerData.joinToString("") { "%02x".format(it) }
+            android.util.Log.d("BLECentralManager", "[$timestamp] Manufacturer data hex: $hexData")
+
+            val payload = parseManufacturerData(manufacturerData)
 
             android.util.Log.d("BLECentralManager", "[$timestamp] ✅ Emitting deviceDiscovered event for ${result.device.address}")
             eventEmitter.sendDeviceDiscovered(
@@ -274,7 +245,9 @@ class BLECentralManager(
             // Connection timeout
             if (timeoutMs > 0) {
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    if (gatt.getConnectionState(device) != BluetoothProfile.STATE_CONNECTED) {
+                    // Use BluetoothManager.getConnectionState() instead of deprecated GATT method
+                    val currentState = bluetoothManager.getConnectionState(device, BluetoothProfile.GATT)
+                    if (currentState != BluetoothProfile.STATE_CONNECTED) {
                         gatt.close()
                         gattMap.remove(deviceId)
                         eventEmitter.sendConnectionStateChanged(deviceId, "failed")

@@ -79,14 +79,13 @@ class BLEManagerService {
         this.notifyStateListeners();
         break;
       case 'connectionStateChanged':
-        console.log(`Connection state changed: ${event.deviceId} -> ${event.state}`);
+        // Silently handle - calling code will log if needed
         break;
       case 'followRequestReceived':
-        console.log('Follow request received:', event);
-        // Handle follow request if needed
+        // Silently handle - calling code will log if needed
         break;
       case 'error':
-        console.error('Bluetooth error:', event.message, event.code);
+        // Silently handle errors - these are mostly debug events
         break;
     }
   }
@@ -95,14 +94,10 @@ class BLEManagerService {
    * Handle device discovered event
    */
   private handleDeviceDiscovered(event: BluetoothEvent & {type: 'deviceDiscovered'}): void {
-    const timestamp = new Date().toISOString();
     const {deviceId, rssi, payload} = event;
-
-    console.log(`[${timestamp}] 📱 Device discovered: ${deviceId}, RSSI: ${rssi}`);
 
     // Filter by RSSI threshold
     if (rssi < RSSI_THRESHOLD) {
-      console.log(`[${timestamp}] ⚠️ Filtered: RSSI ${rssi} < ${RSSI_THRESHOLD}`);
       return;
     }
 
@@ -114,15 +109,12 @@ class BLEManagerService {
       payload.userHashHex === localFingerprint
     ) {
       // Ignore our own broadcast
-      console.log(`[${timestamp}] ⚠️ Filtered: Own broadcast (${localFingerprint})`);
       return;
     }
 
     // Use userHashHex as stable device key, fallback to deviceId
     const deviceKey = payload.userHashHex || deviceId;
     const displayName = payload.displayName || null;
-
-    console.log(`[${timestamp}] ✅ Adding device: ${displayName || 'Unknown'} (${deviceKey})`);
 
     // Create or update discovered device
     const discoveredDevice: DiscoveredDevice = {
@@ -143,14 +135,11 @@ class BLEManagerService {
    * Start scanning for nearby devices
    */
   async startScanning(): Promise<void> {
-    const timestamp = new Date().toISOString();
     if (this.state.isScanning) {
-      console.log(`[${timestamp}] Already scanning`);
       return;
     }
 
     try {
-      console.log(`[${timestamp}] Starting BLE scan...`);
       this.state.isScanning = true;
       this.state.discoveredDevices.clear();
       this.notifyStateListeners();
@@ -163,12 +152,10 @@ class BLEManagerService {
 
       // Auto-stop after timeout
       setTimeout(() => {
-        const stopTimestamp = new Date().toISOString();
-        console.log(`[${stopTimestamp}] Auto-stopping scan after ${SCAN_TIMEOUT}ms timeout`);
         this.stopScanning();
       }, SCAN_TIMEOUT);
     } catch (error) {
-      console.error(`[${timestamp}] Error starting scan:`, error);
+      console.error('Error starting BLE scan:', error);
       this.state.isScanning = false;
       this.notifyStateListeners();
       throw error;
