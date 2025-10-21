@@ -209,11 +209,18 @@ npm run prebuild
 - Requires `expo prebuild` and dev client
 - RSSI threshold: -70 dBm for proximity
 - ECDH key exchange for shared secrets
+- **Mutual Connection System:**
+  - Bidirectional connection flow (requester → responder → both parties store)
+  - Auto-accept connections by default (configurable in Settings)
+  - Connection status: `mutual`, `pending-sent`, `pending-received`
+  - Both parties derive and store ECDH shared secrets
+  - Privacy-preserving: both have each other's public keys for E2E encryption
 
 ### Data Management
 - SQLite with Expo's async API (v16)
 - Hybrid encryption: AES-256-GCM + HMAC recipient lookup
 - Server sync: POST encrypted events, GET to fetch
+- Connection status tracking for mutual relationships
 
 ## Quick Reference
 
@@ -242,6 +249,30 @@ import SecureStorage from './src/services/storage/SecureStorage';
 await SecureStorage.storeKeyPair(keyPair);
 const keyPair = await SecureStorage.getKeyPair();
 const hasKeys = await SecureStorage.hasKeys();
+```
+
+### Working with Connections (Mutual System)
+```typescript
+import ConnectionService from './src/services/ConnectionService';
+
+// Request connection to a nearby device
+const result = await ConnectionService.requestConnection(deviceId);
+// result.connection.status: 'mutual' (auto-accepted) or 'pending-sent'
+
+// Handle incoming requests (auto-processed by BLEConnectionHandler)
+// Check pending requests (if auto-accept disabled)
+const pending = await ConnectionService.getPendingRequests();
+
+// Manually accept/reject pending request
+await ConnectionService.acceptConnectionRequest(connectionId);
+await ConnectionService.rejectConnectionRequest(connectionId);
+
+// Get all connections
+const connections = await ConnectionService.getConnections();
+
+// Auto-accept setting
+const autoAccept = await Database.getAutoAcceptConnections();
+await Database.setAutoAcceptConnections(true); // or false
 ```
 
 ## Custom Bluetooth Module

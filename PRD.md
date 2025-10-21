@@ -64,52 +64,63 @@ Build a privacy-first platform for discovering local events and building neighbo
 
 ### Epic 2: Bluetooth Verification (Week 1 Priority)
 
-#### US-2.1: Follow via Bluetooth (PRIMARY METHOD)
+#### US-2.1: Connect via Bluetooth (PRIMARY METHOD) ✅ IMPLEMENTED
 
-**As a** user  
-**I want to** walk into a space and follow nearby people instantly  
-**So that** I can start seeing their posts without waiting for approval
+**As a** user
+**I want to** walk into a space and connect with nearby people instantly
+**So that** I can start sharing encrypted posts with them
 
 **Acceptance Criteria:**
 
-- "Connect" button prominently visible on home screen
-- Tapping opens Bluetooth scanner
-- Shows list of broadcasting profiles within ~1-3 meters (RSSI > -70 dBm) with live updates
-- User taps a profile to follow it; no confirmation modal required from the broadcaster
-- Immediate in-app feedback (haptics + toast) confirms follow request succeeded
-- Follow saved locally within 3 seconds and marked as "Following" in list
-- Works offline-only for MVP (no server sync)
+- "Connect" button prominently visible on home screen ✅
+- Tapping opens Bluetooth scanner ✅
+- Shows list of broadcasting profiles within ~1-3 meters (RSSI > -70 dBm) with live updates ✅
+- User taps a profile to connect; connection auto-accepted by default (configurable) ✅
+- Immediate in-app feedback confirms connection request succeeded ✅
+- Connection saved locally within 3 seconds with "mutual" or "pending" status ✅
+- Works offline-only for MVP (no server sync) ✅
 
 **Technical Requirements:**
 
-- Use BLE (Bluetooth Low Energy)
-- RSSI threshold: -70 dBm minimum for detection
-- Advertise service UUID + rotating follow token whenever user opts into broadcast mode
-- Tapping "Follow" performs BLE characteristic write that includes follower's public key + profile bundle
-- Auto-acknowledge follow writes and enqueue notification for broadcaster (no UI blocking)
-- Store follow relationship in local SQLite as `following`
-- No NFC fallback - BLE only for MVP
+- Use BLE (Bluetooth Low Energy) via custom TurboModule ✅
+- RSSI threshold: -70 dBm minimum for detection ✅
+- Advertise service UUID + user hash + follow token ✅
+- Connection request includes requester's public key + profile bundle ✅
+- **Mutual connection flow:** ✅
+  - Requester sends connection-request with public key
+  - Responder auto-accepts (or queues if manual approval enabled)
+  - Both parties derive ECDH shared secret from exchanged public keys
+  - Both parties store connection with status (mutual/pending-sent/pending-received)
+- Store connection in SQLite with shared secret for encryption ✅
+- No NFC fallback - BLE only for MVP ✅
+
+**Implementation Details:**
+
+- **Auto-Accept (Default):** Connections automatically accepted, creating mutual connections immediately
+- **Manual Approval (Optional):** User can disable auto-accept in Settings; requests queue as "pending-received"
+- **Privacy-Preserving:** Both parties have each other's public keys; enables E2E encryption
+- **Connection Status:** `mutual` (both connected), `pending-sent` (waiting for response), `pending-received` (awaiting approval)
 
 **1-Month Simplifications:**
 
-- No background scanning (app must be open)
-- No retry logic (follow fails = start over)
-- Manual profile selection (no auto-follow)
-- Basic error messages only
+- No background scanning (app must be open) ✅
+- No retry logic (connection fails = start over) ✅
+- Manual profile selection (no auto-connect) ✅
+- Basic error messages only ✅
 
-#### US-2.3: Follow Feedback
+#### US-2.3: Connection Feedback ✅ IMPLEMENTED
 
-**As a** user  
-**I want to** know who I’m following and whether they follow me back  
-**So that** I can decide who to engage with
+**As a** user
+**I want to** know my connection status with others
+**So that** I can understand who can see my posts
 
 **Acceptance Criteria:**
 
-- Show followed user's profile (name, photo) immediately after follow succeeds
-- Display follow timestamp and label if the follow is mutual or one-way
-- Option to add personal note about the person
-- Offer quick actions: send message (if mutual) or request follow-back
-- Follow appears in contacts list within 1 second
+- Show connected user's profile (name, photo) immediately after connection succeeds ✅
+- Display connection timestamp and mutual/pending status ✅
+- Option to add personal note about the person (database support ready)
+- Connection appears in contacts list within 1 second ✅
+- Settings toggle for auto-accept vs manual approval ✅
 
 ### Epic 3: Event Posting (Week 2-3 Priority)
 

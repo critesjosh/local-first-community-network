@@ -54,17 +54,27 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - Location Services warning for Android BLE scanning
   - Test functionality for debugging scan+advertise scenarios
 
+- ✅ **Mutual Connection System with Auto-Accept** (100%)
+  - Connection status tracking (mutual, pending-sent, pending-received)
+  - Bidirectional connection flow with ECDH shared secret derivation
+  - ConnectionRequest/ConnectionResponse types for BLE handshake
+  - Auto-accept setting (default enabled, configurable in Settings)
+  - BLEConnectionHandler service for incoming request processing
+  - Both parties compute and store shared secrets during connection
+  - Privacy-preserving: both parties have each other's public keys for E2E encryption
+
 **In Progress:**
 - Physical device testing and debugging of custom Bluetooth module
 - Week 2, Days 12-13: Event Posting System (hybrid encryption implemented, UI pending)
 
 **Next Up:**
 - Test custom Bluetooth module on physical iOS/Android devices
+- Test mutual connection flow with shared secret derivation
 - Create Event UI with form inputs
 - Event posting system integration with UI
 - Simple server backend for encrypted post storage/retrieval
 
-**Test Status:** 171/171 passing ✅ (base test suite, Bluetooth requires physical device testing)
+**Test Status:** 171/171 passing ✅ (base test suite, Bluetooth and mutual connections require physical device testing)
 
 ## Technology Stack
 
@@ -180,6 +190,13 @@ This implementation plan outlines the development of a 1-month MVP for the Local
 - [x] Implement disconnect functionality
 - [x] Navigation types and screen routing
 - [x] All tests passing (164 tests)
+- [x] **Mutual Connection System:**
+  - Connection status tracking (mutual/pending-sent/pending-received)
+  - Bidirectional handshake with auto-accept (default enabled)
+  - ECDH shared secret derivation for both parties
+  - BLEConnectionHandler for incoming request processing
+  - Auto-accept toggle in SettingsScreen
+  - Both parties store public keys for E2E encryption
 
 ### Day 12-13: Event Posting System
 
