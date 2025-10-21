@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   FlatList,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useFocusEffect} from '@react-navigation/native';
@@ -18,6 +19,7 @@ type Props = MainTabScreenProps<'Connections'>;
 const ConnectionsScreen = ({navigation}: Props) => {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [creatingTest, setCreatingTest] = useState(false);
 
   const loadConnections = async () => {
     try {
@@ -47,6 +49,34 @@ const ConnectionsScreen = ({navigation}: Props) => {
 
   const handleConnectionPress = (connection: Connection) => {
     navigation.navigate('ConnectionDetail', {connectionId: connection.id});
+  };
+
+  const handleCreateTestConnection = async () => {
+    try {
+      setCreatingTest(true);
+      const connection = await ConnectionService.createSelfConnection();
+      
+      if (connection) {
+        Alert.alert(
+          'Test Connection Created',
+          'A simulated connection has been created. You can now test event sharing!',
+        );
+        await loadConnections();
+      } else {
+        Alert.alert(
+          'Error',
+          'Failed to create test connection. Please try again.',
+        );
+      }
+    } catch (error) {
+      console.error('Error creating test connection:', error);
+      Alert.alert(
+        'Error',
+        'Failed to create test connection. Please try again.',
+      );
+    } finally {
+      setCreatingTest(false);
+    }
   };
 
   const formatDate = (date: Date) => {
@@ -94,6 +124,15 @@ const ConnectionsScreen = ({navigation}: Props) => {
           style={styles.connectButton}
           onPress={handleConnectPress}>
           <Text style={styles.connectButtonText}>Connect via Bluetooth</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.testButton}
+          onPress={handleCreateTestConnection}
+          disabled={creatingTest}>
+          <Text style={styles.testButtonText}>
+            {creatingTest ? 'Creating...' : '🧪 Create Test Connection'}
+          </Text>
         </TouchableOpacity>
 
         {connections.length === 0 ? (
@@ -145,11 +184,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     borderRadius: 12,
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 12,
   },
   connectButtonText: {
     color: 'white',
     fontSize: 18,
+    fontWeight: '600',
+  },
+  testButton: {
+    backgroundColor: '#F2F2F7',
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#C7C7CC',
+  },
+  testButtonText: {
+    color: '#8E8E93',
+    fontSize: 14,
     fontWeight: '600',
   },
   placeholder: {

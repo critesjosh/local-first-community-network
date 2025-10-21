@@ -203,6 +203,51 @@ class ConnectionServiceClass {
   getPendingConnections(): PendingConnection[] {
     return Array.from(this.pendingConnections.values());
   }
+
+  /**
+   * Create a simulated self-connection for testing
+   * This allows testing event sharing without a second device
+   */
+  async createSelfConnection(): Promise<Connection | null> {
+    try {
+      console.log('Creating self-connection for testing...');
+
+      // Get current user identity
+      const currentUser = await IdentityService.getCurrentUser();
+      if (!currentUser) {
+        throw new Error('No current user identity');
+      }
+
+      // Generate two ECDH key pairs (simulating two devices)
+      const deviceA = await this.keyManager.generateECDHKeyPair();
+      const deviceB = await this.keyManager.generateECDHKeyPair();
+
+      // Derive shared secret (A's private key + B's public key)
+      const sharedSecret = await this.keyManager.deriveSharedSecret(
+        deviceA.privateKey,
+        deviceB.publicKey,
+      );
+
+      // Create connection record with yourself
+      const connection: Connection = {
+        id: generateUUID(),
+        userId: currentUser.id + '-test', // Append -test to avoid collision
+        displayName: currentUser.displayName + ' (Test)',
+        sharedSecret,
+        connectedAt: new Date(),
+        trustLevel: 'verified',
+      };
+
+      // Save to database
+      await Database.saveConnection(connection);
+
+      console.log('Self-connection created:', connection.id);
+      return connection;
+    } catch (error) {
+      console.error('Error creating self-connection:', error);
+      return null;
+    }
+  }
 }
 
 export default new ConnectionServiceClass();
