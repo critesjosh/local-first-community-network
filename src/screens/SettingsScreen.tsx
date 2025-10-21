@@ -1,8 +1,44 @@
-import React from 'react';
-import {View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert} from 'react-native';
+import React, {useState, useEffect} from 'react';
+import {View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Switch} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
+import Database from '../services/storage/Database';
 
 const SettingsScreen = () => {
+  const [autoAcceptConnections, setAutoAcceptConnections] = useState(true);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const autoAccept = await Database.getAutoAcceptConnections();
+      setAutoAcceptConnections(autoAccept);
+    } catch (error) {
+      console.error('Error loading settings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAutoAcceptToggle = async (value: boolean) => {
+    try {
+      setAutoAcceptConnections(value);
+      await Database.setAutoAcceptConnections(value);
+
+      const message = value
+        ? 'Connection requests will be automatically accepted.'
+        : 'You will need to manually approve connection requests.';
+
+      Alert.alert('Setting Updated', message);
+    } catch (error) {
+      console.error('Error updating auto-accept setting:', error);
+      setAutoAcceptConnections(!value); // Revert on error
+      Alert.alert('Error', 'Failed to update setting. Please try again.');
+    }
+  };
+
   const handleClearData = () => {
     Alert.alert(
       'Clear All Data',
@@ -36,6 +72,21 @@ const SettingsScreen = () => {
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Privacy & Security</Text>
+            <View style={styles.settingItem}>
+              <View style={styles.settingTextContainer}>
+                <Text style={styles.settingLabel}>Auto-Accept Connections</Text>
+                <Text style={styles.settingDescription}>
+                  Automatically accept connection requests from nearby users
+                </Text>
+              </View>
+              <Switch
+                value={autoAcceptConnections}
+                onValueChange={handleAutoAcceptToggle}
+                trackColor={{false: '#D1D1D6', true: '#34C759'}}
+                thumbColor={'white'}
+                disabled={loading}
+              />
+            </View>
             <TouchableOpacity style={styles.settingItem}>
               <Text style={styles.settingLabel}>Export Data</Text>
               <Text style={styles.settingValue}>JSON</Text>
@@ -114,9 +165,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  settingTextContainer: {
+    flex: 1,
+    marginRight: 12,
+  },
   settingLabel: {
     fontSize: 16,
     color: '#000',
+    marginBottom: 2,
+  },
+  settingDescription: {
+    fontSize: 13,
+    color: '#8E8E93',
+    marginTop: 2,
   },
   settingValue: {
     fontSize: 16,
