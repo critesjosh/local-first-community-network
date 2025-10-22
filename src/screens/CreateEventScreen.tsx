@@ -118,21 +118,23 @@ const CreateEventScreen = ({navigation}: Props) => {
 
       // Get all connections
       const connections = await ConnectionService.getConnections();
+
+      // Require at least one connection
       if (connections.length === 0) {
         Alert.alert(
           'No Connections',
-          'You need to connect with at least one person to share events. Would you like to add a connection now?',
+          'You need at least one connection to create an event. Please add a connection first.',
           [
-            {text: 'Later', style: 'cancel'},
             {
               text: 'Add Connection',
-              onPress: () => {
-                navigation.navigate('Connections');
-              },
+              onPress: () => navigation.navigate('Connections'),
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel',
             },
           ],
         );
-        setIsSubmitting(false);
         return;
       }
 
@@ -163,11 +165,13 @@ const CreateEventScreen = ({navigation}: Props) => {
       await Database.saveEncryptedEvent(encryptedEvent);
 
       // Success!
+      const successMessage = `Your event "${title}" has been created and shared with ${connections.length} ${
+        connections.length === 1 ? 'connection' : 'connections'
+      }.`;
+      
       Alert.alert(
         'Event Created!',
-        `Your event "${title}" has been created and shared with ${connections.length} ${
-          connections.length === 1 ? 'connection' : 'connections'
-        }.`,
+        successMessage,
         [
           {
             text: 'OK',

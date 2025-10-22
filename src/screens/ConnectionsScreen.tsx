@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   FlatList,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useFocusEffect} from '@react-navigation/native';
@@ -48,6 +49,7 @@ const ConnectionsScreen = ({navigation}: Props) => {
   const handleConnectionPress = (connection: Connection) => {
     navigation.navigate('ConnectionDetail', {connectionId: connection.id});
   };
+
 
   const formatDate = (date: Date) => {
     const now = new Date();
@@ -107,6 +109,7 @@ const ConnectionsScreen = ({navigation}: Props) => {
           <Text style={styles.connectButtonText}>Discover Nearby Profiles</Text>
         </TouchableOpacity>
 
+
         {connections.length === 0 ? (
           <View style={styles.placeholder}>
             <Text style={styles.placeholderText}>
@@ -156,7 +159,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     borderRadius: 12,
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 12,
   },
   connectButtonText: {
     color: 'white',

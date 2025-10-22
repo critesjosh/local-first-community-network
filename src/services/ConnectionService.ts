@@ -315,6 +315,14 @@ class ConnectionServiceClass {
       return false;
     }
   }
+
+  /**
+   * Get pending connections
+   */
+  async getPendingConnections(): Promise<Connection[]> {
+    return await this.getPendingRequests();
+  }
+
 }
 
 export default new ConnectionServiceClass();
