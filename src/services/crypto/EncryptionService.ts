@@ -9,8 +9,8 @@
 import * as Crypto from 'expo-crypto';
 import { Event, Connection } from '../../types/models';
 import { sha256 } from '@noble/hashes/sha2.js';
-import { gcm } from '@noble/ciphers';
-import { randomBytes as nobleRandomBytes } from '@noble/ciphers';
+import { gcm } from '@noble/ciphers/aes.js';
+import { randomBytes as nobleRandomBytes } from '@noble/ciphers/webcrypto.js';
 import ECDHService from './ECDH';
 
 // AES-256-GCM encryption using @noble/ciphers (works in React Native)
