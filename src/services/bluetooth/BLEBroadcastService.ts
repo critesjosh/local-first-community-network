@@ -3,9 +3,7 @@
  * Rewritten to use custom @localcommunity/rn-bluetooth module
  */
 
-// import {Bluetooth} from '@localcommunity/rn-bluetooth';
-// Fallback to react-native-ble-plx since custom module is not available
-import { BleManager } from 'react-native-ble-plx';
+import {Bluetooth} from '@localcommunity/rn-bluetooth';
 import {sha256} from '@noble/hashes/sha2.js';
 import {Buffer} from 'buffer';
 import {
@@ -26,7 +24,6 @@ class BLEBroadcastService {
   private rotationTimer: NodeJS.Timeout | null = null;
   private currentProfile: BroadcastProfile | null = null;
   private localFingerprint: string | null = null;
-  private bleManager: BleManager;
 
   /**
    * Start advertising the current user's presence
@@ -55,8 +52,7 @@ class BLEBroadcastService {
    * This should be called before start() with the full ConnectionProfile
    */
   async setProfileData(profileJson: string): Promise<void> {
-    // Note: Custom module not available, just log the profile data
-    console.log('📋 Profile data would be set:', profileJson);
+    await Bluetooth.setProfileData(profileJson);
   }
 
   /**
@@ -96,19 +92,14 @@ class BLEBroadcastService {
    */
   private async checkBluetoothPermissions(): Promise<void> {
     try {
-      // Initialize BLE Manager
+      // Initialize Bluetooth and request permissions
       console.log('🔧 Initializing Bluetooth...');
-      this.bleManager = new BleManager();
+      await Bluetooth.initialize();
       
-      // Wait for BLE manager to be ready
-      await this.bleManager.startDeviceScan(null, null, (error, device) => {
-        // Just to initialize the manager, we'll stop scanning immediately
-      });
+      console.log('🔐 Requesting Bluetooth permissions...');
+      await Bluetooth.requestPermissions();
       
-      // Stop the initial scan
-      this.bleManager.stopDeviceScan();
-      
-      console.log('✅ Bluetooth initialized successfully');
+      console.log('✅ Bluetooth initialized and permissions requested');
     } catch (error) {
       console.error('❌ Bluetooth initialization failed:', error);
       throw new Error(`Bluetooth initialization failed: ${error.message}`);
@@ -127,19 +118,16 @@ class BLEBroadcastService {
     this.localFingerprint = payload.fingerprint;
 
     try {
-      // Note: react-native-ble-plx doesn't support advertising in the same way
-      // For now, we'll simulate successful advertising
-      console.log('📡 BLE advertisement would start with:', {
-        displayName: payload.displayName,
-        userHash: payload.userHashHex,
-        token: payload.followTokenHex
-      });
-      
-      // Wait a moment to simulate advertising start
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Start advertising with the custom module
+      console.log('📡 Starting BLE advertisement');
+      await Bluetooth.startAdvertising(
+        payload.displayName,
+        payload.userHashHex,
+        payload.followTokenHex,
+      );
       
       this.isBroadcasting = true;
-      console.log('✅ BLE advertisement simulation completed (react-native-ble-plx doesn\'t support advertising)');
+      console.log('✅ BLE advertisement started successfully');
     } catch (error) {
       console.error('❌ Error advertising BLE presence:', error);
       this.isBroadcasting = false;
