@@ -14,6 +14,10 @@
     "build:ios": "eas build --platform ios",
     "build:ios:preview": "eas build --platform ios --profile preview",
     "build:ios:development": "eas build --platform ios --profile development",
+    "update:development": "eas update --branch development",
+    "update:preview": "eas update --branch preview",
+    "update:production": "eas update --branch production",
+    "update:auto": "eas update --auto",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"

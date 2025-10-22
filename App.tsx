@@ -6,6 +6,7 @@
 import React, {useEffect, useState} from 'react';
 import 'react-native-gesture-handler';
 import {ActivityIndicator, View, StyleSheet} from 'react-native';
+import * as Updates from 'expo-updates';
 import AppNavigator from './src/navigation/AppNavigator';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import IdentityService from './src/services/IdentityService';
@@ -20,6 +21,9 @@ function App() {
 
   const initializeApp = async () => {
     try {
+      // Check for EAS updates and reload if available
+      await checkForUpdates();
+
       // Initialize identity service
       await IdentityService.init();
 
@@ -30,6 +34,25 @@ function App() {
       console.error('App initialization error:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const checkForUpdates = async () => {
+    try {
+      if (__DEV__) {
+        // Skip update checks in development
+        return;
+      }
+
+      const update = await Updates.checkForUpdateAsync();
+      if (update.isAvailable) {
+        console.log('Update available, downloading...');
+        await Updates.fetchUpdateAsync();
+        console.log('Update downloaded, reloading app...');
+        await Updates.reloadAsync();
+      }
+    } catch (error) {
+      console.error('Error checking for updates:', error);
     }
   };
 
