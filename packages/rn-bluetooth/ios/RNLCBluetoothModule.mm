@@ -15,7 +15,16 @@
 
 @implementation RNLCBluetoothModule
 
-RCT_EXPORT_MODULE(RNLCBluetooth)
+RCT_EXPORT_MODULE(RNLCBluetoothModule)
+
++ (void)load {
+  NSLog(@"🚀 RNLCBluetoothModule loaded successfully!");
+}
+
++ (NSString *)moduleName {
+  NSLog(@"🔍 Module name: RNLCBluetoothModule");
+  return @"RNLCBluetoothModule";
+}
 
 // MARK: - Initialization
 

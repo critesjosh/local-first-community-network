@@ -1,8 +1,3 @@
 module.exports = {
-  dependency: {
-    platforms: {
-      ios: {},
-      android: {},
-    },
-  },
+  // No native linking configuration needed for JavaScript-only modules
 };
