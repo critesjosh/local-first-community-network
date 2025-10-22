@@ -113,7 +113,6 @@ const ConnectionsScreen = ({navigation}: Props) => {
     navigation.navigate('ConnectionDetail', {connectionId: connection.id});
   };
 
-<<<<<<< HEAD
   const handleAcceptConnection = async (connectionId: string) => {
     try {
       console.log('[ConnectionsScreen] Accept button clicked for:', connectionId.substring(0, 8));
@@ -139,36 +138,6 @@ const ConnectionsScreen = ({navigation}: Props) => {
       console.error('Error rejecting connection:', error);
     }
   };
-
-  const handleCreateTestConnection = async () => {
-    try {
-      setCreatingTest(true);
-      const connection = await ConnectionService.createSelfConnection();
-
-      if (connection) {
-        Alert.alert(
-          'Test Connection Created',
-          'A simulated connection has been created. You can now test event sharing!',
-        );
-        await loadConnections();
-      } else {
-        Alert.alert(
-          'Error',
-          'Failed to create test connection. Please try again.',
-        );
-      }
-    } catch (error) {
-      console.error('Error creating test connection:', error);
-      Alert.alert(
-        'Error',
-        'Failed to create test connection. Please try again.',
-      );
-    } finally {
-      setCreatingTest(false);
-    }
-  };
-=======
->>>>>>> feature/ios-ble-follow-flow
 
   const formatDate = (date: Date) => {
     const now = new Date();
