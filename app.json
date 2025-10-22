@@ -2,7 +2,7 @@
   "expo": {
     "name": "local-social-network-expo",
     "slug": "local-social-network-expo",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "owner": "renaissance-builders",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

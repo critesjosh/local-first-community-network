@@ -42,20 +42,40 @@ npm run prebuild          # Generate native projects (android/, ios/)
 npm run prebuild:clean    # Clean and regenerate native projects
 npm run build:android     # Build Android APK locally
 npm run build:ios         # Build iOS app locally (macOS only)
+npm run build:ios:production  # Build for App Store submission
+```
+
+### Release & Updates
+```bash
+# Over-the-Air Updates (Instant deployment)
+npm run hotfix            # Emergency fixes
+npm run release:ota       # Regular OTA updates
+
+# App Store Releases (1-7 day review)
+npm run release:patch     # Bug fixes (1.0.0 → 1.0.1)
+npm run release:minor     # New features (1.0.0 → 1.1.0)
+npm run release:major     # Breaking changes (1.0.0 → 2.0.0)
+
+# Interactive Release Script
+npm run release ota       # Deploy OTA update
+npm run release patch     # Create patch release
 ```
 
 ## Project Structure
 
 ```
 local-social-network-expo/
-├── App.js              # Main application entry point
-├── app.json            # Expo configuration
-├── eas.json            # Build configuration
-├── package.json        # Dependencies and scripts
-├── assets/             # Images, fonts, icons
-├── QUICKSTART.md       # 5-minute setup guide
-├── SETUP.md            # Complete setup documentation
-└── README.md           # This file
+├── App.js                    # Main application entry point
+├── app.json                  # Expo configuration
+├── eas.json                  # Build configuration
+├── package.json              # Dependencies and scripts
+├── assets/                   # Images, fonts, icons
+├── scripts/                  # Release and automation scripts
+├── .github/workflows/        # CI/CD workflows
+├── QUICKSTART.md             # 5-minute setup guide
+├── SETUP.md                  # Complete setup documentation
+├── RELEASE_WORKFLOW.md       # Versioning and update deployment guide
+└── README.md                 # This file
 ```
 
 ## Testing Methods
@@ -78,6 +98,9 @@ local-social-network-expo/
 
 - **QUICKSTART.md** - Get running in 5 minutes
 - **SETUP.md** - Complete setup guide with all options
+- **RELEASE_WORKFLOW.md** - Versioning and update deployment guide
+- **SCRIPTS_OVERVIEW.md** - Complete scripts reference and communication guide
+- **COMMUNICATION_CHECKLIST.md** - Script communication checklist and templates
 - [Expo Documentation](https://docs.expo.dev)
 - [React Native Documentation](https://reactnative.dev)
 
