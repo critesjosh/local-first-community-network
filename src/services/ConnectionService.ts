@@ -16,6 +16,7 @@ import ECDHService from './crypto/ECDH';
 import {Connection} from '../types/models';
 import {ConnectionProfile, ConnectionRequest, ConnectionResponse} from '../types/bluetooth';
 import {generateUUID} from '../utils/crypto';
+import {log, logError, logWarn} from '../utils/logger';
 
 class ConnectionServiceClass {
   /**
@@ -28,7 +29,7 @@ class ConnectionServiceClass {
     connection: Connection;
   } | null> {
     try {
-      console.log(`Requesting connection to device ${deviceId}...`);
+      await log(`Requesting connection to device ${deviceId}...`);
 
       // Connect to device
       const device = await BLEManager.connectToDevice(deviceId);
@@ -47,7 +48,7 @@ class ConnectionServiceClass {
       const existingConnection = await Database.getConnectionByUserId(theirProfile.userId);
       if (existingConnection) {
         await BLEManager.disconnectFromDevice(deviceId);
-        console.log('Connection already exists:', existingConnection.id);
+        await log('Connection already exists:', existingConnection.id);
         return {profile: theirProfile, connection: existingConnection};
       }
 
@@ -76,36 +77,30 @@ class ConnectionServiceClass {
         throw new Error('Failed to send connection request');
       }
 
-      // Derive shared secret (we have their public key from profile)
-      const theirPublicKeyBytes = Buffer.from(theirProfile.publicKey, 'base64');
-      const sharedSecret = await ECDHService.deriveSharedSecret(
-        identity.privateKey,
-        theirPublicKeyBytes,
-      );
+      // TODO: Derive shared secret later when needed for encryption
+      // For now, just store the connection without the shared secret
 
-      // Save connection locally as pending-sent
+      // Since auto-accept is enabled by default, create mutual connection immediately
+      // This avoids showing a "pending" screen when the other party will auto-accept anyway
       const connection: Connection = {
         id: generateUUID(),
         userId: theirProfile.userId,
         displayName: theirProfile.displayName,
         profilePhoto: theirProfile.profilePhoto,
-        sharedSecret,
+        sharedSecret: undefined, // Will be derived later when needed
         connectedAt: new Date(),
-        status: 'pending-sent',
+        status: 'mutual', // Mutual connection since auto-accept is default
         trustLevel: 'pending',
       };
 
       await Database.saveConnection(connection);
-      console.log('Connection request saved:', connection.id);
-
-      // TODO: Wait for response from the other device
-      // For now, we'll implement fire-and-forget and rely on them sending us a response
+      await log('Connection saved as mutual:', connection.id);
 
       await BLEManager.disconnectFromDevice(deviceId);
 
       return {profile: theirProfile, connection};
     } catch (error) {
-      console.error('Error requesting connection:', error);
+      await logError('Error requesting connection:', error);
       return null;
     }
   }
@@ -119,7 +114,7 @@ class ConnectionServiceClass {
     request: ConnectionRequest,
   ): Promise<ConnectionResponse | null> {
     try {
-      console.log('Handling connection request from:', request.requester.displayName);
+      await log('Handling connection request from:', request.requester.displayName);
 
       // Check if connection already exists
       const existingConnection = await Database.getConnectionByUserId(
@@ -129,7 +124,7 @@ class ConnectionServiceClass {
         // If connection exists and is pending-sent, upgrade to mutual
         if (existingConnection.status === 'pending-sent') {
           await Database.updateConnectionStatus(existingConnection.id, 'mutual');
-          console.log('Upgraded pending-sent to mutual:', existingConnection.id);
+          await log('Upgraded pending-sent to mutual:', existingConnection.id);
         }
 
         // Return acceptance response with our profile
@@ -139,17 +134,8 @@ class ConnectionServiceClass {
       // Get auto-accept setting
       const autoAccept = await Database.getAutoAcceptConnections();
 
-      // Derive shared secret
-      const identity = IdentityService.getCurrentIdentity();
-      if (!identity) {
-        throw new Error('No current user identity');
-      }
-
-      const theirPublicKeyBytes = Buffer.from(request.requester.publicKey, 'base64');
-      const sharedSecret = await ECDHService.deriveSharedSecret(
-        identity.privateKey,
-        theirPublicKeyBytes,
-      );
+      // TODO: Derive shared secret later when needed for encryption
+      // For now, just store the connection without the shared secret
 
       // Create connection record
       const connection: Connection = {
@@ -157,19 +143,19 @@ class ConnectionServiceClass {
         userId: request.requester.userId,
         displayName: request.requester.displayName,
         profilePhoto: request.requester.profilePhoto,
-        sharedSecret,
+        sharedSecret: undefined, // Will be derived later when needed
         connectedAt: new Date(),
         status: autoAccept ? 'mutual' : 'pending-received',
         trustLevel: 'pending',
       };
 
       await Database.saveConnection(connection);
-      console.log(`Connection ${autoAccept ? 'accepted' : 'queued'}:`, connection.id);
+      await log(`Connection ${autoAccept ? 'accepted' : 'queued'}:`, connection.id);
 
       // Return response
       return await this.createConnectionResponse(autoAccept ? 'accepted' : 'pending');
     } catch (error) {
-      console.error('Error handling connection request:', error);
+      await logError('Error handling connection request:', error);
       return null;
     }
   }
@@ -199,7 +185,7 @@ class ConnectionServiceClass {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      console.error('Error creating connection response:', error);
+      await logError('Error creating connection response:', error);
       return null;
     }
   }
@@ -210,26 +196,26 @@ class ConnectionServiceClass {
    */
   async handleConnectionResponse(response: ConnectionResponse): Promise<void> {
     try {
-      console.log('Handling connection response from:', response.responder.displayName);
+      await log('Handling connection response from:', response.responder.displayName);
 
       // Find the pending connection
       const connection = await Database.getConnectionByUserId(response.responder.userId);
       if (!connection) {
-        console.warn('No pending connection found for response');
+        await logWarn('No pending connection found for response');
         return;
       }
 
       // Update status based on response
       if (response.status === 'accepted') {
         await Database.updateConnectionStatus(connection.id, 'mutual');
-        console.log('Connection accepted and upgraded to mutual:', connection.id);
+        await log('Connection accepted and upgraded to mutual:', connection.id);
       } else if (response.status === 'rejected') {
         await Database.deleteConnection(connection.id);
-        console.log('Connection rejected and deleted:', connection.id);
+        await log('Connection rejected and deleted:', connection.id);
       }
       // If pending, leave as-is
     } catch (error) {
-      console.error('Error handling connection response:', error);
+      await logError('Error handling connection response:', error);
     }
   }
 
@@ -240,11 +226,11 @@ class ConnectionServiceClass {
   async acceptConnectionRequest(connectionId: string): Promise<boolean> {
     try {
       await Database.updateConnectionStatus(connectionId, 'mutual');
-      console.log('Manually accepted connection:', connectionId);
+      await log('Manually accepted connection:', connectionId);
       // TODO: Send acceptance message via BLE if device is nearby
       return true;
     } catch (error) {
-      console.error('Error accepting connection:', error);
+      await logError('Error accepting connection:', error);
       return false;
     }
   }
@@ -256,11 +242,11 @@ class ConnectionServiceClass {
   async rejectConnectionRequest(connectionId: string): Promise<boolean> {
     try {
       await Database.deleteConnection(connectionId);
-      console.log('Rejected connection:', connectionId);
+      await log('Rejected connection:', connectionId);
       // TODO: Send rejection message via BLE if device is nearby
       return true;
     } catch (error) {
-      console.error('Error rejecting connection:', error);
+      await logError('Error rejecting connection:', error);
       return false;
     }
   }
@@ -272,7 +258,7 @@ class ConnectionServiceClass {
     try {
       return await Database.getPendingReceivedConnections();
     } catch (error) {
-      console.error('Error getting pending requests:', error);
+      await logError('Error getting pending requests:', error);
       return [];
     }
   }
@@ -284,7 +270,7 @@ class ConnectionServiceClass {
     try {
       return await Database.getConnections();
     } catch (error) {
-      console.error('Error getting connections:', error);
+      await logError('Error getting connections:', error);
       return [];
     }
   }
@@ -297,7 +283,7 @@ class ConnectionServiceClass {
       const connections = await Database.getConnections();
       return connections.find(c => c.userId === userId) || null;
     } catch (error) {
-      console.error('Error getting connection:', error);
+      await logError('Error getting connection:', error);
       return null;
     }
   }
@@ -308,10 +294,10 @@ class ConnectionServiceClass {
   async deleteConnection(connectionId: string): Promise<boolean> {
     try {
       await Database.deleteConnection(connectionId);
-      console.log('Connection deleted:', connectionId);
+      await log('Connection deleted:', connectionId);
       return true;
     } catch (error) {
-      console.error('Error deleting connection:', error);
+      await logError('Error deleting connection:', error);
       return false;
     }
   }

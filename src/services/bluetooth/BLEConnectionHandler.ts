@@ -9,6 +9,7 @@ import {addBluetoothListener, Bluetooth} from '@localcommunity/rn-bluetooth';
 import type {BluetoothEvent, FollowRequestPayload} from '@localcommunity/rn-bluetooth';
 import ConnectionService from '../ConnectionService';
 import {ConnectionRequest, ConnectionResponse} from '../../types/bluetooth';
+import {log, logError} from '../../utils/logger';
 
 class BLEConnectionHandler {
   private unsubscribe: (() => void) | null = null;
@@ -18,11 +19,11 @@ class BLEConnectionHandler {
    */
   start(): void {
     if (this.unsubscribe) {
-      console.log('[BLEConnectionHandler] Already listening');
+      log('[BLEConnectionHandler] Already listening');
       return;
     }
 
-    console.log('[BLEConnectionHandler] Starting connection event listener');
+    log('[BLEConnectionHandler] Starting connection event listener');
     this.unsubscribe = addBluetoothListener(this.handleBluetoothEvent.bind(this));
   }
 
@@ -31,7 +32,7 @@ class BLEConnectionHandler {
    */
   stop(): void {
     if (this.unsubscribe) {
-      console.log('[BLEConnectionHandler] Stopping connection event listener');
+      log('[BLEConnectionHandler] Stopping connection event listener');
       this.unsubscribe();
       this.unsubscribe = null;
     }
@@ -48,7 +49,7 @@ class BLEConnectionHandler {
           break;
 
         case 'error':
-          console.error('[BLEConnectionHandler] BLE error:', event.message);
+          await logError('[BLEConnectionHandler] BLE error:', event.message);
           break;
 
         // Other events are handled by BLEManager
@@ -56,7 +57,7 @@ class BLEConnectionHandler {
           break;
       }
     } catch (error) {
-      console.error('[BLEConnectionHandler] Error handling event:', error);
+      await logError('[BLEConnectionHandler] Error handling event:', error);
     }
   }
 
@@ -69,7 +70,7 @@ class BLEConnectionHandler {
     payload: FollowRequestPayload,
   ): Promise<void> {
     try {
-      console.log('[BLEConnectionHandler] Received connection request from:', deviceId);
+      await log('[BLEConnectionHandler] Received connection request from:', deviceId);
 
       // Convert follow-request to connection-request format
       const connectionRequest: ConnectionRequest = {
@@ -85,14 +86,14 @@ class BLEConnectionHandler {
         // Send acceptance response back via BLE
         // For now, the connection is auto-accepted on the responder's side
         // The requester will see the connection as pending-sent until mutual confirmation
-        console.log('[BLEConnectionHandler] Connection request processed:', response.status);
+        await log('[BLEConnectionHandler] Connection request processed:', response.status);
 
         // TODO: Implement sending response back via BLE
         // This requires the responder to write back to the requester's handshake characteristic
         // For MVP, we'll rely on both parties storing the connection locally
       }
     } catch (error) {
-      console.error('[BLEConnectionHandler] Error handling follow request:', error);
+      await logError('[BLEConnectionHandler] Error handling follow request:', error);
     }
   }
 }

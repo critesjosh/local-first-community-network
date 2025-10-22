@@ -68,12 +68,34 @@ class EventEmitter(private val reactContext: ReactApplicationContext) {
 
         // Parse JSON payload
         try {
+            val jsonObject = org.json.JSONObject(payloadJson)
             val payload = Arguments.createMap()
-            // Note: In production, properly parse JSON here
-            // For now, pass as string
-            event.putString("payloadJson", payloadJson)
+
+            // Parse the payload structure
+            val payloadType = jsonObject.optString("type", "follow-request")
+            payload.putString("type", payloadType)
+
+            // Support both "requester" (new) and "follower" (legacy) field names
+            val userFieldName = if (jsonObject.has("requester")) "requester" else "follower"
+            val userJson = jsonObject.getJSONObject(userFieldName)
+            val user = Arguments.createMap()
+            user.putString("userId", userJson.getString("userId"))
+            user.putString("displayName", userJson.getString("displayName"))
+            user.putString("publicKey", userJson.getString("publicKey"))
+            if (userJson.has("profilePhoto") && !userJson.isNull("profilePhoto")) {
+                user.putString("profilePhoto", userJson.getString("profilePhoto"))
+            }
+
+            // Always export as "follower" for backward compatibility with existing event handlers
+            payload.putMap("follower", user)
+
+            payload.putString("timestamp", jsonObject.getString("timestamp"))
+
+            event.putMap("payload", payload)
         } catch (e: Exception) {
-            // Fallback: just send the JSON string
+            // Fallback: send as unparsed string (will likely fail on JS side, but easier to debug)
+            android.util.Log.e("EventEmitter", "Failed to parse follow request JSON: ${e.message}")
+            android.util.Log.e("EventEmitter", "Payload JSON: $payloadJson")
             event.putString("payloadJson", payloadJson)
         }
 

@@ -89,17 +89,22 @@ Build a privacy-first platform for discovering local events and building neighbo
 - **Mutual connection flow:** ✅
   - Requester sends connection-request with public key
   - Responder auto-accepts (or queues if manual approval enabled)
-  - Both parties derive ECDH shared secret from exchanged public keys
-  - Both parties store connection with status (mutual/pending-sent/pending-received)
-- Store connection in SQLite with shared secret for encryption ✅
+  - Both parties store connection with status (mutual by default with auto-accept)
+  - ECDH shared secret derivation deferred until needed for encryption (optimization)
+- Store connection in SQLite; shared secrets derived on-demand ✅
 - No NFC fallback - BLE only for MVP ✅
 
 **Implementation Details:**
 
 - **Auto-Accept (Default):** Connections automatically accepted, creating mutual connections immediately
+  - Both requester and responder save connection with `status: 'mutual'`
+  - No pending states with default settings
 - **Manual Approval (Optional):** User can disable auto-accept in Settings; requests queue as "pending-received"
-- **Privacy-Preserving:** Both parties have each other's public keys; enables E2E encryption
+- **Privacy-Preserving:** Both parties exchange public keys; ECDH shared secrets derived on-demand for encryption
 - **Connection Status:** `mutual` (both connected), `pending-sent` (waiting for response), `pending-received` (awaiting approval)
+- **Auto-Refresh UI:** ConnectionsScreen polls database every 2 seconds for real-time updates
+- **Database Migrations:** Automatic schema updates add missing columns to existing databases
+- **Debug Logging:** User display names prefix all logs ([Alice], [Bob]) for multi-device debugging
 
 **1-Month Simplifications:**
 

@@ -82,26 +82,22 @@ class BLEPeripheralManager(
         Log.d("BLEPeripheralManager", "[$timestamp] displayName: $displayName")
         Log.d("BLEPeripheralManager", "[$timestamp] userHashHex: $userHashHex")
         Log.d("BLEPeripheralManager", "[$timestamp] followTokenHex: $followTokenHex")
-        eventEmitter.sendError("🎯 startAdvertising called: name=$displayName, hash=$userHashHex", "ADVERTISE_DEBUG")
 
         if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
             val msg = "Bluetooth is ${if (bluetoothAdapter == null) "not available" else "disabled"}"
             Log.d("BLEPeripheralManager", "[$timestamp] ERROR: $msg")
-            eventEmitter.sendError("ERROR: $msg", "ADVERTISE_DEBUG")
             promise.reject("bluetooth_unavailable", msg)
             return
         }
 
         if (bluetoothLeAdvertiser == null) {
             Log.d("BLEPeripheralManager", "[$timestamp] ERROR: Bluetooth LE advertiser not available")
-            eventEmitter.sendError("ERROR: BLE advertiser not available", "ADVERTISE_DEBUG")
             promise.reject("advertiser_unavailable", "Bluetooth LE advertiser not available")
             return
         }
 
         if (isAdvertising) {
             Log.d("BLEPeripheralManager", "[$timestamp] Already advertising, resolving")
-            eventEmitter.sendError("Already advertising, skipping", "ADVERTISE_DEBUG")
             promise.resolve(null)
             return
         }
@@ -116,9 +112,6 @@ class BLEPeripheralManager(
         val hexData = manufacturerData.joinToString("") { "%02x".format(it) }
         Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] Built manufacturer data: ${manufacturerData.size} bytes, ID=$MANUFACTURER_ID")
         Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] Data hex: $hexData")
-
-        // Send debug event to JavaScript
-        eventEmitter.sendError("Advertising with ID $MANUFACTURER_ID, ${manufacturerData.size} bytes: $hexData", "ADVERTISE_DEBUG")
 
         val advertiseData = AdvertiseData.Builder()
             .setIncludeDeviceName(false)
@@ -154,11 +147,9 @@ class BLEPeripheralManager(
         promise: Promise
     ) {
         Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] 🔄 updateAdvertisement called")
-        eventEmitter.sendError("🔄 updateAdvertisement called: name=$displayName, hash=$userHashHex", "ADVERTISE_DEBUG")
 
         if (!isAdvertising) {
             Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] ERROR: Not currently advertising")
-            eventEmitter.sendError("ERROR: Not advertising, cannot update", "ADVERTISE_DEBUG")
             promise.reject("not_advertising", "Not currently advertising")
             return
         }

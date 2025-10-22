@@ -8,9 +8,9 @@ This implementation plan outlines the development of a 1-month MVP for the Local
 **Target:** Working prototype with 20-30 beta users
 **Core Flow:** BLE connect → post event to server → fetch from server → discover → attend
 
-## Current Status (Updated 2025-10-20)
+## Current Status (Updated 2025-10-21)
 
-**Progress:** Week 2+ - Custom Bluetooth Module Implementation Complete
+**Progress:** Week 2+ - Physical Device Testing & Connection Flow Refinement
 
 **Completed:**
 - ✅ Week 1: Core Foundation & Identity System (100%)
@@ -23,7 +23,7 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - Bluetooth foundation with scanning and RSSI filtering
 
 - ✅ Week 2, Days 8-9: BLE Connection Flow (100%)
-  - ECDH key exchange using secp256k1
+  - ECDH key exchange using secp256k1 (deferred to on-demand for optimization)
   - BLE device connection management
   - Profile and handshake data exchange
   - ConnectionService for peer connection management
@@ -31,7 +31,7 @@ This implementation plan outlines the development of a 1-month MVP for the Local
 
 - ✅ Week 2, Days 10-11: Connection UI & Management (100%)
   - ConnectionScanScreen with BLE scanning and device discovery
-  - ConnectionsScreen with connections list
+  - ConnectionsScreen with connections list and auto-refresh (2s polling)
   - ConnectionDetailScreen with connection info and disconnect
   - Navigation types and screen routing
   - Disconnect functionality
@@ -55,26 +55,34 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - Test functionality for debugging scan+advertise scenarios
 
 - ✅ **Mutual Connection System with Auto-Accept** (100%)
-  - Connection status tracking (mutual, pending-sent, pending-received)
-  - Bidirectional connection flow with ECDH shared secret derivation
+  - Connection status tracking (mutual by default, pending-sent, pending-received)
+  - Simplified connection flow: both parties create mutual connections immediately
   - ConnectionRequest/ConnectionResponse types for BLE handshake
   - Auto-accept setting (default enabled, configurable in Settings)
   - BLEConnectionHandler service for incoming request processing
-  - Both parties compute and store shared secrets during connection
-  - Privacy-preserving: both parties have each other's public keys for E2E encryption
+  - ECDH shared secret derivation deferred until needed for encryption (performance optimization)
+  - Privacy-preserving: both parties exchange public keys for future E2E encryption
+
+- ✅ **Physical Device Testing & Bug Fixes** (2025-10-21)
+  - Fixed EventEmitter JSON payload parsing (requester vs follower fields)
+  - Removed premature shared secret derivation (deferred to on-demand)
+  - Database migrations for schema updates (status, trust_level columns)
+  - User-labeled logging system for multi-device debugging ([Alice], [Bob] prefixes)
+  - Auto-refresh ConnectionsScreen for real-time connection updates
+  - Simplified connection flow to always create mutual connections (no pending screens)
+  - Comprehensive BLE discovery logging for debugging
+  - Resolved one-way BLE discovery issue (both devices now discover each other successfully)
 
 **In Progress:**
-- Physical device testing and debugging of custom Bluetooth module
 - Week 2, Days 12-13: Event Posting System (hybrid encryption implemented, UI pending)
 
 **Next Up:**
-- Test custom Bluetooth module on physical iOS/Android devices
-- Test mutual connection flow with shared secret derivation
+- Test mutual connection flow end-to-end on physical devices
 - Create Event UI with form inputs
 - Event posting system integration with UI
 - Simple server backend for encrypted post storage/retrieval
 
-**Test Status:** 171/171 passing ✅ (base test suite, Bluetooth and mutual connections require physical device testing)
+**Test Status:** 171/171 passing ✅ (base test suite, BLE physical device testing in progress)
 
 ## Technology Stack
 

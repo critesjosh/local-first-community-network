@@ -1,4 +1,4 @@
-import React, {useState, useCallback} from 'react';
+import React, {useState, useCallback, useEffect, useRef} from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ type Props = MainTabScreenProps<'Connections'>;
 const ConnectionsScreen = ({navigation}: Props) => {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadConnections = async () => {
     try {
@@ -28,10 +29,23 @@ const ConnectionsScreen = ({navigation}: Props) => {
     }
   };
 
-  // Load connections when screen comes into focus
+  // Load connections when screen comes into focus and start polling
   useFocusEffect(
     useCallback(() => {
       loadConnections();
+
+      // Poll for new connections every 2 seconds while screen is focused
+      pollIntervalRef.current = setInterval(() => {
+        loadConnections();
+      }, 2000);
+
+      // Cleanup polling when screen loses focus
+      return () => {
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+      };
     }, []),
   );
 

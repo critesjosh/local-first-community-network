@@ -129,15 +129,10 @@ const ConnectionScanScreen = ({navigation}: Props) => {
       setIsProcessing(false);
       setSelectedDevice(null);
 
-      // Show different message based on connection status
-      const statusMessage =
-        result.connection.status === 'mutual'
-          ? 'You are now connected!'
-          : 'Connection request sent. Waiting for acceptance.';
-
+      // Connection is now mutual by default, just navigate back to Connections screen
       Alert.alert(
-        'Connection Request',
-        `${statusMessage}\n\nConnected with: ${result.profile.displayName}`,
+        'Connected!',
+        `You are now connected with ${result.profile.displayName}`,
         [
           {
             text: 'OK',

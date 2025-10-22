@@ -27,6 +27,7 @@ import {
   BroadcastPayload,
 } from '../../types/bluetooth';
 import BLEBroadcastService from './BLEBroadcastService';
+import {log, logError, logSync, logErrorSync} from '../../utils/logger';
 
 class BLEManagerService {
   private state: BLEConnectionState = {
@@ -50,17 +51,17 @@ class BLEManagerService {
       // Request permissions
       const permissionsGranted = await Bluetooth.requestPermissions();
       if (!permissionsGranted) {
-        console.error('Bluetooth permissions not granted');
+        await logError('Bluetooth permissions not granted');
         return false;
       }
 
       // Setup event listeners
       this.bluetoothEventUnsubscribe = addBluetoothListener(this.handleBluetoothEvent.bind(this));
 
-      console.log('BLE Manager initialized successfully');
+      await log('BLE Manager initialized successfully');
       return true;
     } catch (error) {
-      console.error('Error initializing BLE Manager:', error);
+      await logError('Error initializing BLE Manager:', error);
       return false;
     }
   }
@@ -96,8 +97,11 @@ class BLEManagerService {
   private handleDeviceDiscovered(event: BluetoothEvent & {type: 'deviceDiscovered'}): void {
     const {deviceId, rssi, payload} = event;
 
+    logSync(`[BLE] Device discovered: ${payload.displayName || 'Unknown'} (${deviceId}) RSSI: ${rssi} dBm`);
+
     // Filter by RSSI threshold
     if (rssi < RSSI_THRESHOLD) {
+      logSync(`[BLE] Filtered: RSSI ${rssi} below threshold ${RSSI_THRESHOLD}`);
       return;
     }
 
@@ -109,8 +113,11 @@ class BLEManagerService {
       payload.userHashHex === localFingerprint
     ) {
       // Ignore our own broadcast
+      logSync(`[BLE] Filtered: Own device broadcast`);
       return;
     }
+
+    logSync(`[BLE] Adding device to list: ${payload.displayName || 'Unknown'}`);
 
     // Use userHashHex as stable device key, fallback to deviceId
     const deviceKey = payload.userHashHex || deviceId;
@@ -136,10 +143,12 @@ class BLEManagerService {
    */
   async startScanning(): Promise<void> {
     if (this.state.isScanning) {
+      await log('[BLE] Already scanning, skipping');
       return;
     }
 
     try {
+      await log('[BLE] Starting BLE scan...');
       this.state.isScanning = true;
       this.state.discoveredDevices.clear();
       this.notifyStateListeners();
@@ -149,13 +158,14 @@ class BLEManagerService {
 
       // Start scanning
       await Bluetooth.startScanning();
+      await log('[BLE] BLE scan started successfully');
 
       // Auto-stop after timeout
       setTimeout(() => {
         this.stopScanning();
       }, SCAN_TIMEOUT);
     } catch (error) {
-      console.error('Error starting BLE scan:', error);
+      await logError('Error starting BLE scan:', error);
       this.state.isScanning = false;
       this.notifyStateListeners();
       throw error;
@@ -170,14 +180,14 @@ class BLEManagerService {
       return;
     }
 
-    console.log('Stopping BLE scan');
+    await log('Stopping BLE scan');
     try {
       await Bluetooth.stopScanning();
       this.state.isScanning = false;
       this.stopDeviceExpiryTimer();
       this.notifyStateListeners();
     } catch (error) {
-      console.error('Error stopping scan:', error);
+      await logError('Error stopping scan:', error);
     }
   }
 
@@ -265,7 +275,7 @@ class BLEManagerService {
       try {
         listener(device);
       } catch (error) {
-        console.error('Error in scan listener:', error);
+        logErrorSync('Error in scan listener:', error);
       }
     });
   }
@@ -278,7 +288,7 @@ class BLEManagerService {
       try {
         listener(this.state);
       } catch (error) {
-        console.error('Error in state listener:', error);
+        logErrorSync('Error in state listener:', error);
       }
     });
   }
@@ -288,12 +298,12 @@ class BLEManagerService {
    */
   async connectToDevice(deviceId: string): Promise<any> {
     try {
-      console.log(`Connecting to device ${deviceId}...`);
+      await log(`Connecting to device ${deviceId}...`);
       await Bluetooth.connect(deviceId, 10000); // 10 second timeout
-      console.log(`Connected to device ${deviceId}`);
+      await log(`Connected to device ${deviceId}`);
       return {id: deviceId}; // Return a minimal device object
     } catch (error) {
-      console.error('Error connecting to device:', error);
+      await logError('Error connecting to device:', error);
       return null;
     }
   }
@@ -304,9 +314,9 @@ class BLEManagerService {
   async disconnectFromDevice(deviceId: string): Promise<void> {
     try {
       await Bluetooth.disconnect(deviceId);
-      console.log(`Disconnected from device ${deviceId}`);
+      await log(`Disconnected from device ${deviceId}`);
     } catch (error) {
-      console.error('Error disconnecting from device:', error);
+      await logError('Error disconnecting from device:', error);
     }
   }
 
@@ -317,10 +327,10 @@ class BLEManagerService {
     try {
       const profileJson = await Bluetooth.readProfile(device.id);
       const profile: ConnectionProfile = JSON.parse(profileJson);
-      console.log('Profile received:', profile);
+      await log('Profile received:', profile);
       return profile;
     } catch (error) {
-      console.error('Error reading profile:', error);
+      await logError('Error reading profile:', error);
       return null;
     }
   }
@@ -333,10 +343,10 @@ class BLEManagerService {
   async writeHandshake(device: any, handshakeData: any): Promise<boolean> {
     try {
       await Bluetooth.writeFollowRequest(device.id, handshakeData);
-      console.log('Handshake data written');
+      await log('Handshake data written');
       return true;
     } catch (error) {
-      console.error('Error writing handshake:', error);
+      await logError('Error writing handshake:', error);
       return false;
     }
   }

@@ -20,6 +20,7 @@ import BLEBroadcastService from '../services/bluetooth/BLEBroadcastService';
 import BLEConnectionHandler from '../services/bluetooth/BLEConnectionHandler';
 import IdentityService from '../services/IdentityService';
 import {addBluetoothListener} from '@localcommunity/rn-bluetooth';
+import {initLogger} from '../utils/logger';
 
 interface RSVPState {
   [eventId: string]: {
@@ -33,6 +34,11 @@ const HomeScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [rsvpState, setRsvpState] = useState<RSVPState>({});
+
+  // Initialize logger with user display name
+  useEffect(() => {
+    initLogger();
+  }, []);
 
   // Listen for Bluetooth events from native layer
   useEffect(() => {

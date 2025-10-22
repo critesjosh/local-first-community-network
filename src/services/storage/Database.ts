@@ -17,6 +17,7 @@ class Database {
     try {
       this.db = await SQLite.openDatabaseAsync(this.dbName);
       await this.createTables();
+      await this.runMigrations();
     } catch (error) {
       console.error('Error initializing database:', error);
       throw new Error('Failed to initialize database');
@@ -88,6 +89,37 @@ class Database {
     } catch (error) {
       console.error('Error creating database tables:', error);
       throw new Error(`Failed to create database tables: ${error}`);
+    }
+  }
+
+  /**
+   * Run database migrations to update existing tables
+   */
+  private async runMigrations(): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      // Migration 1: Add status column to connections table if it doesn't exist
+      await this.db.execAsync(`
+        -- Check if status column exists, if not add it
+        ALTER TABLE connections ADD COLUMN status TEXT NOT NULL DEFAULT 'pending-sent';
+      `).catch(() => {
+        // Column already exists, ignore error
+        console.log('[Database] status column already exists');
+      });
+
+      // Migration 2: Add trust_level column to connections table if it doesn't exist
+      await this.db.execAsync(`
+        ALTER TABLE connections ADD COLUMN trust_level TEXT NOT NULL DEFAULT 'pending';
+      `).catch(() => {
+        // Column already exists, ignore error
+        console.log('[Database] trust_level column already exists');
+      });
+
+      console.log('[Database] Migrations completed successfully');
+    } catch (error) {
+      console.error('Error running database migrations:', error);
+      // Don't throw - migrations are best-effort
     }
   }
 

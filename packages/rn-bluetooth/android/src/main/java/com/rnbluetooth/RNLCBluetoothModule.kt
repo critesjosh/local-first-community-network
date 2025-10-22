@@ -29,7 +29,6 @@ class RNLCBluetoothModule(reactContext: ReactApplicationContext) :
 
     init {
         android.util.Log.d("RNLCBluetoothModule", "[${System.currentTimeMillis()}] 🚀 Module initialized - BUILD TIMESTAMP: ${System.currentTimeMillis()}")
-        eventEmitter.sendError("🚀 Native Bluetooth module loaded! Timestamp: ${System.currentTimeMillis()}", "MODULE_INIT")
 
         // Reset advertising state on module load (in case app was killed while advertising)
         peripheralManager.resetState()
@@ -217,7 +216,6 @@ class RNLCBluetoothModule(reactContext: ReactApplicationContext) :
     fun isAdvertising(promise: Promise) {
         val advertising = peripheralManager.getIsAdvertising()
         android.util.Log.d("RNLCBluetoothModule", "[${System.currentTimeMillis()}] isAdvertising() called - returning: $advertising")
-        eventEmitter.sendError("isAdvertising() called - returning: $advertising", "IS_ADVERTISING_CHECK")
         promise.resolve(advertising)
     }
 
