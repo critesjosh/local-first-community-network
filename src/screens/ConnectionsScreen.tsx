@@ -21,11 +21,7 @@ const ConnectionsScreen = ({navigation}: Props) => {
   const [pendingReceived, setPendingReceived] = useState<Connection[]>([]);
   const [pendingSent, setPendingSent] = useState<Connection[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-<<<<<<< HEAD
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const [creatingTest, setCreatingTest] = useState(false);
-=======
->>>>>>> feature/ios-ble-follow-flow
 
   const loadConnections = async () => {
     try {
