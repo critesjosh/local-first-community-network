@@ -21,8 +21,11 @@ const ConnectionsScreen = ({navigation}: Props) => {
   const [pendingReceived, setPendingReceived] = useState<Connection[]>([]);
   const [pendingSent, setPendingSent] = useState<Connection[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+<<<<<<< HEAD
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [creatingTest, setCreatingTest] = useState(false);
+=======
+>>>>>>> feature/ios-ble-follow-flow
 
   const loadConnections = async () => {
     try {
@@ -114,6 +117,7 @@ const ConnectionsScreen = ({navigation}: Props) => {
     navigation.navigate('ConnectionDetail', {connectionId: connection.id});
   };
 
+<<<<<<< HEAD
   const handleAcceptConnection = async (connectionId: string) => {
     try {
       console.log('[ConnectionsScreen] Accept button clicked for:', connectionId.substring(0, 8));
@@ -167,6 +171,8 @@ const ConnectionsScreen = ({navigation}: Props) => {
       setCreatingTest(false);
     }
   };
+=======
+>>>>>>> feature/ios-ble-follow-flow
 
   const formatDate = (date: Date) => {
     const now = new Date();
@@ -268,14 +274,6 @@ const ConnectionsScreen = ({navigation}: Props) => {
           <Text style={styles.connectButtonText}>Discover Nearby Profiles</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.testButton}
-          onPress={handleCreateTestConnection}
-          disabled={creatingTest}>
-          <Text style={styles.testButtonText}>
-            {creatingTest ? 'Creating...' : '🧪 Create Test Connection'}
-          </Text>
-        </TouchableOpacity>
 
         {connections.length === 0 &&
         pendingReceived.length === 0 &&
@@ -367,21 +365,6 @@ const styles = StyleSheet.create({
   connectButtonText: {
     color: 'white',
     fontSize: 18,
-    fontWeight: '600',
-  },
-  testButton: {
-    backgroundColor: '#F2F2F7',
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#C7C7CC',
-  },
-  testButtonText: {
-    color: '#8E8E93',
-    fontSize: 14,
     fontWeight: '600',
   },
   placeholder: {

@@ -3,10 +3,9 @@
  * This interface is used by React Native codegen to generate native code
  */
 
-import type {TurboModule} from 'react-native';
-import {TurboModuleRegistry} from 'react-native';
+import {NativeModules} from 'react-native';
 
-export interface Spec extends TurboModule {
+export interface Spec {
   /**
    * Initialize the Bluetooth module
    * Must be called before any other operations
@@ -131,4 +130,4 @@ export interface Spec extends TurboModule {
   isConnected(deviceId: string): Promise<boolean>;
 }
 
-export default TurboModuleRegistry.getEnforcing<Spec>('RNLCBluetooth');
+export default NativeModules.RNLCBluetoothModule;

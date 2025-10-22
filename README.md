@@ -19,11 +19,11 @@ The fastest way to test on your phone is using Expo Go:
 2. Run `npm start` in this directory
 3. Scan the QR code with Expo Go (Android) or Camera app (iOS)
 
-See **QUICKSTART.md** for detailed step-by-step instructions.
+See **[docs/QUICKSTART.md](docs/QUICKSTART.md)** for detailed step-by-step instructions.
 
 ### Complete Setup
 
-For full setup instructions including local builds and development builds, see **SETUP.md**.
+For full setup instructions including local builds and development builds, see **[docs/SETUP.md](docs/SETUP.md)**.
 
 ## Available Commands
 
@@ -42,20 +42,39 @@ npm run prebuild          # Generate native projects (android/, ios/)
 npm run prebuild:clean    # Clean and regenerate native projects
 npm run build:android     # Build Android APK locally
 npm run build:ios         # Build iOS app locally (macOS only)
+npm run build:ios:production  # Build for App Store submission
+```
+
+### Release & Updates
+```bash
+# Over-the-Air Updates (Instant deployment)
+npm run hotfix            # Emergency fixes
+npm run release:ota       # Regular OTA updates
+
+# App Store Releases (1-7 day review)
+npm run release:patch     # Bug fixes (1.0.0 → 1.0.1)
+npm run release:minor     # New features (1.0.0 → 1.1.0)
+npm run release:major     # Breaking changes (1.0.0 → 2.0.0)
+
+# Interactive Release Script
+npm run release ota       # Deploy OTA update
+npm run release patch     # Create patch release
 ```
 
 ## Project Structure
 
 ```
 local-social-network-expo/
-├── App.js              # Main application entry point
-├── app.json            # Expo configuration
-├── eas.json            # Build configuration
-├── package.json        # Dependencies and scripts
-├── assets/             # Images, fonts, icons
-├── QUICKSTART.md       # 5-minute setup guide
-├── SETUP.md            # Complete setup documentation
-└── README.md           # This file
+├── App.tsx                   # Main application entry point
+├── app.json                  # Expo configuration
+├── eas.json                  # Build configuration
+├── package.json              # Dependencies and scripts
+├── assets/                   # Images, fonts, icons
+├── src/                      # Source code
+├── scripts/                  # Release and automation scripts
+├── docs/                     # All project documentation
+├── .github/workflows/        # CI/CD workflows
+└── README.md                 # This file
 ```
 
 ## Testing Methods
@@ -76,8 +95,24 @@ local-social-network-expo/
 
 ## Documentation
 
-- **QUICKSTART.md** - Get running in 5 minutes
-- **SETUP.md** - Complete setup guide with all options
+### 📚 **Project Documentation**
+- **[docs/QUICKSTART.md](docs/QUICKSTART.md)** - Get running in 5 minutes
+- **[docs/SETUP.md](docs/SETUP.md)** - Complete setup guide with all options
+- **[docs/RELEASE_WORKFLOW.md](docs/RELEASE_WORKFLOW.md)** - Versioning and update deployment guide
+- **[docs/SCRIPTS_OVERVIEW.md](docs/SCRIPTS_OVERVIEW.md)** - Complete scripts reference and communication guide
+- **[docs/COMMUNICATION_CHECKLIST.md](docs/COMMUNICATION_CHECKLIST.md)** - Script communication checklist and templates
+
+### 📋 **Project Specifications**
+- **[docs/PRD.md](docs/PRD.md)** - Product Requirements Document
+- **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** - Technical implementation plan
+- **[docs/CRYPTO_FIX_SUMMARY.md](docs/CRYPTO_FIX_SUMMARY.md)** - Cryptographic implementation summary
+- **[docs/BLUETOOTH_IMPLEMENTATION_SUMMARY.md](docs/BLUETOOTH_IMPLEMENTATION_SUMMARY.md)** - Bluetooth implementation summary
+
+### 🤖 **Development Notes**
+- **[docs/AGENTS.md](docs/AGENTS.md)** - AI agent development notes
+- **[docs/CLAUDE.md](docs/CLAUDE.md)** - Claude AI development documentation
+
+### 🔗 **External Resources**
 - [Expo Documentation](https://docs.expo.dev)
 - [React Native Documentation](https://reactnative.dev)
 
@@ -106,7 +141,7 @@ local-social-network-expo/
 **Build errors?**
 - Clear cache: `npm start -- --clear`
 - Reinstall: `rm -rf node_modules && npm install`
-- See SETUP.md for detailed troubleshooting
+- See [docs/SETUP.md](docs/SETUP.md) for detailed troubleshooting
 
 ## Next Steps
 
@@ -121,6 +156,6 @@ Private project
 
 ## Support
 
-For setup issues, see SETUP.md or consult:
+For setup issues, see [docs/SETUP.md](docs/SETUP.md) or consult:
 - [Expo Forums](https://forums.expo.dev)
 - [Expo Discord](https://chat.expo.dev)
