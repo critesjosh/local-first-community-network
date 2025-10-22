@@ -129,17 +129,30 @@ const ConnectionScanScreen = ({navigation}: Props) => {
       setIsProcessing(false);
       setSelectedDevice(null);
 
-      // Connection is now mutual by default, just navigate back to Connections screen
-      Alert.alert(
-        'Connected!',
-        `You are now connected with ${result.profile.displayName}`,
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ],
-      );
+      // Show appropriate message based on connection status
+      if (result.connection.status === 'mutual') {
+        Alert.alert(
+          'Connected!',
+          `You are now connected with ${result.profile.displayName}`,
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ],
+        );
+      } else if (result.connection.status === 'pending-sent') {
+        Alert.alert(
+          'Request Sent',
+          `Your connection request has been sent to ${result.profile.displayName}. Scan again later to check if they've accepted.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ],
+        );
+      }
     } catch (error) {
       console.error('Error requesting connection:', error);
       Alert.alert('Connection Error', 'Failed to request connection. Please try again.');

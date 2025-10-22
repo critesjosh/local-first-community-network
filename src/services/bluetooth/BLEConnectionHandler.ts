@@ -48,6 +48,10 @@ class BLEConnectionHandler {
           await this.handleFollowRequest(event.fromDeviceId, event.payload);
           break;
 
+        case 'connectionResponseReceived':
+          await this.handleConnectionResponse(event.fromDeviceId, event.payload);
+          break;
+
         case 'error':
           await logError('[BLEConnectionHandler] BLE error:', event.message);
           break;
@@ -82,18 +86,60 @@ class BLEConnectionHandler {
       // Process the connection request
       const response = await ConnectionService.handleConnectionRequest(connectionRequest);
 
-      if (response && response.status === 'accepted') {
-        // Send acceptance response back via BLE
-        // For now, the connection is auto-accepted on the responder's side
-        // The requester will see the connection as pending-sent until mutual confirmation
-        await log('[BLEConnectionHandler] Connection request processed:', response.status);
+      if (response) {
+        await log('[BLEConnectionHandler] Connection request processed, response status:', response.status);
 
-        // TODO: Implement sending response back via BLE
-        // This requires the responder to write back to the requester's handshake characteristic
-        // For MVP, we'll rely on both parties storing the connection locally
+        // Send response back to requester via BLE
+        try {
+          await log('[BLEConnectionHandler] Attempting to connect back to requester:', deviceId);
+
+          // Connect to the requester (they should still be connected and listening)
+          const requesterDevice = await Bluetooth.connect(deviceId, 5000);
+          await log('[BLEConnectionHandler] Connected successfully to requester');
+
+          // Write response to their handshake characteristic
+          const responseJson = JSON.stringify(response);
+          await log('[BLEConnectionHandler] Sending response JSON:', responseJson);
+          await Bluetooth.writeFollowRequest(deviceId, responseJson);
+
+          await log('[BLEConnectionHandler] Response sent successfully:', response.status);
+
+          // Disconnect
+          await Bluetooth.disconnect(deviceId);
+          await log('[BLEConnectionHandler] Disconnected from requester');
+        } catch (error) {
+          await logError('[BLEConnectionHandler] Failed to send response back - requester may have disconnected:', error);
+          await logError('[BLEConnectionHandler] This is expected if requester disconnected before response was ready');
+          // Not critical - the connection is stored locally
+          // The requester will need to check back later or we can implement a polling mechanism
+        }
       }
     } catch (error) {
       await logError('[BLEConnectionHandler] Error handling follow request:', error);
+    }
+  }
+
+  /**
+   * Handle incoming connection response
+   */
+  private async handleConnectionResponse(
+    deviceId: string,
+    payload: any,
+  ): Promise<void> {
+    try {
+      await log('[BLEConnectionHandler] Received connection response from:', deviceId);
+
+      const connectionResponse: ConnectionResponse = {
+        type: 'connection-response',
+        status: payload.status,
+        responder: payload.responder,
+        timestamp: payload.timestamp,
+      };
+
+      await ConnectionService.handleConnectionResponse(connectionResponse);
+      await log('[BLEConnectionHandler] Connection response processed:', payload.status);
+    } catch (error) {
+      await logError('[BLEConnectionHandler] Error handling connection response:', error);
     }
   }
 }

@@ -57,13 +57,13 @@ class EventEmitter(private val reactContext: ReactApplicationContext) {
 
     /**
      * Send follow request received event
+     * Also handles connection responses with same mechanism
      */
     fun sendFollowRequestReceived(
         fromDeviceId: String,
         payloadJson: String
     ) {
         val event = Arguments.createMap()
-        event.putString("type", "followRequestReceived")
         event.putString("fromDeviceId", fromDeviceId)
 
         // Parse JSON payload
@@ -75,27 +75,50 @@ class EventEmitter(private val reactContext: ReactApplicationContext) {
             val payloadType = jsonObject.optString("type", "follow-request")
             payload.putString("type", payloadType)
 
-            // Support both "requester" (new) and "follower" (legacy) field names
-            val userFieldName = if (jsonObject.has("requester")) "requester" else "follower"
-            val userJson = jsonObject.getJSONObject(userFieldName)
-            val user = Arguments.createMap()
-            user.putString("userId", userJson.getString("userId"))
-            user.putString("displayName", userJson.getString("displayName"))
-            user.putString("publicKey", userJson.getString("publicKey"))
-            if (userJson.has("profilePhoto") && !userJson.isNull("profilePhoto")) {
-                user.putString("profilePhoto", userJson.getString("profilePhoto"))
+            // Determine event type based on payload type
+            when (payloadType) {
+                "connection-response" -> {
+                    event.putString("type", "connectionResponseReceived")
+                    payload.putString("status", jsonObject.optString("status", "pending"))
+
+                    // Parse responder info
+                    val responderJson = jsonObject.getJSONObject("responder")
+                    val responder = Arguments.createMap()
+                    responder.putString("userId", responderJson.getString("userId"))
+                    responder.putString("displayName", responderJson.getString("displayName"))
+                    responder.putString("publicKey", responderJson.getString("publicKey"))
+                    if (responderJson.has("profilePhoto") && !responderJson.isNull("profilePhoto")) {
+                        responder.putString("profilePhoto", responderJson.getString("profilePhoto"))
+                    }
+                    payload.putMap("responder", responder)
+                }
+                else -> {
+                    // connection-request or follow-request
+                    event.putString("type", "followRequestReceived")
+
+                    // Support both "requester" (new) and "follower" (legacy) field names
+                    val userFieldName = if (jsonObject.has("requester")) "requester" else "follower"
+                    val userJson = jsonObject.getJSONObject(userFieldName)
+                    val user = Arguments.createMap()
+                    user.putString("userId", userJson.getString("userId"))
+                    user.putString("displayName", userJson.getString("displayName"))
+                    user.putString("publicKey", userJson.getString("publicKey"))
+                    if (userJson.has("profilePhoto") && !userJson.isNull("profilePhoto")) {
+                        user.putString("profilePhoto", userJson.getString("profilePhoto"))
+                    }
+
+                    // Always export as "follower" for backward compatibility with existing event handlers
+                    payload.putMap("follower", user)
+                }
             }
 
-            // Always export as "follower" for backward compatibility with existing event handlers
-            payload.putMap("follower", user)
-
             payload.putString("timestamp", jsonObject.getString("timestamp"))
-
             event.putMap("payload", payload)
         } catch (e: Exception) {
             // Fallback: send as unparsed string (will likely fail on JS side, but easier to debug)
-            android.util.Log.e("EventEmitter", "Failed to parse follow request JSON: ${e.message}")
+            android.util.Log.e("EventEmitter", "Failed to parse handshake JSON: ${e.message}")
             android.util.Log.e("EventEmitter", "Payload JSON: $payloadJson")
+            event.putString("type", "followRequestReceived")
             event.putString("payloadJson", payloadJson)
         }
 

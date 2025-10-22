@@ -60,6 +60,21 @@ export type BluetoothEvent =
       payload: FollowRequestPayload;
     }
   | {
+      type: 'connectionResponseReceived';
+      fromDeviceId: string;
+      payload: {
+        type: string;
+        status: 'accepted' | 'rejected' | 'pending';
+        responder: {
+          userId: string;
+          displayName: string;
+          publicKey: string;
+          profilePhoto?: string;
+        };
+        timestamp: string;
+      };
+    }
+  | {
       type: 'scanStopped';
     }
   | {

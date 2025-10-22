@@ -100,11 +100,22 @@ Build a privacy-first platform for discovering local events and building neighbo
   - Both requester and responder save connection with `status: 'mutual'`
   - No pending states with default settings
 - **Manual Approval (Optional):** User can disable auto-accept in Settings; requests queue as "pending-received"
+  - **Pending Approval UI:** ConnectionsScreen displays three sections:
+    - "Pending Requests" with Accept/Reject buttons for incoming requests
+    - "Requests Sent" showing outgoing pending connections
+    - "Connections" showing mutual connections
+  - **Manual Acceptance:** Tapping "Accept" upgrades connection to mutual status in database
+  - **Automatic Synchronization:** Background BLE scan runs automatically when ConnectionsScreen is focused
+    - Scans for 3 seconds to discover nearby devices
+    - Auto-upgrades pending-sent connections to mutual if other party has accepted
+    - Also triggered by pull-to-refresh gesture
+    - No manual scanning required - status updates automatically
 - **Privacy-Preserving:** Both parties exchange public keys; ECDH shared secrets derived on-demand for encryption
 - **Connection Status:** `mutual` (both connected), `pending-sent` (waiting for response), `pending-received` (awaiting approval)
 - **Auto-Refresh UI:** ConnectionsScreen polls database every 2 seconds for real-time updates
 - **Database Migrations:** Automatic schema updates add missing columns to existing databases
 - **Debug Logging:** User display names prefix all logs ([Alice], [Bob]) for multi-device debugging
+- **Status Display:** ConnectionDetailScreen shows accurate connection status (mutual/pending-sent/pending-received)
 
 **1-Month Simplifications:**
 

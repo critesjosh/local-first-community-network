@@ -54,14 +54,24 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - Location Services warning for Android BLE scanning
   - Test functionality for debugging scan+advertise scenarios
 
-- ✅ **Mutual Connection System with Auto-Accept** (100%)
+- ✅ **Mutual Connection System with Auto-Accept & Pending Approval** (100%)
   - Connection status tracking (mutual by default, pending-sent, pending-received)
-  - Simplified connection flow: both parties create mutual connections immediately
+  - Simplified connection flow: both parties create mutual connections immediately with auto-accept enabled
   - ConnectionRequest/ConnectionResponse types for BLE handshake
   - Auto-accept setting (default enabled, configurable in Settings)
+  - **Pending Approval UI:** ConnectionsScreen displays three sections when auto-accept is disabled:
+    - "Pending Requests" section with Accept/Reject buttons for incoming requests
+    - "Requests Sent" section showing outgoing pending connections
+    - "Connections" section showing mutual connections
+  - **Manual acceptance flow:** Accept button upgrades connection status to mutual in database
+  - **Automatic background sync:** ConnectionsScreen triggers 3-second BLE scan on focus/refresh
+    - Auto-discovers nearby devices with pending connections
+    - Auto-upgrades pending-sent to mutual if other party has accepted
+    - No manual navigation required - seamless status updates
   - BLEConnectionHandler service for incoming request processing
   - ECDH shared secret derivation deferred until needed for encryption (performance optimization)
   - Privacy-preserving: both parties exchange public keys for future E2E encryption
+  - ConnectionDetailScreen displays accurate status (mutual/pending-sent/pending-received)
 
 - ✅ **Physical Device Testing & Bug Fixes** (2025-10-21)
   - Fixed EventEmitter JSON payload parsing (requester vs follower fields)
@@ -69,9 +79,14 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - Database migrations for schema updates (status, trust_level columns)
   - User-labeled logging system for multi-device debugging ([Alice], [Bob] prefixes)
   - Auto-refresh ConnectionsScreen for real-time connection updates
-  - Simplified connection flow to always create mutual connections (no pending screens)
   - Comprehensive BLE discovery logging for debugging
   - Resolved one-way BLE discovery issue (both devices now discover each other successfully)
+  - **Pending approval flow implementation:**
+    - Fixed auto-accept setting to properly create pending-received connections
+    - Added pending request UI sections with Accept/Reject buttons
+    - Fixed ConnectionDetailScreen status display (using status field instead of trustLevel)
+    - Implemented automatic background synchronization for pending connections
+    - Auto-upgrade pending-sent to mutual when responder accepts
 
 **In Progress:**
 - Week 2, Days 12-13: Event Posting System (hybrid encryption implemented, UI pending)
@@ -193,14 +208,19 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - Scanning animation
   - Device list with RSSI indicators
   - Connection confirmation dialog
-- [x] Build connections list screen
-- [x] Add connection details view
+- [x] Build connections list screen with three sections:
+  - "Pending Requests" (incoming) with Accept/Reject buttons
+  - "Requests Sent" (outgoing) showing pending status
+  - "Connections" (mutual) with connection cards
+- [x] Add connection details view with accurate status display
 - [x] Implement disconnect functionality
 - [x] Navigation types and screen routing
-- [x] All tests passing (164 tests)
+- [x] All tests passing (171 tests)
 - [x] **Mutual Connection System:**
   - Connection status tracking (mutual/pending-sent/pending-received)
   - Bidirectional handshake with auto-accept (default enabled)
+  - Manual approval flow with pending request UI
+  - Automatic background synchronization for status updates
   - ECDH shared secret derivation for both parties
   - BLEConnectionHandler for incoming request processing
   - Auto-accept toggle in SettingsScreen

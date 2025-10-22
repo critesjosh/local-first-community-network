@@ -84,17 +84,18 @@ const ConnectionDetailScreen = ({route, navigation}: Props) => {
     }
   };
 
-  const getTrustLevelText = (trustLevel: string) => {
-    switch (trustLevel) {
-      case 'verified':
-        return 'Mutual Follow (verified nearby)';
-      case 'pending':
-        return 'Following (awaiting follow-back)';
-      case 'trusted':
-        return 'Trusted Connection';
-      default:
-        return 'Basic Connection';
+  const getConnectionStatusText = () => {
+    if (!connection) return 'Connection';
+
+    if (connection.status === 'mutual') {
+      return 'Mutual Connection';
+    } else if (connection.status === 'pending-sent') {
+      return 'Request Sent (awaiting acceptance)';
+    } else if (connection.status === 'pending-received') {
+      return 'Request Received';
     }
+
+    return 'Connection';
   };
 
   if (loading) {
@@ -148,14 +149,22 @@ const ConnectionDetailScreen = ({route, navigation}: Props) => {
           <View
             style={[
               styles.trustBadge,
-              {backgroundColor: getTrustLevelColor(connection.trustLevel) + '20'},
+              {
+                backgroundColor:
+                  connection.status === 'mutual'
+                    ? '#34C75920'
+                    : '#007AFF20',
+              },
             ]}>
             <Text
               style={[
                 styles.trustBadgeText,
-                {color: getTrustLevelColor(connection.trustLevel)},
+                {
+                  color: connection.status === 'mutual' ? '#34C759' : '#007AFF',
+                },
               ]}>
-              ✓ {getTrustLevelText(connection.trustLevel)}
+              {connection.status === 'mutual' ? '✓ ' : ''}
+              {getConnectionStatusText()}
             </Text>
           </View>
         </View>
