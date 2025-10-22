@@ -21,7 +21,8 @@ export interface Connection {
   sharedSecret?: Uint8Array; // ECDH derived secret
   connectedAt: Date;
   notes?: string; // private notes about this connection
-  trustLevel: 'verified' | 'pending';
+  status: 'mutual' | 'pending-sent' | 'pending-received'; // mutual = both connected
+  trustLevel: 'verified' | 'pending'; // kept for backward compatibility
 }
 
 export interface Event {

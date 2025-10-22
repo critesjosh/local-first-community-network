@@ -1,4 +1,4 @@
-import React, {useState, useCallback} from 'react';
+import React, {useState, useCallback, useEffect, useRef} from 'react';
 import {
   View,
   Text,
@@ -18,28 +18,91 @@ type Props = MainTabScreenProps<'Connections'>;
 
 const ConnectionsScreen = ({navigation}: Props) => {
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [pendingReceived, setPendingReceived] = useState<Connection[]>([]);
+  const [pendingSent, setPendingSent] = useState<Connection[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [creatingTest, setCreatingTest] = useState(false);
 
   const loadConnections = async () => {
     try {
       const loadedConnections = await ConnectionService.getConnections();
-      setConnections(loadedConnections);
+
+      console.log('[ConnectionsScreen] Loaded connections:', loadedConnections.map(c => ({
+        displayName: c.displayName,
+        status: c.status,
+        id: c.id.substring(0, 8),
+      })));
+
+      // Separate into mutual, pending-received, and pending-sent
+      const mutual = loadedConnections.filter(c => c.status === 'mutual');
+      const received = loadedConnections.filter(c => c.status === 'pending-received');
+      const sent = loadedConnections.filter(c => c.status === 'pending-sent');
+
+      console.log('[ConnectionsScreen] Mutual:', mutual.length, 'Pending-received:', received.length, 'Pending-sent:', sent.length);
+
+      setConnections(mutual);
+      setPendingReceived(received);
+      setPendingSent(sent);
     } catch (error) {
       console.error('Error loading connections:', error);
     }
   };
 
-  // Load connections when screen comes into focus
+  // Load connections when screen comes into focus and start polling
   useFocusEffect(
     useCallback(() => {
-      loadConnections();
+      const initializeAndSync = async () => {
+        await loadConnections();
+
+        // Check for pending-sent connections and sync automatically
+        const allConnections = await ConnectionService.getConnections();
+        const hasPending = allConnections.some(c => c.status === 'pending-sent');
+
+        if (hasPending) {
+          console.log('[ConnectionsScreen] Found pending connections, syncing automatically...');
+          const upgraded = await ConnectionService.syncPendingConnections();
+          if (upgraded > 0) {
+            console.log(`[ConnectionsScreen] Upgraded ${upgraded} connection(s) to mutual`);
+            await loadConnections(); // Refresh after sync
+          }
+        }
+      };
+
+      initializeAndSync();
+
+      // Poll for new connections every 2 seconds while screen is focused
+      pollIntervalRef.current = setInterval(() => {
+        loadConnections();
+      }, 2000);
+
+      // Cleanup polling when screen loses focus
+      return () => {
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+      };
     }, []),
   );
 
   const handleRefresh = async () => {
     setRefreshing(true);
     await loadConnections();
+
+    // Check for pending connections and sync
+    const allConnections = await ConnectionService.getConnections();
+    const hasPending = allConnections.some(c => c.status === 'pending-sent');
+
+    if (hasPending) {
+      console.log('[ConnectionsScreen] Refresh: syncing pending connections...');
+      const upgraded = await ConnectionService.syncPendingConnections();
+      if (upgraded > 0) {
+        console.log(`[ConnectionsScreen] Refresh: upgraded ${upgraded} connection(s) to mutual`);
+        await loadConnections(); // Refresh after sync
+      }
+    }
+
     setRefreshing(false);
   };
 
@@ -51,11 +114,37 @@ const ConnectionsScreen = ({navigation}: Props) => {
     navigation.navigate('ConnectionDetail', {connectionId: connection.id});
   };
 
+  const handleAcceptConnection = async (connectionId: string) => {
+    try {
+      console.log('[ConnectionsScreen] Accept button clicked for:', connectionId.substring(0, 8));
+      const success = await ConnectionService.acceptConnectionRequest(connectionId);
+      console.log('[ConnectionsScreen] Accept result:', success);
+      if (success) {
+        console.log('[ConnectionsScreen] Reloading connections after accept');
+        await loadConnections();
+        console.log('[ConnectionsScreen] Connections reloaded');
+      }
+    } catch (error) {
+      console.error('Error accepting connection:', error);
+    }
+  };
+
+  const handleRejectConnection = async (connectionId: string) => {
+    try {
+      const success = await ConnectionService.rejectConnectionRequest(connectionId);
+      if (success) {
+        await loadConnections();
+      }
+    } catch (error) {
+      console.error('Error rejecting connection:', error);
+    }
+  };
+
   const handleCreateTestConnection = async () => {
     try {
       setCreatingTest(true);
       const connection = await ConnectionService.createSelfConnection();
-      
+
       if (connection) {
         Alert.alert(
           'Test Connection Created',
@@ -91,39 +180,92 @@ const ConnectionsScreen = ({navigation}: Props) => {
     return `${Math.floor(diffDays / 30)} months ago`;
   };
 
-  const renderConnection = ({item}: {item: Connection}) => (
-    <TouchableOpacity
-      style={styles.connectionCard}
-      onPress={() => handleConnectionPress(item)}>
-      <View style={styles.connectionAvatar}>
-        <Text style={styles.connectionInitial}>
-          {item.displayName.charAt(0).toUpperCase()}
-        </Text>
+  const renderConnection = ({item}: {item: Connection}) => {
+    const followLabel = `Connected ${formatDate(item.connectedAt)}`;
+
+    return (
+      <TouchableOpacity
+        style={styles.connectionCard}
+        onPress={() => handleConnectionPress(item)}>
+        <View style={styles.connectionAvatar}>
+          <Text style={styles.connectionInitial}>
+            {item.displayName.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <View style={styles.connectionInfo}>
+          <Text style={styles.connectionName}>{item.displayName}</Text>
+          <Text style={styles.connectionDate}>{followLabel}</Text>
+        </View>
+        <View style={[styles.trustBadge, styles.trustBadgeVerified]}>
+          <Text style={[styles.trustBadgeText, styles.trustBadgeTextVerified]}>
+            ✓ Mutual
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderPendingReceived = ({item}: {item: Connection}) => {
+    return (
+      <View style={styles.connectionCard}>
+        <View style={styles.connectionAvatar}>
+          <Text style={styles.connectionInitial}>
+            {item.displayName.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <View style={styles.connectionInfo}>
+          <Text style={styles.connectionName}>{item.displayName}</Text>
+          <Text style={styles.connectionDate}>Wants to connect</Text>
+        </View>
+        <View style={styles.pendingActions}>
+          <TouchableOpacity
+            style={styles.acceptButton}
+            onPress={() => handleAcceptConnection(item.id)}>
+            <Text style={styles.acceptButtonText}>Accept</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.rejectButton}
+            onPress={() => handleRejectConnection(item.id)}>
+            <Text style={styles.rejectButtonText}>Reject</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-      <View style={styles.connectionInfo}>
-        <Text style={styles.connectionName}>{item.displayName}</Text>
-        <Text style={styles.connectionDate}>
-          Connected {formatDate(item.connectedAt)}
-        </Text>
-      </View>
-      <View style={styles.trustBadge}>
-        <Text style={styles.trustBadgeText}>✓ Verified</Text>
-      </View>
-    </TouchableOpacity>
-  );
+    );
+  };
+
+  const renderPendingSent = ({item}: {item: Connection}) => {
+    return (
+      <TouchableOpacity
+        style={styles.connectionCard}
+        onPress={() => handleConnectionPress(item)}>
+        <View style={styles.connectionAvatar}>
+          <Text style={styles.connectionInitial}>
+            {item.displayName.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <View style={styles.connectionInfo}>
+          <Text style={styles.connectionName}>{item.displayName}</Text>
+          <Text style={styles.connectionDate}>Request sent {formatDate(item.connectedAt)}</Text>
+        </View>
+        <View style={[styles.trustBadge, styles.trustBadgePending]}>
+          <Text style={[styles.trustBadgeText, styles.trustBadgeTextPending]}>Pending</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
       <View style={styles.content}>
-        <Text style={styles.title}>Connections</Text>
+        <Text style={styles.title}>People Nearby</Text>
         <Text style={styles.subtitle}>
-          Connect with neighbors to discover local events
+          Connect with neighbors to see their updates and events
         </Text>
 
         <TouchableOpacity
           style={styles.connectButton}
           onPress={handleConnectPress}>
-          <Text style={styles.connectButtonText}>Connect via Bluetooth</Text>
+          <Text style={styles.connectButtonText}>Discover Nearby Profiles</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -135,22 +277,58 @@ const ConnectionsScreen = ({navigation}: Props) => {
           </Text>
         </TouchableOpacity>
 
-        {connections.length === 0 ? (
+        {connections.length === 0 &&
+        pendingReceived.length === 0 &&
+        pendingSent.length === 0 ? (
           <View style={styles.placeholder}>
             <Text style={styles.placeholderText}>
-              No connections yet. Tap the button above to connect with someone
+              No connections yet. Tap the button above to discover people broadcasting
               nearby.
             </Text>
           </View>
         ) : (
           <FlatList
-            data={connections}
-            renderItem={renderConnection}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.connectionsList}
+            data={[]}
+            ListHeaderComponent={
+              <>
+                {pendingReceived.length > 0 && (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>
+                      Pending Requests ({pendingReceived.length})
+                    </Text>
+                    {pendingReceived.map(item => (
+                      <View key={item.id}>{renderPendingReceived({item})}</View>
+                    ))}
+                  </View>
+                )}
+
+                {pendingSent.length > 0 && (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>
+                      Requests Sent ({pendingSent.length})
+                    </Text>
+                    {pendingSent.map(item => (
+                      <View key={item.id}>{renderPendingSent({item})}</View>
+                    ))}
+                  </View>
+                )}
+
+                {connections.length > 0 && (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>
+                      Connections ({connections.length})
+                    </Text>
+                    {connections.map(item => (
+                      <View key={item.id}>{renderConnection({item})}</View>
+                    ))}
+                  </View>
+                )}
+              </>
+            }
             refreshControl={
               <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
             }
+            contentContainerStyle={styles.connectionsList}
           />
         )}
       </View>
@@ -220,6 +398,15 @@ const styles = StyleSheet.create({
   connectionsList: {
     paddingBottom: 20,
   },
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginBottom: 12,
+    color: '#1C1C1E',
+  },
   connectionCard: {
     backgroundColor: 'white',
     borderRadius: 12,
@@ -260,14 +447,50 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
   },
   trustBadge: {
-    backgroundColor: '#E8F5E9',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
   },
+  trustBadgeVerified: {
+    backgroundColor: '#E8F5E9',
+  },
+  trustBadgePending: {
+    backgroundColor: '#E5F1FF',
+  },
   trustBadgeText: {
-    color: '#34C759',
     fontSize: 12,
+    fontWeight: '600',
+  },
+  trustBadgeTextVerified: {
+    color: '#34C759',
+  },
+  trustBadgeTextPending: {
+    color: '#007AFF',
+  },
+  pendingActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  acceptButton: {
+    backgroundColor: '#34C759',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  acceptButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  rejectButton: {
+    backgroundColor: '#FF3B30',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  rejectButtonText: {
+    color: 'white',
+    fontSize: 14,
     fontWeight: '600',
   },
 });

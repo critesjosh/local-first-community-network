@@ -31,20 +31,20 @@ const ConnectionDetailScreen = ({route, navigation}: Props) => {
 
   const handleDisconnect = () => {
     Alert.alert(
-      'Disconnect',
-      `Are you sure you want to disconnect from ${connection?.displayName}? You will no longer see their events.`,
+      'Unfollow',
+      `Stop following ${connection?.displayName}? You will no longer see their events.`,
       [
         {
           text: 'Cancel',
           style: 'cancel',
         },
         {
-          text: 'Disconnect',
+          text: 'Unfollow',
           style: 'destructive',
           onPress: async () => {
             try {
               await ConnectionService.deleteConnection(connectionId);
-              Alert.alert('Disconnected', 'Connection removed successfully', [
+              Alert.alert('Unfollowed', 'Relationship removed successfully', [
                 {
                   text: 'OK',
                   onPress: () => navigation.goBack(),
@@ -75,6 +75,8 @@ const ConnectionDetailScreen = ({route, navigation}: Props) => {
     switch (trustLevel) {
       case 'verified':
         return '#34C759';
+      case 'pending':
+        return '#007AFF';
       case 'trusted':
         return '#32ADE6';
       default:
@@ -82,15 +84,18 @@ const ConnectionDetailScreen = ({route, navigation}: Props) => {
     }
   };
 
-  const getTrustLevelText = (trustLevel: string) => {
-    switch (trustLevel) {
-      case 'verified':
-        return 'Verified via Bluetooth';
-      case 'trusted':
-        return 'Trusted Connection';
-      default:
-        return 'Basic Connection';
+  const getConnectionStatusText = () => {
+    if (!connection) return 'Connection';
+
+    if (connection.status === 'mutual') {
+      return 'Mutual Connection';
+    } else if (connection.status === 'pending-sent') {
+      return 'Request Sent (awaiting acceptance)';
+    } else if (connection.status === 'pending-received') {
+      return 'Request Received';
     }
+
+    return 'Connection';
   };
 
   if (loading) {
@@ -124,7 +129,7 @@ const ConnectionDetailScreen = ({route, navigation}: Props) => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Connection Details</Text>
+        <Text style={styles.headerTitle}>Follow Details</Text>
         <View style={{width: 60}} />
       </View>
 
@@ -144,14 +149,22 @@ const ConnectionDetailScreen = ({route, navigation}: Props) => {
           <View
             style={[
               styles.trustBadge,
-              {backgroundColor: getTrustLevelColor(connection.trustLevel) + '20'},
+              {
+                backgroundColor:
+                  connection.status === 'mutual'
+                    ? '#34C75920'
+                    : '#007AFF20',
+              },
             ]}>
             <Text
               style={[
                 styles.trustBadgeText,
-                {color: getTrustLevelColor(connection.trustLevel)},
+                {
+                  color: connection.status === 'mutual' ? '#34C759' : '#007AFF',
+                },
               ]}>
-              ✓ {getTrustLevelText(connection.trustLevel)}
+              {connection.status === 'mutual' ? '✓ ' : ''}
+              {getConnectionStatusText()}
             </Text>
           </View>
         </View>
@@ -190,7 +203,7 @@ const ConnectionDetailScreen = ({route, navigation}: Props) => {
           <TouchableOpacity
             style={styles.disconnectButton}
             onPress={handleDisconnect}>
-            <Text style={styles.disconnectButtonText}>Disconnect</Text>
+            <Text style={styles.disconnectButtonText}>Unfollow</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

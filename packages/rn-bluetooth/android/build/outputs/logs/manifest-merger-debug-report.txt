@@ -1,0 +1,69 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:2:1-31:12
+INJECTED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:2:1-31:12
+	package
+		ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:3:5-30
+		INJECTED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml
+	xmlns:android
+		ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:2:11-69
+uses-permission#android.permission.BLUETOOTH
+ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:6:5-95
+	android:maxSdkVersion
+		ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:6:66-92
+	android:name
+		ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:6:22-65
+uses-permission#android.permission.BLUETOOTH_ADMIN
+ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:7:5-101
+	android:maxSdkVersion
+		ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:7:72-98
+	android:name
+		ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:7:22-71
+uses-permission#android.permission.ACCESS_FINE_LOCATION
+ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:11:5-79
+	android:name
+		ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:11:22-76
+uses-permission#android.permission.ACCESS_COARSE_LOCATION
+ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:12:5-81
+	android:name
+		ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:12:22-78
+uses-permission#android.permission.BLUETOOTH_SCAN
+ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:15:5-73
+	android:name
+		ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:15:22-70
+uses-permission#android.permission.BLUETOOTH_CONNECT
+ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:16:5-76
+	android:name
+		ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:16:22-73
+uses-permission#android.permission.BLUETOOTH_ADVERTISE
+ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:17:5-78
+	android:name
+		ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:17:22-75
+uses-permission#android.permission.FOREGROUND_SERVICE
+ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:20:5-77
+	android:name
+		ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:20:22-74
+uses-permission#android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE
+ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:21:5-94
+	android:name
+		ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:21:22-91
+application
+ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:23:5-29:19
+service#com.rnbluetooth.BluetoothForegroundService
+ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:24:9-28:63
+	android:enabled
+		ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:26:13-35
+	android:exported
+		ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:27:13-37
+	android:foregroundServiceType
+		ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:28:13-60
+	android:name
+		ADDED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:25:13-55
+uses-sdk
+INJECTED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml
+INJECTED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml
+	android:targetSdkVersion
+		INJECTED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from /home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml

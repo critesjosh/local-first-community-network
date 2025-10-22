@@ -1,4 +1,4 @@
-import React, {useState, useCallback} from 'react';
+import React, {useState, useCallback, useEffect} from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useFocusEffect} from '@react-navigation/native';
@@ -15,6 +16,11 @@ import {Event} from '../types/models';
 import Database from '../services/storage/Database';
 import EncryptionService from '../services/crypto/EncryptionService';
 import ConnectionService from '../services/ConnectionService';
+import BLEBroadcastService from '../services/bluetooth/BLEBroadcastService';
+import BLEConnectionHandler from '../services/bluetooth/BLEConnectionHandler';
+import IdentityService from '../services/IdentityService';
+import {addBluetoothListener} from '@localcommunity/rn-bluetooth';
+import {initLogger} from '../utils/logger';
 
 interface RSVPState {
   [eventId: string]: {
@@ -28,6 +34,109 @@ const HomeScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [rsvpState, setRsvpState] = useState<RSVPState>({});
+
+  // Initialize logger with user display name
+  useEffect(() => {
+    initLogger();
+  }, []);
+
+  // Listen for Bluetooth events from native layer
+  useEffect(() => {
+    const unsubscribe = addBluetoothListener((event) => {
+      if (event.type === 'error') {
+
+        // Check if this is a Location Services warning
+        if (event.code === 'SCAN_DEBUG' &&
+            event.message &&
+            event.message.includes('Location Services') &&
+            event.message.includes('disabled')) {
+          // Show alert to user
+          Alert.alert(
+            'Location Services Required',
+            'BLE scanning requires Location Services to be enabled on Android. Please enable Location in your device settings to discover nearby neighbors.',
+            [
+              {text: 'Cancel', style: 'cancel'},
+              {text: 'Open Settings', onPress: () => Linking.openSettings()}
+            ]
+          );
+        }
+      }
+    });
+
+    return unsubscribe;
+  }, []);
+
+  // Start BLE advertising when component mounts
+  useEffect(() => {
+    const startAdvertising = async () => {
+      try {
+        // Request Bluetooth permissions first
+        console.log('Checking Bluetooth permissions...');
+        const {Bluetooth} = await import('@localcommunity/rn-bluetooth');
+        const hasPermissions = await Bluetooth.requestPermissions();
+
+        if (!hasPermissions) {
+          Alert.alert(
+            'Bluetooth Permissions Needed',
+            'Please grant Bluetooth permissions to discover nearby neighbors.',
+            [
+              {text: 'OK', onPress: async () => {
+                // Try again after user acknowledges
+                const granted = await Bluetooth.requestPermissions();
+                if (!granted) {
+                  console.error('Bluetooth permissions denied');
+                }
+              }}
+            ]
+          );
+          return;
+        }
+
+        console.log('Bluetooth permissions granted');
+
+        const user = await IdentityService.getCurrentUser();
+        const identity = IdentityService.getCurrentIdentity();
+
+        if (user && identity) {
+          console.log('Starting BLE advertising for user:', user.displayName);
+
+          // Set profile data for GATT server (when others connect to read profile)
+          await BLEBroadcastService.setProfileData(JSON.stringify({
+            userId: user.id,
+            displayName: user.displayName,
+            publicKey: user.id,
+            profilePhoto: user.profilePhoto,
+          }));
+
+          // Start advertising presence
+          await BLEBroadcastService.start({
+            userId: user.id,
+            displayName: user.displayName,
+          });
+
+          console.log('✅ BLE advertising started successfully');
+
+          // Start listening for incoming connection requests
+          BLEConnectionHandler.start();
+          console.log('✅ BLE connection handler started');
+        } else {
+          console.warn('No user identity found, skipping BLE advertising');
+        }
+      } catch (error) {
+        console.error('❌ Failed to start BLE advertising:', error);
+      }
+    };
+
+    startAdvertising();
+
+    // Cleanup: stop advertising and connection handler when component unmounts
+    return () => {
+      BLEBroadcastService.stop().catch(err =>
+        console.warn('Error stopping advertising:', err)
+      );
+      BLEConnectionHandler.stop();
+    };
+  }, []);
 
   const loadEvents = async () => {
     try {

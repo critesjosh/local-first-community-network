@@ -8,22 +8,22 @@ This implementation plan outlines the development of a 1-month MVP for the Local
 **Target:** Working prototype with 20-30 beta users
 **Core Flow:** BLE connect → post event to server → fetch from server → discover → attend
 
-## Current Status (Updated 2025-10-05)
+## Current Status (Updated 2025-10-21)
 
-**Progress:** Week 2, Day 11 - Connection UI & Management Complete
+**Progress:** Week 2+ - Physical Device Testing & Connection Flow Refinement
 
 **Completed:**
 - ✅ Week 1: Core Foundation & Identity System (100%)
-  - Project setup with React Native, TypeScript, navigation
+  - Project setup with Expo managed workflow, TypeScript, navigation
   - Ed25519 cryptographic identity system
-  - Secure key storage (iOS Keychain/Android KeyStore)
-  - SQLite database and models
+  - Secure key storage via expo-secure-store (iOS Keychain/Android KeyStore)
+  - SQLite database with expo-sqlite
   - Onboarding flow with identity creation
   - Basic UI screens and components
   - Bluetooth foundation with scanning and RSSI filtering
 
 - ✅ Week 2, Days 8-9: BLE Connection Flow (100%)
-  - ECDH key exchange using secp256k1
+  - ECDH key exchange using secp256k1 (deferred to on-demand for optimization)
   - BLE device connection management
   - Profile and handshake data exchange
   - ConnectionService for peer connection management
@@ -31,36 +31,94 @@ This implementation plan outlines the development of a 1-month MVP for the Local
 
 - ✅ Week 2, Days 10-11: Connection UI & Management (100%)
   - ConnectionScanScreen with BLE scanning and device discovery
-  - ConnectionsScreen with connections list
+  - ConnectionsScreen with connections list and auto-refresh (2s polling)
   - ConnectionDetailScreen with connection info and disconnect
   - Navigation types and screen routing
   - Disconnect functionality
 
+- ✅ **Custom Bluetooth TurboModule** (`@localcommunity/rn-bluetooth`) (100%)
+  - Complete replacement for react-native-ble-plx and react-native-ble-advertiser
+  - Native iOS implementation (Swift/Objective-C) with CoreBluetooth
+  - Native Android implementation (Kotlin) with BluetoothLeScanner/Advertiser
+  - GATT server/client for profile exchange
+  - Background operation support (iOS background modes, Android foreground service)
+  - Expo config plugin for automatic permissions configuration
+  - Event-driven architecture with TypeScript type safety
+  - 50% smaller API surface, faster scanning, lower memory usage
+
+- ✅ Week 2+: Service Layer Migration to Custom Module (100%)
+  - BLEBroadcastService rewritten to use custom module
+  - BLEManager simplified with native event handling
+  - HomeScreen with automatic BLE advertising on mount
+  - Bluetooth permission handling with user-friendly alerts
+  - Location Services warning for Android BLE scanning
+  - Test functionality for debugging scan+advertise scenarios
+
+- ✅ **Mutual Connection System with Auto-Accept & Pending Approval** (100%)
+  - Connection status tracking (mutual by default, pending-sent, pending-received)
+  - Simplified connection flow: both parties create mutual connections immediately with auto-accept enabled
+  - ConnectionRequest/ConnectionResponse types for BLE handshake
+  - Auto-accept setting (default enabled, configurable in Settings)
+  - **Pending Approval UI:** ConnectionsScreen displays three sections when auto-accept is disabled:
+    - "Pending Requests" section with Accept/Reject buttons for incoming requests
+    - "Requests Sent" section showing outgoing pending connections
+    - "Connections" section showing mutual connections
+  - **Manual acceptance flow:** Accept button upgrades connection status to mutual in database
+  - **Automatic background sync:** ConnectionsScreen triggers 3-second BLE scan on focus/refresh
+    - Auto-discovers nearby devices with pending connections
+    - Auto-upgrades pending-sent to mutual if other party has accepted
+    - No manual navigation required - seamless status updates
+  - BLEConnectionHandler service for incoming request processing
+  - ECDH shared secret derivation deferred until needed for encryption (performance optimization)
+  - Privacy-preserving: both parties exchange public keys for future E2E encryption
+  - ConnectionDetailScreen displays accurate status (mutual/pending-sent/pending-received)
+
+- ✅ **Physical Device Testing & Bug Fixes** (2025-10-21)
+  - Fixed EventEmitter JSON payload parsing (requester vs follower fields)
+  - Removed premature shared secret derivation (deferred to on-demand)
+  - Database migrations for schema updates (status, trust_level columns)
+  - User-labeled logging system for multi-device debugging ([Alice], [Bob] prefixes)
+  - Auto-refresh ConnectionsScreen for real-time connection updates
+  - Comprehensive BLE discovery logging for debugging
+  - Resolved one-way BLE discovery issue (both devices now discover each other successfully)
+  - **Pending approval flow implementation:**
+    - Fixed auto-accept setting to properly create pending-received connections
+    - Added pending request UI sections with Accept/Reject buttons
+    - Fixed ConnectionDetailScreen status display (using status field instead of trustLevel)
+    - Implemented automatic background synchronization for pending connections
+    - Auto-upgrade pending-sent to mutual when responder accepts
+
 **In Progress:**
-- Week 2, Days 12-13: Event Posting System
+- Week 2, Days 12-13: Event Posting System (hybrid encryption implemented, UI pending)
 
 **Next Up:**
+- Test mutual connection flow end-to-end on physical devices
 - Create Event UI with form inputs
-- Event posting system integration
+- Event posting system integration with UI
 - Simple server backend for encrypted post storage/retrieval
 
-**Test Status:** 164/164 passing ✅
+**Test Status:** 171/171 passing ✅ (base test suite, BLE physical device testing in progress)
 
 ## Technology Stack
 
 ### Mobile Application
 
-- **Framework:** React Native 0.72+ with TypeScript
+- **Framework:** React Native 0.81.4 with Expo SDK 54 (managed workflow) + TypeScript
 - **State Management:** Zustand for local state
-- **Database:** SQLite with react-native-sqlite-storage
+- **Database:** expo-sqlite (v16) with async/await API
 - **Crypto Libraries:**
   - @noble/ed25519 for identity keys
   - @noble/secp256k1 for ECDH key exchange
-  - react-native-crypto for AES-256-GCM
-- **BLE:** react-native-ble-plx
+  - @noble/hashes for SHA-256 and HMAC
+  - react-native-crypto for AES-256-GCM encryption
+- **BLE:** `@localcommunity/rn-bluetooth` (custom TurboModule)
+  - Replaces react-native-ble-plx and react-native-ble-advertiser
+  - Native iOS (Swift/Objective-C) and Android (Kotlin) implementations
+  - Optimized for Local Community Network protocol
 - **Storage:**
-  - react-native-keychain (iOS/Android secure storage)
+  - expo-secure-store (iOS Keychain/Android KeyStore)
   - @react-native-async-storage/async-storage
+- **Image Picker:** expo-image-picker (replaces react-native-image-picker)
 
 ### Backend (Required for MVP)
 
@@ -150,11 +208,23 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - Scanning animation
   - Device list with RSSI indicators
   - Connection confirmation dialog
-- [x] Build connections list screen
-- [x] Add connection details view
+- [x] Build connections list screen with three sections:
+  - "Pending Requests" (incoming) with Accept/Reject buttons
+  - "Requests Sent" (outgoing) showing pending status
+  - "Connections" (mutual) with connection cards
+- [x] Add connection details view with accurate status display
 - [x] Implement disconnect functionality
 - [x] Navigation types and screen routing
-- [x] All tests passing (164 tests)
+- [x] All tests passing (171 tests)
+- [x] **Mutual Connection System:**
+  - Connection status tracking (mutual/pending-sent/pending-received)
+  - Bidirectional handshake with auto-accept (default enabled)
+  - Manual approval flow with pending request UI
+  - Automatic background synchronization for status updates
+  - ECDH shared secret derivation for both parties
+  - BLEConnectionHandler for incoming request processing
+  - Auto-accept toggle in SettingsScreen
+  - Both parties store public keys for E2E encryption
 
 ### Day 12-13: Event Posting System
 

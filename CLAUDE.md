@@ -21,8 +21,14 @@ This Expo version uses managed workflow equivalents for several native modules:
   - Includes permission requests via `requestMediaLibraryPermissionsAsync()`
 
 ### Bluetooth
-- **BLE**: Still uses `react-native-ble-plx` but requires Expo dev client for native modules
-  - Run `npx expo prebuild` before testing BLE features
+- **BLE**: **Custom TurboModule** `@localcommunity/rn-bluetooth` (located in `packages/rn-bluetooth/`)
+  - **Replaces:** `react-native-ble-plx` and `react-native-ble-advertiser`
+  - Native iOS (Swift/Objective-C) and Android (Kotlin) implementations
+  - Optimized for Local Community Network protocol with hardcoded UUIDs
+  - Supports advertising, scanning, GATT operations, background modes
+  - **Expo Config Plugin:** `app.plugin.js` automatically configures permissions
+  - **REQUIRES:** Physical devices (simulators don't support BLE)
+  - **Setup:** Run `npm install && npx expo prebuild --clean` before testing
 
 ## Development Commands
 
@@ -144,8 +150,8 @@ const result = await ImagePicker.launchImageLibraryAsync({
 - **Navigation**: React Navigation (bottom tabs + stack)
 - **State**: Zustand
 - **Storage**: expo-sqlite + expo-secure-store
-- **BLE**: react-native-ble-plx (via dev client)
-- **Crypto**: @noble/ed25519, @noble/hashes, @noble/secp256k1
+- **BLE**: `@localcommunity/rn-bluetooth` (custom TurboModule in `packages/rn-bluetooth/`)
+- **Crypto**: @noble/ed25519, @noble/hashes, @noble/secp256k1, react-native-crypto
 - **Testing**: Jest + React Native Testing Library
 
 ## Testing Policy
@@ -203,11 +209,18 @@ npm run prebuild
 - Requires `expo prebuild` and dev client
 - RSSI threshold: -70 dBm for proximity
 - ECDH key exchange for shared secrets
+- **Mutual Connection System:**
+  - Bidirectional connection flow (requester → responder → both parties store)
+  - Auto-accept connections by default (configurable in Settings)
+  - Connection status: `mutual`, `pending-sent`, `pending-received`
+  - Both parties derive and store ECDH shared secrets
+  - Privacy-preserving: both have each other's public keys for E2E encryption
 
 ### Data Management
 - SQLite with Expo's async API (v16)
 - Hybrid encryption: AES-256-GCM + HMAC recipient lookup
 - Server sync: POST encrypted events, GET to fetch
+- Connection status tracking for mutual relationships
 
 ## Quick Reference
 
@@ -238,19 +251,100 @@ const keyPair = await SecureStorage.getKeyPair();
 const hasKeys = await SecureStorage.hasKeys();
 ```
 
+### Working with Connections (Mutual System)
+```typescript
+import ConnectionService from './src/services/ConnectionService';
+
+// Request connection to a nearby device
+const result = await ConnectionService.requestConnection(deviceId);
+// result.connection.status: 'mutual' (auto-accepted) or 'pending-sent'
+
+// Handle incoming requests (auto-processed by BLEConnectionHandler)
+// Check pending requests (if auto-accept disabled)
+const pending = await ConnectionService.getPendingRequests();
+
+// Manually accept/reject pending request
+await ConnectionService.acceptConnectionRequest(connectionId);
+await ConnectionService.rejectConnectionRequest(connectionId);
+
+// Get all connections
+const connections = await ConnectionService.getConnections();
+
+// Auto-accept setting
+const autoAccept = await Database.getAutoAcceptConnections();
+await Database.setAutoAcceptConnections(true); // or false
+```
+
+## Custom Bluetooth Module
+
+### Overview
+The project uses a custom Bluetooth TurboModule (`@localcommunity/rn-bluetooth`) optimized for the Local Community Network protocol.
+
+**Location:** `packages/rn-bluetooth/`
+
+**Key Features:**
+- Native iOS (Swift/Objective-C) and Android (Kotlin) implementations
+- Hardcoded protocol: Service UUID, Profile Characteristic, Handshake Characteristic
+- Supports Central (scanning) and Peripheral (advertising) roles simultaneously
+- GATT server/client for profile exchange
+- Background operation (iOS background modes, Android foreground service)
+- 50% smaller API surface than generic BLE libraries
+
+### Working with the Module
+
+**Import:**
+```typescript
+import {Bluetooth, addBluetoothListener} from '@localcommunity/rn-bluetooth';
+```
+
+**Key APIs:**
+- `Bluetooth.requestPermissions()` - Request BLE permissions
+- `Bluetooth.startAdvertising(userHashHex, followTokenHex)` - Start advertising
+- `Bluetooth.stopAdvertising()` - Stop advertising
+- `Bluetooth.setProfileData(jsonString)` - Set GATT profile data
+- `Bluetooth.startScanning()` - Start scanning for devices
+- `Bluetooth.stopScanning()` - Stop scanning
+- `Bluetooth.connectToDevice(deviceId, timeout)` - Connect to device
+- `addBluetoothListener(callback)` - Listen for events
+
+**Events:**
+- `deviceDiscovered` - New device found
+- `deviceConnected` - Device connected successfully
+- `profileRead` - Profile data received from GATT
+- `handshakeWritten` - Follow request sent
+- `error` - Error occurred
+
+### Development Setup
+```bash
+# Install dependencies (links local module)
+npm install
+
+# Prebuild native projects
+npx expo prebuild --clean
+
+# Run on physical device (required for BLE)
+npm run ios  # or npm run android
+```
+
+**IMPORTANT:** Bluetooth requires physical devices. Simulators/emulators don't support BLE.
+
+### Troubleshooting
+See `BLUETOOTH_IMPLEMENTATION_SUMMARY.md` for detailed troubleshooting guide.
+
 ## Migration Notes
 
 This project was migrated from bare React Native to Expo. Key adaptations:
 1. ✅ expo-secure-store replaces react-native-keychain
 2. ✅ expo-sqlite replaces react-native-sqlite-storage
 3. ✅ expo-image-picker replaces react-native-image-picker
-4. ✅ Permissions configured in app.json
+4. ✅ Permissions configured in app.json (+ custom plugin)
 5. ✅ Test mocks created for Expo modules
-6. ⚠️ BLE requires dev client (native module)
+6. ✅ Custom BLE TurboModule replaces react-native-ble-plx and react-native-ble-advertiser
 
 ## Next Steps
 
 1. Run `npm test` to verify all 171 tests pass
-2. Test BLE functionality with `npm run prebuild` + dev client
-3. Validate storage services work correctly with Expo APIs
-4. Test image picker functionality
+2. Test custom Bluetooth module on physical iOS/Android devices
+3. Debug scan+advertise simultaneous operation
+4. Complete Event Posting UI
+5. Implement server backend for encrypted post storage

@@ -9,6 +9,7 @@ import {ActivityIndicator, View, StyleSheet} from 'react-native';
 import AppNavigator from './src/navigation/AppNavigator';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import IdentityService from './src/services/IdentityService';
+import BLEBroadcastService from './src/services/bluetooth/BLEBroadcastService';
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -26,6 +27,10 @@ function App() {
       // Check if user has identity
       const identityExists = await IdentityService.hasIdentity();
       setHasIdentity(identityExists);
+
+      if (identityExists) {
+        await startBroadcasting();
+      }
     } catch (error) {
       console.error('App initialization error:', error);
     } finally {
@@ -33,8 +38,23 @@ function App() {
     }
   };
 
-  const handleOnboardingComplete = () => {
+  const startBroadcasting = async () => {
+    try {
+      const user = await IdentityService.getCurrentUser();
+      if (user) {
+        await BLEBroadcastService.start({
+          userId: user.id,
+          displayName: user.displayName,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to start BLE broadcasting', error);
+    }
+  };
+
+  const handleOnboardingComplete = async () => {
     setHasIdentity(true);
+    await startBroadcasting();
   };
 
   if (isLoading) {

@@ -12,14 +12,14 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {RootStackScreenProps} from '../types/navigation';
 import BLEManager from '../services/bluetooth/BLEManager';
 import ConnectionService from '../services/ConnectionService';
+import BLEBroadcastService from '../services/bluetooth/BLEBroadcastService';
 import {DiscoveredDevice} from '../types/bluetooth';
-import {ConnectionProfile} from '../types/bluetooth';
 
 type Props = RootStackScreenProps<'ConnectionScan'>;
 
 const ConnectionScanScreen = ({navigation}: Props) => {
   const [isScanning, setIsScanning] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
 
@@ -79,84 +79,88 @@ const ConnectionScanScreen = ({navigation}: Props) => {
     }
   };
 
+  const handleTestScanWithoutAdvertising = async () => {
+    try {
+      // Stop advertising first
+      console.log('[TEST] Stopping BLE advertising before scanning...');
+      await BLEBroadcastService.stop();
+      console.log('[TEST] Advertising stopped, waiting 1 second...');
+
+      // Wait a moment for advertising to fully stop
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Start scanning
+      console.log('[TEST] Starting scan WITHOUT advertising...');
+      setDevices([]);
+      await BLEManager.startScanning();
+      console.log('[TEST] Scan started. Check if devices are now detected.');
+
+      Alert.alert(
+        'Test Mode',
+        'Advertising stopped. Scanning without advertising. If devices appear now, it confirms advertise+scan conflict.',
+        [{text: 'OK'}]
+      );
+    } catch (error) {
+      console.error('[TEST] Error:', error);
+      Alert.alert('Error', 'Test failed. Check console for details.');
+    }
+  };
+
   const handleStopScanning = () => {
     BLEManager.stopScanning();
   };
 
   const handleDevicePress = async (device: DiscoveredDevice) => {
-    if (isConnecting) return;
+    if (isProcessing) return;
 
     setSelectedDevice(device.id);
-    setIsConnecting(true);
+    setIsProcessing(true);
 
     try {
       // Stop scanning first
       BLEManager.stopScanning();
 
-      // Initiate connection
-      const profile = await ConnectionService.initiateConnection(device.id);
+      const result = await ConnectionService.requestConnection(device.deviceId);
 
-      if (!profile) {
-        throw new Error('Failed to read device profile');
+      if (!result) {
+        throw new Error('Failed to request connection');
       }
 
-      // Show confirmation dialog
-      Alert.alert(
-        'Connection Request',
-        `Connect with ${profile.displayName}?`,
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: async () => {
-              await ConnectionService.cancelConnection(device.id);
-              setIsConnecting(false);
-              setSelectedDevice(null);
-            },
-          },
-          {
-            text: 'Connect',
-            onPress: async () => {
-              await handleConfirmConnection(device.id, profile);
-            },
-          },
-        ],
-      );
-    } catch (error) {
-      console.error('Error connecting to device:', error);
-      Alert.alert('Connection Error', 'Failed to connect to device. Please try again.');
-      setIsConnecting(false);
+      setIsProcessing(false);
       setSelectedDevice(null);
-    }
-  };
 
-  const handleConfirmConnection = async (
-    deviceId: string,
-    profile: ConnectionProfile,
-  ) => {
-    try {
-      const connection = await ConnectionService.confirmConnection(deviceId);
-
-      if (!connection) {
-        throw new Error('Failed to complete connection');
+      // Show appropriate message based on connection status
+      if (result.connection.status === 'mutual') {
+        Alert.alert(
+          'Connected!',
+          `You are now connected with ${result.profile.displayName}`,
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ],
+        );
+      } else if (result.connection.status === 'pending-sent') {
+        Alert.alert(
+          'Request Sent',
+          `Your connection request has been sent to ${result.profile.displayName}. Scan again later to check if they've accepted.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ],
+        );
       }
-
-      Alert.alert(
-        'Success!',
-        `You are now connected with ${profile.displayName}`,
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ],
-      );
     } catch (error) {
-      console.error('Error confirming connection:', error);
-      Alert.alert('Error', 'Failed to complete connection. Please try again.');
-    } finally {
-      setIsConnecting(false);
+      console.error('Error requesting connection:', error);
+      Alert.alert('Connection Error', 'Failed to request connection. Please try again.');
+      setIsProcessing(false);
       setSelectedDevice(null);
+      BLEManager.startScanning().catch(() => {
+        // scanning retry failure handled silently
+      });
     }
   };
 
@@ -183,9 +187,9 @@ const ConnectionScanScreen = ({navigation}: Props) => {
       <TouchableOpacity
         style={[styles.deviceCard, isSelected && styles.deviceCardSelected]}
         onPress={() => handleDevicePress(item)}
-        disabled={isConnecting}>
+        disabled={isProcessing}>
         <View style={styles.deviceInfo}>
-          <Text style={styles.deviceName}>{item.name || 'Unknown Device'}</Text>
+          <Text style={styles.deviceName}>{item.name || 'Broadcasting Member'}</Text>
           <Text style={styles.deviceId}>{item.id.substring(0, 8)}...</Text>
         </View>
         <View style={styles.deviceSignal}>
@@ -205,7 +209,7 @@ const ConnectionScanScreen = ({navigation}: Props) => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.cancelButton}>Cancel</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Connect</Text>
+        <Text style={styles.headerTitle}>Connect Nearby</Text>
         <View style={{width: 60}} />
       </View>
 
@@ -217,12 +221,20 @@ const ConnectionScanScreen = ({navigation}: Props) => {
             : 'Tap the button below to start scanning'}
         </Text>
 
-        {!isScanning && !isConnecting && (
-          <TouchableOpacity
-            style={styles.scanButton}
-            onPress={handleStartScanning}>
-            <Text style={styles.scanButtonText}>Start Scanning</Text>
-          </TouchableOpacity>
+        {!isScanning && !isProcessing && (
+          <>
+            <TouchableOpacity
+              style={styles.scanButton}
+              onPress={handleStartScanning}>
+              <Text style={styles.scanButtonText}>Start Scanning</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.scanButton, styles.testButton]}
+              onPress={handleTestScanWithoutAdvertising}>
+              <Text style={styles.scanButtonText}>🧪 Test: Stop Advertising & Scan</Text>
+            </TouchableOpacity>
+          </>
         )}
 
         {isScanning && (
@@ -234,7 +246,7 @@ const ConnectionScanScreen = ({navigation}: Props) => {
           </TouchableOpacity>
         )}
 
-        {isConnecting && (
+        {isProcessing && (
           <View style={styles.connectingContainer}>
             <ActivityIndicator size="large" color="#007AFF" />
             <Text style={styles.connectingText}>Connecting...</Text>
@@ -256,7 +268,7 @@ const ConnectionScanScreen = ({navigation}: Props) => {
           </View>
         )}
 
-        {!isScanning && devices.length === 0 && !isConnecting && (
+        {!isScanning && devices.length === 0 && !isProcessing && (
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateText}>
               No devices found yet. Make sure the other person has the app open and
@@ -319,6 +331,9 @@ const styles = StyleSheet.create({
   },
   stopButton: {
     backgroundColor: '#FF3B30',
+  },
+  testButton: {
+    backgroundColor: '#FF9500',
   },
   scanButtonText: {
     color: 'white',

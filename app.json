@@ -75,17 +75,7 @@
           "cameraPermission": "The app needs access to your camera to let you take photos for events and your profile."
         }
       ],
-      [
-        "react-native-ble-plx",
-        {
-          "isBackgroundEnabled": false,
-          "modes": [
-            "peripheral",
-            "central"
-          ],
-          "bluetoothAlwaysPermission": "Allow $(PRODUCT_NAME) to connect to nearby community members via Bluetooth"
-        }
-      ]
+      "./app.plugin.js"
     ],
     "runtimeVersion": {
       "policy": "appVersion"

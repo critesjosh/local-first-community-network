@@ -18,6 +18,11 @@ export const DEVICE_EXPIRY_TIME = 10000; // 10 seconds - remove devices not seen
 // Advertising configuration
 export const ADVERTISE_TX_POWER_LEVEL = 'Medium'; // Options: Low, Medium, High, Ultra
 export const ADVERTISE_MODE = 'LowPower'; // Options: LowPower, Balanced, LowLatency
+export const MANUFACTURER_ID = 0x1337; // Custom manufacturer/company identifier
+export const BROADCAST_NAME_MAX_LENGTH = 12; // Max characters from display name in advertisement
+export const USER_HASH_LENGTH = 6; // Bytes reserved for hashed user identifier
+export const FOLLOW_TOKEN_LENGTH = 4; // Bytes reserved for rotating follow token
+export const FOLLOW_TOKEN_ROTATION_MS = 60000; // Rotate follow token every 60 seconds
 
 // Connection timeouts
 export const CONNECTION_TIMEOUT = 10000; // 10 seconds

@@ -17,6 +17,7 @@ class Database {
     try {
       this.db = await SQLite.openDatabaseAsync(this.dbName);
       await this.createTables();
+      await this.runMigrations();
     } catch (error) {
       console.error('Error initializing database:', error);
       throw new Error('Failed to initialize database');
@@ -49,6 +50,7 @@ class Database {
           shared_secret TEXT,
           connected_at INTEGER NOT NULL,
           notes TEXT,
+          status TEXT NOT NULL DEFAULT 'pending-sent',
           trust_level TEXT NOT NULL DEFAULT 'pending'
         );
 
@@ -87,6 +89,37 @@ class Database {
     } catch (error) {
       console.error('Error creating database tables:', error);
       throw new Error(`Failed to create database tables: ${error}`);
+    }
+  }
+
+  /**
+   * Run database migrations to update existing tables
+   */
+  private async runMigrations(): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      // Migration 1: Add status column to connections table if it doesn't exist
+      await this.db.execAsync(`
+        -- Check if status column exists, if not add it
+        ALTER TABLE connections ADD COLUMN status TEXT NOT NULL DEFAULT 'pending-sent';
+      `).catch(() => {
+        // Column already exists, ignore error
+        console.log('[Database] status column already exists');
+      });
+
+      // Migration 2: Add trust_level column to connections table if it doesn't exist
+      await this.db.execAsync(`
+        ALTER TABLE connections ADD COLUMN trust_level TEXT NOT NULL DEFAULT 'pending';
+      `).catch(() => {
+        // Column already exists, ignore error
+        console.log('[Database] trust_level column already exists');
+      });
+
+      console.log('[Database] Migrations completed successfully');
+    } catch (error) {
+      console.error('Error running database migrations:', error);
+      // Don't throw - migrations are best-effort
     }
   }
 
@@ -161,8 +194,8 @@ class Database {
     const query = `
       INSERT OR REPLACE INTO connections (
         id, user_id, display_name, profile_photo, shared_secret,
-        connected_at, notes, trust_level
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        connected_at, notes, status, trust_level
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     await this.db.runAsync(query, [
@@ -173,6 +206,7 @@ class Database {
       connection.sharedSecret ? Buffer.from(connection.sharedSecret).toString('hex') : null,
       connection.connectedAt.getTime(),
       connection.notes || null,
+      connection.status,
       connection.trustLevel,
     ]);
   }
@@ -196,6 +230,7 @@ class Database {
         : undefined,
       connectedAt: new Date(row.connected_at),
       notes: row.notes,
+      status: (row.status || 'pending-sent') as 'mutual' | 'pending-sent' | 'pending-received',
       trustLevel: row.trust_level as 'verified' | 'pending',
     }));
   }
@@ -223,6 +258,7 @@ class Database {
         : undefined,
       connectedAt: new Date(row.connected_at),
       notes: row.notes,
+      status: (row.status || 'pending-sent') as 'mutual' | 'pending-sent' | 'pending-received',
       trustLevel: row.trust_level as 'verified' | 'pending',
     };
   }
@@ -248,6 +284,86 @@ class Database {
 
     const query = 'UPDATE connections SET trust_level = ? WHERE id = ?';
     await this.db.runAsync(query, [trustLevel, connectionId]);
+  }
+
+  /**
+   * Update connection status
+   */
+  async updateConnectionStatus(
+    connectionId: string,
+    status: 'mutual' | 'pending-sent' | 'pending-received',
+  ): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'UPDATE connections SET status = ? WHERE id = ?';
+    await this.db.runAsync(query, [status, connectionId]);
+  }
+
+  /**
+   * Get connection by user ID
+   */
+  async getConnectionByUserId(userId: string): Promise<Connection | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'SELECT * FROM connections WHERE user_id = ?';
+    const row = await this.db.getFirstAsync<any>(query, [userId]);
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      userId: row.user_id,
+      displayName: row.display_name,
+      profilePhoto: row.profile_photo,
+      sharedSecret: row.shared_secret
+        ? new Uint8Array(Buffer.from(row.shared_secret, 'hex'))
+        : undefined,
+      connectedAt: new Date(row.connected_at),
+      notes: row.notes,
+      status: (row.status || 'pending-sent') as 'mutual' | 'pending-sent' | 'pending-received',
+      trustLevel: row.trust_level as 'verified' | 'pending',
+    };
+  }
+
+  /**
+   * Get pending received connections (connection requests)
+   */
+  async getPendingReceivedConnections(): Promise<Connection[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'SELECT * FROM connections WHERE status = ? ORDER BY connected_at DESC';
+    const rows = await this.db.getAllAsync<any>(query, ['pending-received']);
+
+    return rows.map(row => ({
+      id: row.id,
+      userId: row.user_id,
+      displayName: row.display_name,
+      profilePhoto: row.profile_photo,
+      sharedSecret: row.shared_secret
+        ? new Uint8Array(Buffer.from(row.shared_secret, 'hex'))
+        : undefined,
+      connectedAt: new Date(row.connected_at),
+      notes: row.notes,
+      status: 'pending-received' as const,
+      trustLevel: row.trust_level as 'verified' | 'pending',
+    }));
+  }
+
+  /**
+   * Get auto-accept connections setting
+   */
+  async getAutoAcceptConnections(): Promise<boolean> {
+    const value = await this.getAppState('auto_accept_connections');
+    return value === 'true' || value === null; // default to true
+  }
+
+  /**
+   * Set auto-accept connections setting
+   */
+  async setAutoAcceptConnections(enabled: boolean): Promise<void> {
+    await this.setAppState('auto_accept_connections', enabled ? 'true' : 'false');
   }
 
   /**

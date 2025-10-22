@@ -1,0 +1,63 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.rnbluetooth" >
+4
+5    <uses-sdk android:minSdkVersion="24" />
+6
+7    <!-- Bluetooth permissions for Android 11 and below -->
+8    <uses-permission
+8-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:6:5-95
+9        android:name="android.permission.BLUETOOTH"
+9-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:6:22-65
+10        android:maxSdkVersion="30" />
+10-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:6:66-92
+11    <uses-permission
+11-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:7:5-101
+12        android:name="android.permission.BLUETOOTH_ADMIN"
+12-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:7:22-71
+13        android:maxSdkVersion="30" />
+13-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:7:72-98
+14
+15    <!-- Location permissions required for BLE scanning on ALL Android versions -->
+16    <!-- Even on Android 12+, many devices require location permission for BLE callbacks to work -->
+17    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+17-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:11:5-79
+17-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:11:22-76
+18    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+18-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:12:5-81
+18-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:12:22-78
+19
+20    <!-- Bluetooth permissions for Android 12+ -->
+21    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+21-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:15:5-73
+21-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:15:22-70
+22    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+22-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:16:5-76
+22-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:16:22-73
+23    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+23-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:17:5-78
+23-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:17:22-75
+24
+25    <!-- Foreground service permissions -->
+26    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+26-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:20:5-77
+26-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:20:22-74
+27    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+27-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:21:5-94
+27-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:21:22-91
+28
+29    <application>
+29-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:23:5-29:19
+30        <service
+30-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:24:9-28:63
+31            android:name="com.rnbluetooth.BluetoothForegroundService"
+31-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:25:13-55
+32            android:enabled="true"
+32-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:26:13-35
+33            android:exported="false"
+33-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:27:13-37
+34            android:foregroundServiceType="connectedDevice" />
+34-->/home/josh/Documents/Github/local-social-network-expo/packages/rn-bluetooth/android/src/main/AndroidManifest.xml:28:13-60
+35    </application>
+36
+37</manifest>
