@@ -9,10 +9,11 @@
 import * as Crypto from 'expo-crypto';
 import { Event, Connection } from '../../types/models';
 import { sha256 } from '@noble/hashes/sha2.js';
+import { gcm } from '@noble/ciphers/aes';
+import { randomBytes as nobleRandomBytes } from '@noble/ciphers/webcrypto';
 import ECDHService from './ECDH';
 
-// AES-256-GCM encryption using Web Crypto API (available in React Native)
-// Note: In production, consider react-native-quick-crypto for better performance
+// AES-256-GCM encryption using @noble/ciphers (works in React Native)
 
 // Use expo-crypto for secure random bytes
 const randomBytes = async (size: number): Promise<Uint8Array> => {
@@ -43,23 +44,10 @@ async function encryptAESGCM(
   iv: Uint8Array,
 ): Promise<Uint8Array> {
   try {
-    // Import key for Web Crypto API
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      key,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['encrypt'],
-    );
-
-    // Encrypt
-    const ciphertext = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv: iv },
-      cryptoKey,
-      plaintext,
-    );
-
-    return new Uint8Array(ciphertext);
+    // Use @noble/ciphers for AES-GCM encryption
+    const aes = gcm(key, iv);
+    const ciphertext = aes.encrypt(plaintext);
+    return ciphertext;
   } catch (error) {
     console.error('AES-GCM encryption error:', error);
     throw new Error('Encryption failed');
@@ -75,23 +63,10 @@ async function decryptAESGCM(
   iv: Uint8Array,
 ): Promise<Uint8Array> {
   try {
-    // Import key for Web Crypto API
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      key,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['decrypt'],
-    );
-
-    // Decrypt
-    const plaintext = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: iv },
-      cryptoKey,
-      ciphertext,
-    );
-
-    return new Uint8Array(plaintext);
+    // Use @noble/ciphers for AES-GCM decryption
+    const aes = gcm(key, iv);
+    const plaintext = aes.decrypt(ciphertext);
+    return plaintext;
   } catch (error) {
     console.error('AES-GCM decryption error:', error);
     throw new Error('Decryption failed');

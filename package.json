@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@localcommunity/rn-bluetooth": "file:./packages/rn-bluetooth",
+    "@noble/ciphers": "^2.0.1",
     "@noble/ed25519": "^3.0.0",
     "@noble/hashes": "^2.0.1",
     "@noble/secp256k1": "^3.0.0",
@@ -29,6 +30,7 @@
     "@react-navigation/bottom-tabs": "^7.4.9",
     "@react-navigation/native": "^7.1.18",
     "@react-navigation/stack": "^7.4.10",
+    "buffer": "^6.0.3",
     "expo": "~54.0.13",
     "expo-crypto": "^15.0.7",
     "expo-image-picker": "~17.0.8",
