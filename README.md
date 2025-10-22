@@ -107,6 +107,7 @@ local-social-network-expo/
 - **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** - Technical implementation plan
 - **[docs/CRYPTO_FIX_SUMMARY.md](docs/CRYPTO_FIX_SUMMARY.md)** - Cryptographic implementation summary
 - **[docs/BLUETOOTH_IMPLEMENTATION_SUMMARY.md](docs/BLUETOOTH_IMPLEMENTATION_SUMMARY.md)** - Bluetooth implementation summary
+- **[docs/BLE_TROUBLESHOOTING.md](docs/BLE_TROUBLESHOOTING.md)** - BLE advertising troubleshooting guide
 
 ### 🤖 **Development Notes**
 - **[docs/AGENTS.md](docs/AGENTS.md)** - AI agent development notes

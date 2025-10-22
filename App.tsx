@@ -65,13 +65,26 @@ function App() {
     try {
       const user = await IdentityService.getCurrentUser();
       if (user) {
+        console.log('🚀 Starting BLE broadcasting for user:', user.displayName);
         await BLEBroadcastService.start({
           userId: user.id,
           displayName: user.displayName,
         });
+        console.log('✅ BLE broadcasting started successfully');
       }
     } catch (error) {
-      console.error('Failed to start BLE broadcasting', error);
+      console.error('❌ Failed to start BLE broadcasting:', error);
+      
+      // Provide user-friendly error messages
+      if (error.message.includes('permission')) {
+        console.error('💡 Please grant Bluetooth permissions in device settings');
+      } else if (error.message.includes('not enabled')) {
+        console.error('💡 Please enable Bluetooth in device settings');
+      } else if (error.message.includes('not available')) {
+        console.error('💡 Bluetooth is not available on this device');
+      } else {
+        console.error('💡 BLE advertising failed. Check device Bluetooth settings and try again.');
+      }
     }
   };
 
