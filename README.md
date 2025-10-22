@@ -19,11 +19,11 @@ The fastest way to test on your phone is using Expo Go:
 2. Run `npm start` in this directory
 3. Scan the QR code with Expo Go (Android) or Camera app (iOS)
 
-See **QUICKSTART.md** for detailed step-by-step instructions.
+See **[docs/QUICKSTART.md](docs/QUICKSTART.md)** for detailed step-by-step instructions.
 
 ### Complete Setup
 
-For full setup instructions including local builds and development builds, see **SETUP.md**.
+For full setup instructions including local builds and development builds, see **[docs/SETUP.md](docs/SETUP.md)**.
 
 ## Available Commands
 
@@ -65,16 +65,15 @@ npm run release patch     # Create patch release
 
 ```
 local-social-network-expo/
-├── App.js                    # Main application entry point
+├── App.tsx                   # Main application entry point
 ├── app.json                  # Expo configuration
 ├── eas.json                  # Build configuration
 ├── package.json              # Dependencies and scripts
 ├── assets/                   # Images, fonts, icons
+├── src/                      # Source code
 ├── scripts/                  # Release and automation scripts
+├── docs/                     # All project documentation
 ├── .github/workflows/        # CI/CD workflows
-├── QUICKSTART.md             # 5-minute setup guide
-├── SETUP.md                  # Complete setup documentation
-├── RELEASE_WORKFLOW.md       # Versioning and update deployment guide
 └── README.md                 # This file
 ```
 
@@ -96,11 +95,24 @@ local-social-network-expo/
 
 ## Documentation
 
-- **QUICKSTART.md** - Get running in 5 minutes
-- **SETUP.md** - Complete setup guide with all options
-- **RELEASE_WORKFLOW.md** - Versioning and update deployment guide
-- **SCRIPTS_OVERVIEW.md** - Complete scripts reference and communication guide
-- **COMMUNICATION_CHECKLIST.md** - Script communication checklist and templates
+### 📚 **Project Documentation**
+- **[docs/QUICKSTART.md](docs/QUICKSTART.md)** - Get running in 5 minutes
+- **[docs/SETUP.md](docs/SETUP.md)** - Complete setup guide with all options
+- **[docs/RELEASE_WORKFLOW.md](docs/RELEASE_WORKFLOW.md)** - Versioning and update deployment guide
+- **[docs/SCRIPTS_OVERVIEW.md](docs/SCRIPTS_OVERVIEW.md)** - Complete scripts reference and communication guide
+- **[docs/COMMUNICATION_CHECKLIST.md](docs/COMMUNICATION_CHECKLIST.md)** - Script communication checklist and templates
+
+### 📋 **Project Specifications**
+- **[docs/PRD.md](docs/PRD.md)** - Product Requirements Document
+- **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** - Technical implementation plan
+- **[docs/CRYPTO_FIX_SUMMARY.md](docs/CRYPTO_FIX_SUMMARY.md)** - Cryptographic implementation summary
+- **[docs/BLUETOOTH_IMPLEMENTATION_SUMMARY.md](docs/BLUETOOTH_IMPLEMENTATION_SUMMARY.md)** - Bluetooth implementation summary
+
+### 🤖 **Development Notes**
+- **[docs/AGENTS.md](docs/AGENTS.md)** - AI agent development notes
+- **[docs/CLAUDE.md](docs/CLAUDE.md)** - Claude AI development documentation
+
+### 🔗 **External Resources**
 - [Expo Documentation](https://docs.expo.dev)
 - [React Native Documentation](https://reactnative.dev)
 
@@ -129,7 +141,7 @@ local-social-network-expo/
 **Build errors?**
 - Clear cache: `npm start -- --clear`
 - Reinstall: `rm -rf node_modules && npm install`
-- See SETUP.md for detailed troubleshooting
+- See [docs/SETUP.md](docs/SETUP.md) for detailed troubleshooting
 
 ## Next Steps
 
@@ -144,6 +156,6 @@ Private project
 
 ## Support
 
-For setup issues, see SETUP.md or consult:
+For setup issues, see [docs/SETUP.md](docs/SETUP.md) or consult:
 - [Expo Forums](https://forums.expo.dev)
 - [Expo Discord](https://chat.expo.dev)

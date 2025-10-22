@@ -20,8 +20,8 @@ Your Expo project has been successfully initialized and configured with:
 
 ### Documentation Files Created
 - `README.md` - Project overview and quick reference
-- `QUICKSTART.md` - 5-minute guide to test on physical device
-- `SETUP.md` - Complete setup guide with all options
+- `docs/QUICKSTART.md` - 5-minute guide to test on physical device
+- `docs/SETUP.md` - Complete setup guide with all options
 - `.expo-commands.md` - Command reference cheat sheet
 - `SETUP-COMPLETE.md` - This file
 
@@ -121,8 +121,8 @@ Save and watch it update on your device!
 - Add database: `npx expo install expo-sqlite`
 
 ### 4. Learn More
-- Read `QUICKSTART.md` for detailed quick start guide
-- Read `SETUP.md` for complete setup documentation
+- Read `docs/QUICKSTART.md` for detailed quick start guide
+- Read `docs/SETUP.md` for complete setup documentation
 - Read `.expo-commands.md` for command reference
 - Visit https://docs.expo.dev for full Expo documentation
 
@@ -141,8 +141,8 @@ Save and watch it update on your device!
 │   └── favicon.png
 ├── node_modules/             # Installed packages
 ├── README.md                 # Project overview
-├── QUICKSTART.md             # 5-minute setup guide
-├── SETUP.md                  # Complete setup docs
+├── docs/QUICKSTART.md        # 5-minute setup guide
+├── docs/SETUP.md             # Complete setup docs
 ├── .expo-commands.md         # Command reference
 └── SETUP-COMPLETE.md         # This file
 ```
@@ -249,7 +249,7 @@ npm start
 
 If you run into issues:
 
-1. Check `SETUP.md` for detailed troubleshooting
+1. Check `docs/SETUP.md` for detailed troubleshooting
 2. Check `.expo-commands.md` for command reference
 3. Visit https://docs.expo.dev for documentation
 4. Ask on https://forums.expo.dev for community help
