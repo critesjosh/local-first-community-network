@@ -108,6 +108,7 @@ local-social-network-expo/
 - **[docs/CRYPTO_FIX_SUMMARY.md](docs/CRYPTO_FIX_SUMMARY.md)** - Cryptographic implementation summary
 - **[docs/BLUETOOTH_IMPLEMENTATION_SUMMARY.md](docs/BLUETOOTH_IMPLEMENTATION_SUMMARY.md)** - Bluetooth implementation summary
 - **[docs/BLE_TROUBLESHOOTING.md](docs/BLE_TROUBLESHOOTING.md)** - BLE advertising troubleshooting guide
+- **[docs/BLUETOOTH_MODULE_LINKING.md](docs/BLUETOOTH_MODULE_LINKING.md)** - How the custom Bluetooth module was linked
 
 ### 🤖 **Development Notes**
 - **[docs/AGENTS.md](docs/AGENTS.md)** - AI agent development notes

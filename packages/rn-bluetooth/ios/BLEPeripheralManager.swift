@@ -6,7 +6,7 @@
 import Foundation
 import CoreBluetooth
 
-class BLEPeripheralManager: NSObject {
+@objc public class BLEPeripheralManager: NSObject {
 
   // MARK: - Constants (Hardcoded GATT Schema)
 
@@ -21,7 +21,7 @@ class BLEPeripheralManager: NSObject {
 
   // MARK: - Properties
 
-  static let shared = BLEPeripheralManager()
+@objc public static let shared = BLEPeripheralManager()
 
   private var peripheralManager: CBPeripheralManager!
   private var service: CBMutableService!
@@ -42,13 +42,13 @@ class BLEPeripheralManager: NSObject {
     super.init()
   }
 
-  func initialize() {
+@objc public func initialize() {
     peripheralManager = CBPeripheralManager(delegate: self, queue: nil)
   }
 
   // MARK: - Profile Data
 
-  func setProfileData(profileJson: String) throws {
+@objc public func setProfileData(profileJson: String) throws {
     guard let data = profileJson.data(using: .utf8) else {
       throw NSError(
         domain: "com.rnbluetooth",
@@ -62,7 +62,7 @@ class BLEPeripheralManager: NSObject {
 
   // MARK: - Advertising
 
-  func startAdvertising(
+@objc public func startAdvertising(
     displayName: String,
     userHashHex: String,
     followTokenHex: String
@@ -98,7 +98,7 @@ class BLEPeripheralManager: NSObject {
     print("[BLEPeripheralManager] Started advertising")
   }
 
-  func updateAdvertisement(
+@objc public func updateAdvertisement(
     displayName: String,
     userHashHex: String,
     followTokenHex: String
@@ -129,7 +129,7 @@ class BLEPeripheralManager: NSObject {
     print("[BLEPeripheralManager] Updated advertisement")
   }
 
-  func stopAdvertising() {
+@objc public func stopAdvertising() {
     if isAdvertising {
       peripheralManager.stopAdvertising()
       isAdvertising = false
@@ -137,7 +137,7 @@ class BLEPeripheralManager: NSObject {
     }
   }
 
-  func getIsAdvertising() -> Bool {
+@objc public func getIsAdvertising() -> Bool {
     return isAdvertising
   }
 
@@ -272,7 +272,7 @@ class BLEPeripheralManager: NSObject {
 
 extension BLEPeripheralManager: CBPeripheralManagerDelegate {
 
-  func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
+    public func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
     switch peripheral.state {
     case .poweredOn:
       print("[BLEPeripheralManager] Peripheral manager powered on")
@@ -304,7 +304,7 @@ extension BLEPeripheralManager: CBPeripheralManagerDelegate {
     }
   }
 
-  func peripheralManagerDidStartAdvertising(_ peripheral: CBPeripheralManager, error: Error?) {
+  public func peripheralManagerDidStartAdvertising(_ peripheral: CBPeripheralManager, error: Error?) {
     if let error = error {
       print("[BLEPeripheralManager] Failed to start advertising: \(error.localizedDescription)")
       isAdvertising = false
@@ -317,7 +317,7 @@ extension BLEPeripheralManager: CBPeripheralManagerDelegate {
     }
   }
 
-  func peripheralManager(_ peripheral: CBPeripheralManager, didAdd service: CBService, error: Error?) {
+  public func peripheralManager(_ peripheral: CBPeripheralManager, didAdd service: CBService, error: Error?) {
     if let error = error {
       print("[BLEPeripheralManager] Failed to add service: \(error.localizedDescription)")
       EventEmitter.shared?.sendError(
@@ -330,7 +330,7 @@ extension BLEPeripheralManager: CBPeripheralManagerDelegate {
   }
 
   // Handle read requests for Profile characteristic
-  func peripheralManager(
+  public func peripheralManager(
     _ peripheral: CBPeripheralManager,
     didReceiveRead request: CBATTRequest
   ) {
@@ -355,7 +355,7 @@ extension BLEPeripheralManager: CBPeripheralManagerDelegate {
   }
 
   // Handle write requests for Handshake characteristic
-  func peripheralManager(
+  public func peripheralManager(
     _ peripheral: CBPeripheralManager,
     didReceiveWrite requests: [CBATTRequest]
   ) {
@@ -386,7 +386,7 @@ extension BLEPeripheralManager: CBPeripheralManagerDelegate {
     }
   }
 
-  func peripheralManager(
+  public func peripheralManager(
     _ peripheral: CBPeripheralManager,
     central: CBCentral,
     didSubscribeTo characteristic: CBCharacteristic
@@ -394,7 +394,7 @@ extension BLEPeripheralManager: CBPeripheralManagerDelegate {
     print("[BLEPeripheralManager] Central subscribed to characteristic: \(characteristic.uuid)")
   }
 
-  func peripheralManager(
+  public func peripheralManager(
     _ peripheral: CBPeripheralManager,
     central: CBCentral,
     didUnsubscribeFrom characteristic: CBCharacteristic

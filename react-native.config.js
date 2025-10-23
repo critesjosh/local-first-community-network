@@ -1,3 +1,7 @@
 module.exports = {
-  // No custom autolinking configuration needed for JavaScript-only modules
+  dependencies: {
+    '@localcommunity/rn-bluetooth': {
+      root: './packages/rn-bluetooth',
+    },
+  },
 };

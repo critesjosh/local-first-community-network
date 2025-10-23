@@ -6,9 +6,10 @@
 #import <React/RCTBridgeModule.h>
 #import <React/RCTConvert.h>
 #import <React/RCTUtils.h>
+#import <CoreBluetooth/CoreBluetooth.h>
 
 // Import the generated header from Swift
-#import "rn_bluetooth-Swift.h"
+#import "RNLCBluetooth-Swift.h"
 
 @interface RNLCBluetoothModule : NSObject <RCTBridgeModule>
 @end
@@ -17,13 +18,8 @@
 
 RCT_EXPORT_MODULE(RNLCBluetoothModule)
 
-+ (void)load {
-  NSLog(@"🚀 RNLCBluetoothModule loaded successfully!");
-}
-
-+ (NSString *)moduleName {
-  NSLog(@"🔍 Module name: RNLCBluetoothModule");
-  return @"RNLCBluetoothModule";
++ (BOOL)requiresMainQueueSetup {
+  return YES;
 }
 
 // MARK: - Initialization
@@ -53,11 +49,12 @@ RCT_EXPORT_METHOD(requestPermissions:(RCTPromiseResolveBlock)resolve
 RCT_EXPORT_METHOD(startScanning:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
-  @try {
-    [[BLECentralManager shared] startScanning];
+  NSError *error = nil;
+  [[BLECentralManager shared] startScanningAndReturnError:&error];
+  if (error) {
+    reject(@"scan_error", error.localizedDescription, error);
+  } else {
     resolve(nil);
-  } @catch (NSException *exception) {
-    reject(@"scan_error", exception.reason, nil);
   }
 }
 
@@ -144,11 +141,12 @@ RCT_EXPORT_METHOD(setProfileData:(NSString *)profileJson
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
-  @try {
-    [[BLEPeripheralManager shared] setProfileDataWithProfileJson:profileJson];
+  NSError *error = nil;
+  [[BLEPeripheralManager shared] setProfileDataWithProfileJson:profileJson error:&error];
+  if (error) {
+    reject(@"profile_error", error.localizedDescription, error);
+  } else {
     resolve(nil);
-  } @catch (NSException *exception) {
-    reject(@"profile_error", exception.reason, nil);
   }
 }
 
@@ -158,13 +156,15 @@ RCT_EXPORT_METHOD(startAdvertising:(NSString *)displayName
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
-  @try {
-    [[BLEPeripheralManager shared] startAdvertisingWithDisplayName:displayName
-                                                        userHashHex:userHashHex
-                                                    followTokenHex:followTokenHex];
+  NSError *error = nil;
+  [[BLEPeripheralManager shared] startAdvertisingWithDisplayName:displayName
+                                                      userHashHex:userHashHex
+                                                  followTokenHex:followTokenHex
+                                                            error:&error];
+  if (error) {
+    reject(@"advertise_error", error.localizedDescription, error);
+  } else {
     resolve(nil);
-  } @catch (NSException *exception) {
-    reject(@"advertise_error", exception.reason, nil);
   }
 }
 
@@ -174,13 +174,15 @@ RCT_EXPORT_METHOD(updateAdvertisement:(NSString *)displayName
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
-  @try {
-    [[BLEPeripheralManager shared] updateAdvertisementWithDisplayName:displayName
-                                                          userHashHex:userHashHex
-                                                      followTokenHex:followTokenHex];
+  NSError *error = nil;
+  [[BLEPeripheralManager shared] updateAdvertisementWithDisplayName:displayName
+                                                        userHashHex:userHashHex
+                                                    followTokenHex:followTokenHex
+                                                              error:&error];
+  if (error) {
+    reject(@"update_error", error.localizedDescription, error);
+  } else {
     resolve(nil);
-  } @catch (NSException *exception) {
-    reject(@"update_error", exception.reason, nil);
   }
 }
 

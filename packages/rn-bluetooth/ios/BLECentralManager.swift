@@ -6,7 +6,7 @@
 import Foundation
 import CoreBluetooth
 
-class BLECentralManager: NSObject {
+@objc public class BLECentralManager: NSObject {
 
   // MARK: - Constants (Hardcoded GATT Schema)
 
@@ -21,7 +21,7 @@ class BLECentralManager: NSObject {
 
   // MARK: - Properties
 
-  static let shared = BLECentralManager()
+  @objc public static let shared = BLECentralManager()
 
   private var centralManager: CBCentralManager!
   private var peripherals: [UUID: CBPeripheral] = [:]
@@ -37,7 +37,7 @@ class BLECentralManager: NSObject {
     super.init()
   }
 
-  func initialize(restoreIdentifier: String? = nil) {
+  @objc public func initialize(restoreIdentifier: String? = nil) {
     var options: [String: Any] = [:]
     if let identifier = restoreIdentifier {
       options[CBCentralManagerOptionRestoreIdentifierKey] = identifier
@@ -47,7 +47,7 @@ class BLECentralManager: NSObject {
 
   // MARK: - Scanning
 
-  func startScanning() throws {
+@objc public func startScanning() throws {
     guard centralManager.state == .poweredOn else {
       throw NSError(
         domain: "com.rnbluetooth",
@@ -70,7 +70,7 @@ class BLECentralManager: NSObject {
     )
   }
 
-  func stopScanning() {
+@objc public func stopScanning() {
     if !isScanning {
       return
     }
@@ -79,13 +79,13 @@ class BLECentralManager: NSObject {
     EventEmitter.shared?.sendScanStopped()
   }
 
-  func getIsScanning() -> Bool {
+@objc public func getIsScanning() -> Bool {
     return isScanning
   }
 
   // MARK: - Connection
 
-  func connect(deviceId: UUID, timeoutMs: Int) {
+@objc public func connect(deviceId: UUID, timeoutMs: Int) {
     guard let peripheral = peripherals[deviceId] else {
       EventEmitter.shared?.sendError(
         message: "Device not found",
@@ -116,14 +116,14 @@ class BLECentralManager: NSObject {
     }
   }
 
-  func disconnect(deviceId: UUID) {
+@objc public func disconnect(deviceId: UUID) {
     guard let peripheral = peripherals[deviceId] else {
       return
     }
     centralManager.cancelPeripheralConnection(peripheral)
   }
 
-  func isConnected(deviceId: UUID) -> Bool {
+@objc public func isConnected(deviceId: UUID) -> Bool {
     guard let peripheral = peripherals[deviceId] else {
       return false
     }
@@ -132,7 +132,8 @@ class BLECentralManager: NSObject {
 
   // MARK: - GATT Operations
 
-  func readProfile(deviceId: UUID, completion: @escaping (Result<String, Error>) -> Void) {
+  /// Internal Swift-style method using Result
+  private func readProfileInternal(deviceId: UUID, completion: @escaping (Result<String, Error>) -> Void) {
     guard let peripheral = peripherals[deviceId] else {
       completion(.failure(NSError(
         domain: "com.rnbluetooth",
@@ -196,7 +197,8 @@ class BLECentralManager: NSObject {
     }
   }
 
-  func writeFollowRequest(
+  /// Internal Swift-style method
+  private func writeFollowRequestInternal(
     deviceId: UUID,
     payloadJson: String,
     completion: @escaping (Error?) -> Void
@@ -259,6 +261,32 @@ class BLECentralManager: NSObject {
     }
   }
 
+  // MARK: - Objective-C Bridge Methods
+  
+  /// Objective-C compatible wrapper for readProfile
+  @objc public func readProfile(
+    deviceId: UUID,
+    completion: @escaping (String?, Error?) -> Void
+  ) {
+    readProfileInternal(deviceId: deviceId) { result in
+      switch result {
+      case .success(let jsonString):
+        completion(jsonString, nil)
+      case .failure(let error):
+        completion(nil, error)
+      }
+    }
+  }
+  
+  /// Objective-C compatible wrapper for writeFollowRequest
+  @objc public func writeFollowRequest(
+    deviceId: UUID,
+    payloadJson: String,
+    completion: @escaping (Error?) -> Void
+  ) {
+    writeFollowRequestInternal(deviceId: deviceId, payloadJson: payloadJson, completion: completion)
+  }
+
   // MARK: - Helper Methods
 
   private func makeKey(_ deviceId: UUID, _ serviceUUID: CBUUID, _ charUUID: CBUUID) -> String {
@@ -302,7 +330,7 @@ class BLECentralManager: NSObject {
 
 extension BLECentralManager: CBCentralManagerDelegate {
 
-  func centralManagerDidUpdateState(_ central: CBCentralManager) {
+  public func centralManagerDidUpdateState(_ central: CBCentralManager) {
     switch central.state {
     case .poweredOn:
       print("[BLECentralManager] Bluetooth powered on")
@@ -321,7 +349,7 @@ extension BLECentralManager: CBCentralManagerDelegate {
     }
   }
 
-  func centralManager(
+  public func centralManager(
     _ central: CBCentralManager,
     didDiscover peripheral: CBPeripheral,
     advertisementData: [String: Any],
@@ -366,7 +394,7 @@ extension BLECentralManager: CBCentralManagerDelegate {
     )
   }
 
-  func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+  public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
     EventEmitter.shared?.sendConnectionStateChanged(
       deviceId: peripheral.identifier.uuidString,
       state: "connected"
@@ -374,7 +402,7 @@ extension BLECentralManager: CBCentralManagerDelegate {
     // Services will be discovered when needed (lazy discovery)
   }
 
-  func centralManager(
+  public func centralManager(
     _ central: CBCentralManager,
     didFailToConnect peripheral: CBPeripheral,
     error: Error?
@@ -385,7 +413,7 @@ extension BLECentralManager: CBCentralManagerDelegate {
     )
   }
 
-  func centralManager(
+  public func centralManager(
     _ central: CBCentralManager,
     didDisconnectPeripheral peripheral: CBPeripheral,
     error: Error?
@@ -396,7 +424,7 @@ extension BLECentralManager: CBCentralManagerDelegate {
     )
   }
 
-  func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
+  public func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
     if let peripherals = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral] {
       for peripheral in peripherals {
         self.peripherals[peripheral.identifier] = peripheral
@@ -410,7 +438,7 @@ extension BLECentralManager: CBCentralManagerDelegate {
 
 extension BLECentralManager: CBPeripheralDelegate {
 
-  func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+  public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
     if let error = error {
       print("[BLECentralManager] Error discovering services: \(error.localizedDescription)")
       return
@@ -423,7 +451,7 @@ extension BLECentralManager: CBPeripheralDelegate {
     }
   }
 
-  func peripheral(
+  public func peripheral(
     _ peripheral: CBPeripheral,
     didDiscoverCharacteristicsFor service: CBService,
     error: Error?
@@ -456,7 +484,7 @@ extension BLECentralManager: CBPeripheralDelegate {
     }
   }
 
-  func peripheral(
+  public func peripheral(
     _ peripheral: CBPeripheral,
     didUpdateValueFor characteristic: CBCharacteristic,
     error: Error?
@@ -487,7 +515,7 @@ extension BLECentralManager: CBPeripheralDelegate {
     }
   }
 
-  func peripheral(
+  public func peripheral(
     _ peripheral: CBPeripheral,
     didWriteValueFor characteristic: CBCharacteristic,
     error: Error?
