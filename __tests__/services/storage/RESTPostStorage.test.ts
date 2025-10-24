@@ -4,16 +4,24 @@
 
 import '../../../__tests__/setup';
 import RESTPostStorage from '../../../src/services/storage/RESTPostStorage';
-import IdentityService from '../../../src/services/IdentityService';
-import KeyManager from '../../../src/services/crypto/KeyManager';
 import {EncryptedEvent} from '../../../src/services/crypto/EncryptionService';
-
-// Mock dependencies
-jest.mock('../../../src/services/IdentityService');
-jest.mock('../../../src/services/crypto/KeyManager');
 
 // Mock fetch
 global.fetch = jest.fn();
+
+// Mock IdentityService
+const mockGetKeyPair = jest.fn();
+jest.mock('../../../src/services/IdentityService', () => ({
+  getKeyPair: mockGetKeyPair,
+}));
+
+// Mock KeyManager
+const mockSignData = jest.fn();
+jest.mock('../../../src/services/crypto/KeyManager', () => {
+  return jest.fn().mockImplementation(() => ({
+    signData: mockSignData,
+  }));
+});
 
 describe('RESTPostStorage', () => {
   let storage: RESTPostStorage;
@@ -32,10 +40,10 @@ describe('RESTPostStorage', () => {
     });
 
     // Mock IdentityService.getKeyPair()
-    (IdentityService.getKeyPair as jest.Mock).mockResolvedValue(mockKeyPair);
+    mockGetKeyPair.mockResolvedValue(mockKeyPair);
 
     // Mock KeyManager.signData()
-    (KeyManager.prototype.signData as jest.Mock).mockResolvedValue(mockSignature);
+    mockSignData.mockResolvedValue(mockSignature);
   });
 
   afterEach(() => {
@@ -101,11 +109,11 @@ describe('RESTPostStorage', () => {
       expect(body).toEqual(mockEvent);
 
       // Verify signature was created
-      expect(KeyManager.prototype.signData).toHaveBeenCalledTimes(1);
+      expect(mockSignData).toHaveBeenCalledTimes(1);
     });
 
     it('should throw error if no key pair available', async () => {
-      (IdentityService.getKeyPair as jest.Mock).mockResolvedValue(null);
+      mockGetKeyPair.mockResolvedValue(null);
 
       await expect(storage.publishPost(mockEvent)).rejects.toThrow(
         'Cannot publish: No key pair available'
@@ -149,7 +157,7 @@ describe('RESTPostStorage', () => {
       await storage.publishPost(mockEvent);
 
       // Verify signData was called with correct message format
-      const signDataCall = (KeyManager.prototype.signData as jest.Mock).mock.calls[0];
+      const signDataCall = mockSignData.mock.calls[0];
       const messageBytes = signDataCall[0];
       const message = new TextDecoder().decode(messageBytes);
 
