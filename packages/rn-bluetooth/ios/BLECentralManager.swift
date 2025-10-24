@@ -47,7 +47,10 @@ import CoreBluetooth
 
   // MARK: - Scanning
 
-@objc public func startScanning() throws {
+  @objc public func startScanning() throws {
+    print("[BLECentralManager] ⚡️ startScanning() called from Objective-C bridge")
+    print("[BLECentralManager] startScanning called - state: \(centralManager.state.rawValue)")
+    
     guard centralManager.state == .poweredOn else {
       throw NSError(
         domain: "com.rnbluetooth",
@@ -57,9 +60,11 @@ import CoreBluetooth
     }
 
     if isScanning {
+      print("[BLECentralManager] Already scanning, skipping")
       return
     }
 
+    print("[BLECentralManager] ✅ Starting BLE scan for service: \(SERVICE_UUID)")
     isScanning = true
     let options: [String: Any] = [
       CBCentralManagerScanOptionAllowDuplicatesKey: true
@@ -68,12 +73,15 @@ import CoreBluetooth
       withServices: [SERVICE_UUID],
       options: options
     )
+    print("[BLECentralManager] 🔍 Scan started - listening for devices...")
   }
 
 @objc public func stopScanning() {
     if !isScanning {
+      print("[BLECentralManager] Not scanning, nothing to stop")
       return
     }
+    print("[BLECentralManager] 🛑 Stopping BLE scan")
     centralManager.stopScan()
     isScanning = false
     EventEmitter.shared?.sendScanStopped()
@@ -85,8 +93,11 @@ import CoreBluetooth
 
   // MARK: - Connection
 
-@objc public func connect(deviceId: UUID, timeoutMs: Int) {
+  @objc public func connect(deviceId: UUID, timeoutMs: Int) {
+    print("[BLECentralManager] 🔌 Connect requested for device: \(deviceId)")
+    
     guard let peripheral = peripherals[deviceId] else {
+      print("[BLECentralManager] ❌ Device not found in peripherals dictionary")
       EventEmitter.shared?.sendError(
         message: "Device not found",
         code: "DEVICE_NOT_FOUND"
@@ -94,12 +105,14 @@ import CoreBluetooth
       return
     }
 
+    print("[BLECentralManager] Found peripheral, initiating connection...")
     EventEmitter.shared?.sendConnectionStateChanged(
       deviceId: deviceId.uuidString,
       state: "connecting"
     )
 
     centralManager.connect(peripheral, options: nil)
+    print("[BLECentralManager] Connection request sent to CoreBluetooth")
 
     // Connection timeout
     if timeoutMs > 0 {
@@ -134,7 +147,10 @@ import CoreBluetooth
 
   /// Internal Swift-style method using Result
   private func readProfileInternal(deviceId: UUID, completion: @escaping (Result<String, Error>) -> Void) {
+    print("[BLECentralManager] 📖 readProfileInternal called for device: \(deviceId)")
+    
     guard let peripheral = peripherals[deviceId] else {
+      print("[BLECentralManager] ❌ Device not found in peripherals")
       completion(.failure(NSError(
         domain: "com.rnbluetooth",
         code: 2,
@@ -143,7 +159,9 @@ import CoreBluetooth
       return
     }
 
+    print("[BLECentralManager] Peripheral state: \(peripheral.state.rawValue)")
     guard peripheral.state == .connected else {
+      print("[BLECentralManager] ❌ Device not connected (state: \(peripheral.state.rawValue))")
       completion(.failure(NSError(
         domain: "com.rnbluetooth",
         code: 3,
@@ -156,13 +174,16 @@ import CoreBluetooth
     if let service = peripheral.services?.first(where: { $0.uuid == SERVICE_UUID }),
        let characteristic = service.characteristics?.first(where: { $0.uuid == PROFILE_CHAR_UUID }) {
       // Already discovered, read directly
+      print("[BLECentralManager] 📖 Reading profile characteristic (already discovered)")
       let key = makeKey(deviceId, SERVICE_UUID, PROFILE_CHAR_UUID)
       pendingReads[key] = { result in
         switch result {
         case .success(let data):
           if let jsonString = String(data: data, encoding: .utf8) {
+            print("[BLECentralManager] ✅ Profile data received: \(jsonString.prefix(100))...")
             completion(.success(jsonString))
           } else {
+            print("[BLECentralManager] ❌ Failed to decode profile data as UTF-8")
             completion(.failure(NSError(
               domain: "com.rnbluetooth",
               code: 4,
@@ -170,19 +191,23 @@ import CoreBluetooth
             )))
           }
         case .failure(let error):
+          print("[BLECentralManager] ❌ Error reading profile: \(error.localizedDescription)")
           completion(.failure(error))
         }
       }
       peripheral.readValue(for: characteristic)
     } else {
       // Need to discover services first
+      print("[BLECentralManager] 🔍 Discovering services before reading...")
       let key = makeKey(deviceId, SERVICE_UUID, PROFILE_CHAR_UUID)
       pendingReads[key] = { result in
         switch result {
         case .success(let data):
           if let jsonString = String(data: data, encoding: .utf8) {
+            print("[BLECentralManager] ✅ Profile data received: \(jsonString.prefix(100))...")
             completion(.success(jsonString))
           } else {
+            print("[BLECentralManager] ❌ Failed to decode profile data as UTF-8")
             completion(.failure(NSError(
               domain: "com.rnbluetooth",
               code: 4,
@@ -190,6 +215,7 @@ import CoreBluetooth
             )))
           }
         case .failure(let error):
+          print("[BLECentralManager] ❌ Error reading profile: \(error.localizedDescription)")
           completion(.failure(error))
         }
       }
@@ -234,30 +260,32 @@ import CoreBluetooth
     if let service = peripheral.services?.first(where: { $0.uuid == SERVICE_UUID }),
        let characteristic = service.characteristics?.first(where: { $0.uuid == HANDSHAKE_CHAR_UUID }) {
       // Already discovered, write directly
+      print("[BLECentralManager] ✍️ Writing to handshake characteristic (already discovered)")
       let key = makeKey(deviceId, SERVICE_UUID, HANDSHAKE_CHAR_UUID)
       pendingWrites[key] = completion
       peripheral.writeValue(data, for: characteristic, type: .withResponse)
     } else {
       // Need to discover services first
-      let key = makeKey(deviceId, SERVICE_UUID, HANDSHAKE_CHAR_UUID)
-      pendingWrites[key] = { error in
-        if let error = error {
-          completion(error)
-          return
-        }
-        // After discovery, perform the write
+      print("[BLECentralManager] 🔍 Discovering services before writing...")
+      peripheral.discoverServices([SERVICE_UUID])
+      
+      // Wait a moment for discovery to complete, then retry the write
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
         if let service = peripheral.services?.first(where: { $0.uuid == self.SERVICE_UUID }),
            let characteristic = service.characteristics?.first(where: { $0.uuid == self.HANDSHAKE_CHAR_UUID }) {
+          print("[BLECentralManager] ✍️ Writing to handshake characteristic (after discovery)")
+          let key = self.makeKey(deviceId, self.SERVICE_UUID, self.HANDSHAKE_CHAR_UUID)
+          self.pendingWrites[key] = completion
           peripheral.writeValue(data, for: characteristic, type: .withResponse)
         } else {
+          print("[BLECentralManager] ❌ Handshake characteristic not found after discovery")
           completion(NSError(
             domain: "com.rnbluetooth",
             code: 6,
-            userInfo: [NSLocalizedDescriptionKey: "Handshake characteristic not found"]
+            userInfo: [NSLocalizedDescriptionKey: "Handshake characteristic not found after discovery"]
           ))
         }
       }
-      peripheral.discoverServices([SERVICE_UUID])
     }
   }
 
@@ -293,33 +321,32 @@ import CoreBluetooth
     return "\(deviceId.uuidString)#\(serviceUUID.uuidString)#\(charUUID.uuidString)"
   }
 
-  private func parseManufacturerData(_ data: Data) -> [String: Any]? {
-    // Expected format: [version(1), nameLength(1), name(variable), userHash(6), followToken(4)]
-    guard data.count >= 2 else { return nil }
-
-    let version = data[0]
-    let nameLength = Int(data[1])
-
-    let expectedLength = 2 + nameLength + USER_HASH_LENGTH + FOLLOW_TOKEN_LENGTH
-    guard data.count >= expectedLength else { return nil }
-
-    var displayName: String? = nil
-    if nameLength > 0 {
-      let nameData = data.subdata(in: 2..<(2 + nameLength))
-      displayName = String(data: nameData, encoding: .utf8)
+  private func parseLocalName(_ localName: String) -> [String: Any]? {
+    // Expected format: "LCNS:<displayName>:<userHash>:<followToken>"
+    print("[BLECentralManager] Parsing local name: \(localName)")
+    
+    guard localName.hasPrefix("LCNS:") else {
+      print("[BLECentralManager] ⚠️ Local name doesn't match LCNS format")
+      return nil
     }
-
-    let hashStart = 2 + nameLength
-    let userHashData = data.subdata(in: hashStart..<(hashStart + USER_HASH_LENGTH))
-    let userHashHex = userHashData.map { String(format: "%02x", $0) }.joined()
-
-    let tokenStart = hashStart + USER_HASH_LENGTH
-    let followTokenData = data.subdata(in: tokenStart..<(tokenStart + FOLLOW_TOKEN_LENGTH))
-    let followTokenHex = followTokenData.map { String(format: "%02x", $0) }.joined()
-
+    
+    let content = String(localName.dropFirst(5)) // Remove "LCNS:" prefix
+    let components = content.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+    
+    guard components.count == 3 else {
+      print("[BLECentralManager] ⚠️ Invalid LCNS format: expected 3 components, got \(components.count)")
+      return nil
+    }
+    
+    let displayName = String(components[0])
+    let userHashHex = String(components[1])
+    let followTokenHex = String(components[2])
+    
+    print("[BLECentralManager] ✅ Parsed: name='\(displayName)', hash=\(userHashHex), token=\(followTokenHex)")
+    
     return [
-      "version": Int(version),
-      "displayName": displayName as Any,
+      "version": 1,
+      "displayName": displayName.isEmpty ? NSNull() : displayName,
       "userHashHex": userHashHex,
       "followTokenHex": followTokenHex
     ]
@@ -331,21 +358,29 @@ import CoreBluetooth
 extension BLECentralManager: CBCentralManagerDelegate {
 
   public func centralManagerDidUpdateState(_ central: CBCentralManager) {
+    print("[BLECentralManager] State changed to: \(central.state.rawValue)")
+    
     switch central.state {
     case .poweredOn:
-      print("[BLECentralManager] Bluetooth powered on")
+      print("[BLECentralManager] ✅ Bluetooth powered on - ready to scan")
     case .poweredOff:
-      print("[BLECentralManager] Bluetooth powered off")
+      print("[BLECentralManager] ❌ Bluetooth powered off")
       if isScanning {
         isScanning = false
         EventEmitter.shared?.sendError(message: "Bluetooth was turned off", code: "BLUETOOTH_OFF")
       }
     case .unauthorized:
+      print("[BLECentralManager] ❌ Bluetooth permission denied")
       EventEmitter.shared?.sendError(message: "Bluetooth permission denied", code: "PERMISSION_DENIED")
     case .unsupported:
+      print("[BLECentralManager] ❌ Bluetooth not supported")
       EventEmitter.shared?.sendError(message: "Bluetooth not supported", code: "UNSUPPORTED")
-    default:
-      break
+    case .resetting:
+      print("[BLECentralManager] ⚠️ Bluetooth is resetting...")
+    case .unknown:
+      print("[BLECentralManager] ⚠️ Bluetooth state unknown (initializing)...")
+    @unknown default:
+      print("[BLECentralManager] ⚠️ Unknown Bluetooth state")
     }
   }
 
@@ -355,8 +390,11 @@ extension BLECentralManager: CBCentralManagerDelegate {
     advertisementData: [String: Any],
     rssi RSSI: NSNumber
   ) {
+    print("[BLECentralManager] 📱 Discovered peripheral: \(peripheral.identifier) RSSI: \(RSSI) dBm")
+    
     // Filter by RSSI threshold
     if RSSI.intValue < RSSI_THRESHOLD {
+      print("[BLECentralManager] ⚠️ Filtered out: RSSI \(RSSI.intValue) below threshold \(RSSI_THRESHOLD)")
       return
     }
 
@@ -364,21 +402,21 @@ extension BLECentralManager: CBCentralManagerDelegate {
     peripherals[peripheral.identifier] = peripheral
     peripheral.delegate = self
 
-    // Parse manufacturer data
+    // Parse local name data (iOS format for data transmission)
     var payload: [String: Any]?
-    if let manufacturerData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data {
-      // Check manufacturer ID (first 2 bytes)
-      if manufacturerData.count >= 2 {
-        let manufacturerId = manufacturerData.withUnsafeBytes { $0.load(fromByteOffset: 0, as: UInt16.self) }
-        if manufacturerId == MANUFACTURER_ID {
-          let payloadData = manufacturerData.subdata(in: 2..<manufacturerData.count)
-          payload = parseManufacturerData(payloadData)
-        }
+    if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String {
+      print("[BLECentralManager] Found local name: \(localName)")
+      payload = parseLocalName(localName)
+      if let displayName = payload?["displayName"] as? String {
+        print("[BLECentralManager] ✅ Found device: \(displayName)")
       }
+    } else {
+      print("[BLECentralManager] ⚠️ No local name in advertisement")
     }
 
-    // If no manufacturer data payload, create empty one
+    // If no payload parsed, create empty one
     if payload == nil {
+      print("[BLECentralManager] Creating empty payload for device")
       payload = [
         "version": 0,
         "displayName": NSNull(),
@@ -387,6 +425,7 @@ extension BLECentralManager: CBCentralManagerDelegate {
       ]
     }
 
+    print("[BLECentralManager] 📤 Emitting device discovered event")
     EventEmitter.shared?.sendDeviceDiscovered(
       deviceId: peripheral.identifier.uuidString,
       rssi: RSSI.intValue,
@@ -395,6 +434,7 @@ extension BLECentralManager: CBCentralManagerDelegate {
   }
 
   public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+    print("[BLECentralManager] ✅ Successfully connected to peripheral: \(peripheral.identifier)")
     EventEmitter.shared?.sendConnectionStateChanged(
       deviceId: peripheral.identifier.uuidString,
       state: "connected"
@@ -474,13 +514,7 @@ extension BLECentralManager: CBPeripheralDelegate {
       }
 
       // Check for pending write on handshake characteristic
-      if characteristic.uuid == HANDSHAKE_CHAR_UUID {
-        let key = makeKey(peripheral.identifier, SERVICE_UUID, HANDSHAKE_CHAR_UUID)
-        if let writeCompletion = pendingWrites[key] {
-          pendingWrites.removeValue(forKey: key)
-          writeCompletion(nil) // Signal that discovery is complete
-        }
-      }
+      // Note: The actual write will be performed in writeFollowRequestInternal after discovery
     }
   }
 

@@ -29,20 +29,26 @@ class ConnectionServiceClass {
     connection: Connection;
   } | null> {
     try {
-      await log(`Requesting connection to device ${deviceId}...`);
+      await log(`🔗 [ConnectionService] Requesting connection to device ${deviceId}...`);
 
       // Connect to device
+      await log(`🔗 [ConnectionService] Step 1: Connecting to GATT server...`);
       const device = await BLEManager.connectToDevice(deviceId);
       if (!device) {
+        await logError('❌ [ConnectionService] Failed to connect to device - device is null');
         throw new Error('Failed to connect to device');
       }
+      await log(`✅ [ConnectionService] Connected to device: ${device.id}`);
 
       // Read their profile
+      await log(`🔗 [ConnectionService] Step 2: Reading profile from device...`);
       const theirProfile = await BLEManager.readProfile(device);
       if (!theirProfile) {
+        await logError('❌ [ConnectionService] Failed to read profile - profile is null');
         await BLEManager.disconnectFromDevice(deviceId);
         throw new Error('Failed to read profile from device');
       }
+      await log(`✅ [ConnectionService] Profile received:`, JSON.stringify(theirProfile));
 
       // Check if connection already exists
       const existingConnection = await Database.getConnectionByUserId(theirProfile.userId);

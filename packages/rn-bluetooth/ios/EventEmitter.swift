@@ -6,7 +6,7 @@
 import Foundation
 import React
 
-@objc(EventEmitter)
+@objc(RNLCBluetoothEventEmitter)
 class EventEmitter: RCTEventEmitter {
 
   /// Shared singleton instance
@@ -15,6 +15,7 @@ class EventEmitter: RCTEventEmitter {
   override init() {
     super.init()
     EventEmitter.shared = self
+    print("[EventEmitter] 🔌 EventEmitter initialized and set as shared instance")
   }
 
   @objc override static func requiresMainQueueSetup() -> Bool {
@@ -37,12 +38,14 @@ class EventEmitter: RCTEventEmitter {
     rssi: Int,
     payload: [String: Any]
   ) {
+    print("[EventEmitter] 📤 Sending deviceDiscovered event: \(deviceId)")
     send([
       "type": "deviceDiscovered",
       "deviceId": deviceId,
       "rssi": rssi,
       "payload": payload
     ])
+    print("[EventEmitter] ✅ Event sent to JavaScript")
   }
 
   /// Send a connection state changed event

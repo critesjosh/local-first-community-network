@@ -17,8 +17,8 @@ export interface DiscoveredDevice {
 export interface BroadcastPayload {
   version: number;
   displayName: string | null;
-  userHash: string;
-  followToken: string;
+  userHashHex: string;
+  followTokenHex: string;
 }
 
 export interface BLEConnectionState {

@@ -5,11 +5,16 @@
 
 import { NativeModules, NativeEventEmitter } from 'react-native';
 
-// Check if the native module is available
+// Check if the native modules are available
 const RNLCBluetoothModule = NativeModules.RNLCBluetoothModule;
+const RNLCBluetoothEventEmitter = NativeModules.RNLCBluetoothEventEmitter;
 
 if (!RNLCBluetoothModule) {
   console.warn('RNLCBluetoothModule not found. Using mock implementation.');
+}
+
+if (!RNLCBluetoothEventEmitter) {
+  console.warn('RNLCBluetoothEventEmitter not found. Events will not work.');
 }
 
 // Create a mock implementation for development
@@ -34,9 +39,13 @@ const mockModule = {
 // Use the native module if available, otherwise use the mock
 const BluetoothModule = RNLCBluetoothModule || mockModule;
 
-// Event emitter for Bluetooth events
-const eventEmitter = new NativeEventEmitter(RNLCBluetoothModule || {});
+// Event emitter for Bluetooth events - use the dedicated EventEmitter module
+const eventEmitter = new NativeEventEmitter(RNLCBluetoothEventEmitter);
 const EVENT_NAME = 'RNLCBluetoothEvent';
+
+console.log('🔌 Bluetooth Module Setup:');
+console.log('  - RNLCBluetoothModule:', RNLCBluetoothModule ? 'Found' : 'NOT FOUND');
+console.log('  - RNLCBluetoothEventEmitter:', RNLCBluetoothEventEmitter ? 'Found' : 'NOT FOUND');
 
 /**
  * Add a listener for Bluetooth events
@@ -44,12 +53,23 @@ const EVENT_NAME = 'RNLCBluetoothEvent';
  * @returns Unsubscribe function
  */
 export function addBluetoothListener(listener) {
-  if (!RNLCBluetoothModule) {
-    console.warn('RNLCBluetoothModule not available. Event listener will not work.');
+  if (!RNLCBluetoothEventEmitter) {
+    console.warn('RNLCBluetoothEventEmitter not available. Event listener will not work.');
     return () => {};
   }
   
-  const subscription = eventEmitter.addListener(EVENT_NAME, listener);
+  // Wrap listener to log events
+  const wrappedListener = (event) => {
+    if (event.type === 'deviceDiscovered') {
+      console.log('📱 [BluetoothModule] deviceDiscovered event received:');
+      console.log('  - deviceId:', event.deviceId);
+      console.log('  - rssi:', event.rssi);
+      console.log('  - payload:', JSON.stringify(event.payload));
+    }
+    listener(event);
+  };
+  
+  const subscription = eventEmitter.addListener(EVENT_NAME, wrappedListener);
   return () => subscription.remove();
 }
 
@@ -106,8 +126,13 @@ export const Bluetooth = {
     return BluetoothModule.setProfileData(profileJson);
   },
 
-  startAdvertising: (displayName, userHashHex, followTokenHex) => 
-    BluetoothModule.startAdvertising(displayName, userHashHex, followTokenHex),
+  startAdvertising: (displayName, userHashHex, followTokenHex) => {
+    console.log('📡 [BluetoothModule] startAdvertising called with:');
+    console.log('  - displayName:', displayName);
+    console.log('  - userHashHex:', userHashHex);
+    console.log('  - followTokenHex:', followTokenHex);
+    return BluetoothModule.startAdvertising(displayName, userHashHex, followTokenHex);
+  },
 
   updateAdvertisement: (displayName, userHashHex, followTokenHex) =>
     BluetoothModule.updateAdvertisement(displayName, userHashHex, followTokenHex),

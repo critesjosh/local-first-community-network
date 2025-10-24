@@ -28,21 +28,26 @@ class BLEBroadcastService {
   /**
    * Start advertising the current user's presence
    */
-  async start(profile: BroadcastProfile): Promise<void> {
+  async start(profile: BroadcastProfile, fullProfile?: any): Promise<void> {
     this.currentProfile = profile;
 
     try {
       // Check Bluetooth permissions and state first
+      console.log('🔧 Initializing Bluetooth for broadcasting...');
       await this.checkBluetoothPermissions();
       
-      // Set up GATT server profile data
-      // Note: This should be called with full profile including userId, publicKey, etc.
-      // For now, we'll let the caller handle this via setProfileData
+      // Set up GATT server profile data if provided
+      if (fullProfile) {
+        console.log('📋 Setting profile data for GATT server...');
+        await this.setProfileData(JSON.stringify(fullProfile));
+      }
 
+      console.log('📡 Starting BLE broadcast...');
       await this.refreshBroadcast();
       this.startRotationTimer();
+      console.log('✅ BLE broadcast started successfully');
     } catch (error) {
-      console.error('Failed to start BLE broadcasting:', error);
+      console.error('❌ Failed to start BLE broadcasting:', error);
       throw error;
     }
   }
@@ -111,15 +116,17 @@ class BLEBroadcastService {
    */
   private async refreshBroadcast(): Promise<void> {
     if (!this.currentProfile) {
+      console.warn('⚠️ No profile set, cannot start broadcast');
       return;
     }
 
     const payload = this.buildManufacturerPayload(this.currentProfile);
     this.localFingerprint = payload.fingerprint;
 
+    console.log(`📡 Broadcasting as "${payload.displayName}" (hash: ${payload.userHashHex})`);
+
     try {
       // Start advertising with the custom module
-      console.log('📡 Starting BLE advertisement');
       await Bluetooth.startAdvertising(
         payload.displayName,
         payload.userHashHex,
@@ -127,22 +134,26 @@ class BLEBroadcastService {
       );
       
       this.isBroadcasting = true;
-      console.log('✅ BLE advertisement started successfully');
+      console.log(`✅ BLE advertisement active - fingerprint: ${this.localFingerprint}`);
     } catch (error) {
       console.error('❌ Error advertising BLE presence:', error);
       this.isBroadcasting = false;
       
       // Provide more specific error messages
-      if (error.message.includes('permission')) {
+      if (error.message && error.message.includes('permission')) {
         throw new Error('Bluetooth advertising permission denied. Please grant permission in device settings.');
-      } else if (error.message.includes('not enabled')) {
-        throw new Error('Bluetooth is not enabled. Please enable Bluetooth in device settings.');
-      } else if (error.message.includes('already advertising')) {
+      } else if (error.message && error.message.includes('powered off')) {
+        throw new Error('Bluetooth is powered off. Please enable Bluetooth in device settings.');
+      } else if (error.message && error.message.includes('initializing')) {
+        console.log('⏳ Bluetooth is initializing, advertisement will start automatically...');
+        this.isBroadcasting = true; // Mark as attempting to broadcast
+        return;
+      } else if (error.message && error.message.includes('already advertising')) {
         console.log('⚠️ Already advertising, continuing...');
         this.isBroadcasting = true;
         return;
       } else {
-        throw new Error(`BLE advertising failed: ${error.message}`);
+        throw new Error(`BLE advertising failed: ${error.message || 'Unknown error'}`);
       }
     }
   }
@@ -171,24 +182,33 @@ class BLEBroadcastService {
     followTokenHex: string;
     fingerprint: string;
   } {
+    console.log('🏗️ [BLEBroadcast] Building payload for:', profile.displayName, 'userId:', profile.userId);
+    
     const normalizedName = this.normaliseName(profile.displayName);
     const truncatedName = normalizedName.slice(0, BROADCAST_NAME_MAX_LENGTH);
+    console.log('  - Normalized name:', normalizedName, '→ Truncated:', truncatedName);
 
     const userHash = sha256(Buffer.from(profile.userId, 'utf8'));
     const userHashBytes = userHash.slice(0, USER_HASH_LENGTH);
     const userHashHex = Buffer.from(userHashBytes).toString('hex');
+    console.log('  - User hash (6 bytes):', userHashHex, '(', userHashBytes.length, 'bytes)');
 
     const tokenBytes = this.generateRandomBytes(FOLLOW_TOKEN_LENGTH);
     const followTokenHex = Buffer.from(tokenBytes).toString('hex');
+    console.log('  - Follow token (4 bytes):', followTokenHex, '(', tokenBytes.length, 'bytes)');
 
     const fingerprint = userHashHex;
 
-    return {
+    const payload = {
       displayName: truncatedName,
       userHashHex,
       followTokenHex,
       fingerprint,
     };
+    
+    console.log('✅ [BLEBroadcast] Payload built:', JSON.stringify(payload));
+    
+    return payload;
   }
 
   private normaliseName(name: string): string {

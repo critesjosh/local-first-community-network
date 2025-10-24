@@ -30,11 +30,15 @@ import CoreBluetooth
 
   private var isAdvertising = false
   private var profileData: Data?
+  private var isReady = false
 
   // Current advertisement data
   private var currentDisplayName: String?
   private var currentUserHashHex: String?
   private var currentFollowTokenHex: String?
+  
+  // Pending advertisement to start when powered on
+  private var pendingAdvertisement: (displayName: String, userHashHex: String, followTokenHex: String)?
 
   // MARK: - Initialization
 
@@ -62,17 +66,43 @@ import CoreBluetooth
 
   // MARK: - Advertising
 
-@objc public func startAdvertising(
+  @objc public func startAdvertising(
     displayName: String,
     userHashHex: String,
     followTokenHex: String
   ) throws {
-    guard peripheralManager.state == .poweredOn else {
-      throw NSError(
-        domain: "com.rnbluetooth",
-        code: 2,
-        userInfo: [NSLocalizedDescriptionKey: "Bluetooth is not powered on"]
-      )
+    print("[BLEPeripheralManager] ⚡️ startAdvertising() called from Objective-C bridge")
+    print("[BLEPeripheralManager] startAdvertising called - state: \(peripheralManager.state.rawValue)")
+    
+    // If not powered on yet, queue the advertisement
+    if peripheralManager.state != .poweredOn {
+      print("[BLEPeripheralManager] Not powered on yet, queuing advertisement...")
+      pendingAdvertisement = (displayName, userHashHex, followTokenHex)
+      
+      // Check if it's a permanent failure state
+      if peripheralManager.state == .poweredOff {
+        throw NSError(
+          domain: "com.rnbluetooth",
+          code: 2,
+          userInfo: [NSLocalizedDescriptionKey: "Bluetooth is powered off. Please enable Bluetooth."]
+        )
+      } else if peripheralManager.state == .unauthorized {
+        throw NSError(
+          domain: "com.rnbluetooth",
+          code: 2,
+          userInfo: [NSLocalizedDescriptionKey: "Bluetooth permission denied. Please grant permission in Settings."]
+        )
+      } else if peripheralManager.state == .unsupported {
+        throw NSError(
+          domain: "com.rnbluetooth",
+          code: 2,
+          userInfo: [NSLocalizedDescriptionKey: "Bluetooth is not supported on this device."]
+        )
+      }
+      
+      // Otherwise, it's just initializing - the delegate will call us back
+      print("[BLEPeripheralManager] Bluetooth is initializing, will start advertising when ready")
+      return
     }
 
     // Store current advertisement data
@@ -93,9 +123,10 @@ import CoreBluetooth
     )
 
     // Start advertising
+    print("[BLEPeripheralManager] Starting advertising now...")
     peripheralManager.startAdvertising(advertisementData)
     isAdvertising = true
-    print("[BLEPeripheralManager] Started advertising")
+    print("[BLEPeripheralManager] Advertisement started")
   }
 
 @objc public func updateAdvertisement(
@@ -176,23 +207,21 @@ import CoreBluetooth
     userHashHex: String,
     followTokenHex: String
   ) -> [String: Any] {
+    print("[BLEPeripheralManager] 📦 Building advertisement data...")
     var advertisementData: [String: Any] = [:]
 
     // Add service UUID
     advertisementData[CBAdvertisementDataServiceUUIDsKey] = [SERVICE_UUID]
+    print("  - Service UUID: \(SERVICE_UUID.uuidString)")
 
-    // Build manufacturer data
-    let manufacturerData = buildManufacturerData(
-      displayName: displayName,
-      userHashHex: userHashHex,
-      followTokenHex: followTokenHex
-    )
+    // Encode data in local name (iOS doesn't allow custom manufacturer data)
+    // Format: "LCNS:<displayName>:<userHash>:<followToken>"
+    let normalizedName = normalizeName(displayName)
+    let encodedName = "LCNS:\(normalizedName):\(userHashHex):\(followTokenHex)"
+    advertisementData[CBAdvertisementDataLocalNameKey] = encodedName
+    print("  - Local name: \(encodedName)")
 
-    advertisementData[CBAdvertisementDataManufacturerDataKey] = manufacturerData
-
-    // Note: iOS limits advertisement data in background
-    // Local name is automatically added by iOS if space permits
-
+    print("  - Advertisement ready to broadcast")
     return advertisementData
   }
 
@@ -201,6 +230,11 @@ import CoreBluetooth
     userHashHex: String,
     followTokenHex: String
   ) -> Data {
+    print("[BLEPeripheralManager] 🏗️ Building manufacturer data:")
+    print("  - displayName: \(displayName)")
+    print("  - userHashHex: \(userHashHex)")
+    print("  - followTokenHex: \(followTokenHex)")
+    
     var data = Data()
 
     // Manufacturer ID (2 bytes, little-endian)
@@ -218,23 +252,32 @@ import CoreBluetooth
     let nameLength = UInt8(nameBytes.count)
     data.append(nameLength)
     data.append(nameBytes)
+    
+    print("  - Normalized name: '\(normalizedName)' (\(nameLength) bytes)")
 
     // User hash (6 bytes)
     if let userHashData = hexStringToData(userHashHex) {
       data.append(userHashData.prefix(USER_HASH_LENGTH))
+      print("  - User hash: \(userHashData.prefix(USER_HASH_LENGTH).map { String(format: "%02x", $0) }.joined())")
     } else {
       // Fallback: append zeros
       data.append(Data(count: USER_HASH_LENGTH))
+      print("  - User hash: ERROR - failed to parse hex string!")
     }
 
     // Follow token (4 bytes)
     if let tokenData = hexStringToData(followTokenHex) {
       data.append(tokenData.prefix(FOLLOW_TOKEN_LENGTH))
+      print("  - Follow token: \(tokenData.prefix(FOLLOW_TOKEN_LENGTH).map { String(format: "%02x", $0) }.joined())")
     } else {
       // Fallback: append zeros
       data.append(Data(count: FOLLOW_TOKEN_LENGTH))
+      print("  - Follow token: ERROR - failed to parse hex string!")
     }
 
+    print("  - Total manufacturer data size: \(data.count) bytes")
+    print("  - Raw hex: \(data.map { String(format: "%02x", $0) }.joined())")
+    
     return data
   }
 
@@ -242,8 +285,9 @@ import CoreBluetooth
 
   private func normalizeName(_ name: String) -> String {
     let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-    // Strip non-ASCII characters
-    return trimmed.components(separatedBy: CharacterSet.init(charactersIn: " -~").inverted).joined()
+    // Keep only ASCII printable characters (space through tilde)
+    let printableAscii = CharacterSet(charactersIn: UnicodeScalar(32)...UnicodeScalar(126))
+    return trimmed.unicodeScalars.filter { printableAscii.contains($0) }.map { String($0) }.joined()
   }
 
   private func hexStringToData(_ hex: String) -> Data? {
@@ -273,15 +317,36 @@ import CoreBluetooth
 extension BLEPeripheralManager: CBPeripheralManagerDelegate {
 
     public func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
+    print("[BLEPeripheralManager] State changed to: \(peripheral.state.rawValue)")
+    
     switch peripheral.state {
     case .poweredOn:
-      print("[BLEPeripheralManager] Peripheral manager powered on")
+      print("[BLEPeripheralManager] ✅ Peripheral manager powered on")
+      isReady = true
+      
       // Setup GATT service when powered on
       if service == nil {
         setupGattService()
       }
+      
+      // Start any pending advertisement
+      if let pending = pendingAdvertisement {
+        print("[BLEPeripheralManager] Starting pending advertisement...")
+        pendingAdvertisement = nil
+        do {
+          try startAdvertising(
+            displayName: pending.displayName,
+            userHashHex: pending.userHashHex,
+            followTokenHex: pending.followTokenHex
+          )
+        } catch {
+          print("[BLEPeripheralManager] Failed to start pending advertisement: \(error)")
+        }
+      }
+      
     case .poweredOff:
-      print("[BLEPeripheralManager] Peripheral manager powered off")
+      print("[BLEPeripheralManager] ❌ Peripheral manager powered off")
+      isReady = false
       if isAdvertising {
         isAdvertising = false
         EventEmitter.shared?.sendError(
@@ -290,30 +355,44 @@ extension BLEPeripheralManager: CBPeripheralManagerDelegate {
         )
       }
     case .unauthorized:
+      print("[BLEPeripheralManager] ❌ Bluetooth permission denied")
+      isReady = false
       EventEmitter.shared?.sendError(
         message: "Bluetooth permission denied",
         code: "PERMISSION_DENIED"
       )
     case .unsupported:
+      print("[BLEPeripheralManager] ❌ Bluetooth not supported")
+      isReady = false
       EventEmitter.shared?.sendError(
         message: "Bluetooth not supported",
         code: "UNSUPPORTED"
       )
-    default:
-      break
+    case .resetting:
+      print("[BLEPeripheralManager] ⚠️ Bluetooth is resetting...")
+      isReady = false
+    case .unknown:
+      print("[BLEPeripheralManager] ⚠️ Bluetooth state unknown (initializing)...")
+      isReady = false
+    @unknown default:
+      print("[BLEPeripheralManager] ⚠️ Unknown Bluetooth state")
+      isReady = false
     }
   }
 
   public func peripheralManagerDidStartAdvertising(_ peripheral: CBPeripheralManager, error: Error?) {
     if let error = error {
-      print("[BLEPeripheralManager] Failed to start advertising: \(error.localizedDescription)")
+      print("[BLEPeripheralManager] ❌ Failed to start advertising: \(error.localizedDescription)")
       isAdvertising = false
       EventEmitter.shared?.sendError(
         message: "Failed to start advertising: \(error.localizedDescription)",
         code: "ADVERTISING_FAILED"
       )
     } else {
-      print("[BLEPeripheralManager] Did start advertising")
+      print("[BLEPeripheralManager] ✅ Did start advertising successfully")
+      if let name = currentDisplayName {
+        print("[BLEPeripheralManager] Broadcasting as: \(name)")
+      }
     }
   }
 

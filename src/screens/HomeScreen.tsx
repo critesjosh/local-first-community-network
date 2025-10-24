@@ -21,6 +21,7 @@ import BLEConnectionHandler from '../services/bluetooth/BLEConnectionHandler';
 import IdentityService from '../services/IdentityService';
 import {addBluetoothListener} from '@localcommunity/rn-bluetooth';
 import {initLogger} from '../utils/logger';
+import {Buffer} from 'buffer';
 
 interface RSVPState {
   [eventId: string]: {
@@ -100,19 +101,26 @@ const HomeScreen = () => {
         if (user && identity) {
           console.log('Starting BLE advertising for user:', user.displayName);
 
-          // Set profile data for GATT server (when others connect to read profile)
-          await BLEBroadcastService.setProfileData(JSON.stringify({
+          // Create full connection profile with proper public key
+          const fullProfile = {
             userId: user.id,
             displayName: user.displayName,
-            publicKey: user.id,
+            publicKey: Buffer.from(identity.publicKey).toString('base64'),
             profilePhoto: user.profilePhoto,
-          }));
+          };
 
-          // Start advertising presence
+          console.log('[HomeScreen] 📋 Profile data prepared:', {
+            userId: fullProfile.userId,
+            displayName: fullProfile.displayName,
+            publicKeyLength: fullProfile.publicKey.length,
+            hasPhoto: !!fullProfile.profilePhoto
+          });
+
+          // Start advertising presence (this will set the profile data internally)
           await BLEBroadcastService.start({
             userId: user.id,
             displayName: user.displayName,
-          });
+          }, fullProfile);
 
           console.log('✅ BLE advertising started successfully');
 
