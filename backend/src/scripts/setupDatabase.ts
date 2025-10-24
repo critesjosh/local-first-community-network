@@ -22,16 +22,27 @@ async function setupDatabase() {
         encrypted_content TEXT NOT NULL,
         iv VARCHAR(100) NOT NULL,
         wrapped_keys JSONB NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-        -- Indexes for performance
-        INDEX idx_posts_timestamp (timestamp DESC),
-        INDEX idx_posts_author (author_id),
-        INDEX idx_posts_created_at (created_at DESC)
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
     console.log('✅ Posts table created');
+
+    // Create indexes for performance
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_posts_timestamp
+      ON posts (timestamp DESC);
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_posts_author
+      ON posts (author_id);
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_posts_created_at
+      ON posts (created_at DESC);
+    `);
 
     // Create index on wrapped_keys for faster recipient lookups (GIN index for JSONB)
     await client.query(`
@@ -39,7 +50,7 @@ async function setupDatabase() {
       ON posts USING GIN (wrapped_keys);
     `);
 
-    console.log('✅ Wrapped keys index created');
+    console.log('✅ Indexes created');
 
     console.log('🎉 Database setup complete!');
   } catch (error) {

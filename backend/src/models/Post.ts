@@ -26,6 +26,11 @@ export interface PostRow {
   timestamp: bigint;
   encrypted_content: string;
   iv: string;
-  wrapped_keys: string; // JSON string
+  wrapped_keys: {
+    [recipientLookupId: string]: {
+      wrappedKey: string;
+      keyWrapIV: string;
+    };
+  }; // JSONB is already parsed by pg library
   created_at: Date;
 }

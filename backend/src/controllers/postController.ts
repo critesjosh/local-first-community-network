@@ -77,7 +77,7 @@ export const getPosts = async (req: Request, res: Response): Promise<void> => {
       timestamp: Number(row.timestamp),
       encryptedContent: row.encrypted_content,
       iv: row.iv,
-      wrappedKeys: JSON.parse(row.wrapped_keys),
+      wrappedKeys: row.wrapped_keys, // Already parsed by pg JSONB
     }));
 
     console.log(`📥 Fetched ${posts.length} posts since ${new Date(since).toISOString()}`);
@@ -121,7 +121,7 @@ export const getPostById = async (req: Request, res: Response): Promise<void> =>
       timestamp: Number(row.timestamp),
       encryptedContent: row.encrypted_content,
       iv: row.iv,
-      wrappedKeys: JSON.parse(row.wrapped_keys),
+      wrappedKeys: row.wrapped_keys, // Already parsed by pg JSONB
     };
 
     res.json(post);

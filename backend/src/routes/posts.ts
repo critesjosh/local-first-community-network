@@ -4,11 +4,12 @@
 
 import {Router} from 'express';
 import {createPost, getPosts, getPostById} from '../controllers/postController';
+import {verifySignature} from '../middleware/authMiddleware';
 
 const router = Router();
 
-// POST /api/posts - Create new encrypted post
-router.post('/', createPost);
+// POST /api/posts - Create new encrypted post (requires signature)
+router.post('/', verifySignature, createPost);
 
 // GET /api/posts?since={timestamp}&limit={limit} - Get posts since timestamp
 router.get('/', getPosts);
