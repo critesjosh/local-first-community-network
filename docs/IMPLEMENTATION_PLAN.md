@@ -88,6 +88,16 @@ This implementation plan outlines the development of a 1-month MVP for the Local
     - Implemented automatic background synchronization for pending connections
     - Auto-upgrade pending-sent to mutual when responder accepts
 
+- ✅ **Backend REST API with Authentication** (2025-10-24)
+  - Express.js backend with PostgreSQL database
+  - Ed25519 signature-based authentication middleware
+  - API endpoints: POST /api/posts (authenticated), GET /api/posts
+  - RESTPostStorage implementation in mobile app with request signing
+  - E2E test script verifying complete authenticated flow
+  - 5-minute timestamp window prevents replay attacks
+  - PostStorageProvider abstraction layer for future OrbitDB migration
+  - Comprehensive test suite for authentication (RESTPostStorage + authMiddleware)
+
 **In Progress:**
 - Week 2, Days 12-13: Event Posting System (hybrid encryption implemented, UI pending)
 - Planning Month 2 OrbitDB storage layer migration (architecture documented)
@@ -96,8 +106,7 @@ This implementation plan outlines the development of a 1-month MVP for the Local
 - Test mutual connection flow end-to-end on physical devices
 - Create Event UI with form inputs
 - Event posting system integration with UI
-- **Implement abstract `PostStorageProvider` interface** (prepare for OrbitDB)
-- Simple REST API backend for MVP (Month 1)
+- Deploy backend to production environment (Railway/Render)
 - OrbitDB integration for decentralized storage (Month 2)
 
 **Test Status:** 171/171 passing ✅ (base test suite, BLE physical device testing in progress)
@@ -123,15 +132,20 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - @react-native-async-storage/async-storage
 - **Image Picker:** expo-image-picker (replaces react-native-image-picker)
 
-### Backend (MVP - Month 1)
+### Backend (MVP - Month 1) ✅
 
-- **Framework:** Express.js or Fastify
-- **Database:** PostgreSQL for encrypted blob storage
-- **Authentication:** Signature-based (no passwords)
-- **Deployment:** Railway.app, Render, or single VPS
-- **API:** Simple REST endpoints (POST/GET for events, messages, RSVPs)
+- **Framework:** Express.js (implemented)
+- **Database:** PostgreSQL for encrypted blob storage (implemented with JSONB columns)
+- **Authentication:** Ed25519 signature-based authentication (implemented)
+  - authMiddleware.ts verifies signatures on POST requests
+  - Uses @noble/ed25519, @noble/hashes, @scure/base
+  - 5-minute replay attack window
+- **Deployment:** Railway.app, Render, or single VPS (pending deployment)
+- **API:** Simple REST endpoints (implemented)
+  - POST /api/posts - Create encrypted event (requires signature)
+  - GET /api/posts?since={timestamp}&limit={limit} - Fetch events
 - **Note:** Server stores encrypted data, cannot decrypt content
-- **Design:** Abstract storage layer (`PostStorageProvider` interface) for future OrbitDB migration
+- **Design:** Abstract storage layer (`PostStorageProvider` interface) for future OrbitDB migration (implemented)
 
 ### Backend (Post-MVP - Month 2+)
 

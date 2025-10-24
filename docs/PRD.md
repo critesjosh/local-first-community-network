@@ -167,6 +167,12 @@ Build a privacy-first platform for discovering local events and building neighbo
   - This prevents server metadata leakage (77x more efficient than encrypting content per recipient)
 - Local storage: SQLite with events table
 - **Server sync:** POST encrypted events to server, GET to fetch new events
+- **Authentication:** Ed25519 signature-based authentication on POST requests
+  - Client signs: `${authorId}:${timestamp}:${sha256(requestBody)}`
+  - Signature sent in X-Signature header (hex-encoded)
+  - Timestamp sent in X-Timestamp header
+  - Server verifies signature matches authorId's public key
+  - 5-minute timestamp window prevents replay attacks
 - **SIMPLIFICATION:** Use simple REST API for MVP (no WebSockets, no real-time updates)
 
 #### US-3.2: Discover Events in Feed (SIMPLIFIED)
@@ -640,13 +646,19 @@ Server → Client: {
   - Supports advertising, scanning, GATT operations, background modes
   - 50% smaller API surface, faster scanning, lower memory usage vs generic libraries
 
-#### Backend (Node.js) - MVP Phase
+#### Backend (Node.js) - MVP Phase ✅ IMPLEMENTED
 
-- **Framework:** Express.js or Fastify
-- **Database:** PostgreSQL (encrypted blobs) + Redis (real-time)
-- **WebSocket:** Socket.io or ws
-- **Storage:** S3-compatible for photos/files
-- **Deployment:** Docker + Kubernetes or Railway/Render
+- **Framework:** Express.js (implemented)
+- **Database:** PostgreSQL (encrypted blobs) ✅
+- **Authentication:** Ed25519 signature verification middleware ✅
+  - Verifies request signatures against authorId's public key
+  - Prevents unauthorized event creation
+  - 5-minute replay attack window
+- **API Endpoints:** ✅
+  - POST /api/posts - Create encrypted event (requires signature)
+  - GET /api/posts?since={timestamp}&limit={limit} - Fetch events
+- **Storage:** S3-compatible for photos/files (pending)
+- **Deployment:** Docker + Kubernetes or Railway/Render (pending)
 
 **Note:** REST API backend for MVP (Month 1). Post-MVP migration to hybrid OrbitDB architecture (see below).
 
