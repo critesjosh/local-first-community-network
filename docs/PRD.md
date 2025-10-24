@@ -340,11 +340,13 @@ Build a privacy-first platform for discovering local events and building neighbo
 
 ### 3.1 System Architecture
 
+#### MVP Architecture (Month 1 - REST API)
+
 ```
 ┌─────────────┐         ┌─────────────┐
 │   Mobile    │         │   Mobile    │
 │   Client    │◄───────►│   Client    │
-│   (Alice)   │  NFC/BT │   (Bob)     │
+│   (Alice)   │  BLE    │   (Bob)     │
 └──────┬──────┘         └──────┬──────┘
        │                       │
        │  Encrypted Posts      │
@@ -357,6 +359,47 @@ Build a privacy-first platform for discovering local events and building neighbo
 │   cannot decrypt content)          │
 └────────────────────────────────────┘
 ```
+
+#### Post-MVP Architecture (Month 2+ - Hybrid OrbitDB)
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Mobile App (React Native + Expo)                       │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│  ┌──────────────────┐         ┌──────────────────┐     │
+│  │ REST Notification│         │  OrbitDB Client  │     │
+│  │    Service       │         │  (Helia + HTTP)  │     │
+│  │  "Alice posted"  │         │  Content Storage │     │
+│  └────────┬─────────┘         └────────┬─────────┘     │
+│           │                            │               │
+└───────────┼────────────────────────────┼───────────────┘
+            │                            │
+            ▼                            ▼
+   ┌────────────────┐         ┌────────────────────────┐
+   │  Notification  │         │    IPFS Gateway        │
+   │  Server (REST) │         │  (Pinata/Infura/etc)   │
+   │  (lightweight) │         │  + Pinning Service     │
+   └────────────────┘         └────────┬───────────────┘
+                                       │
+                              ┌────────▼───────────┐
+                              │ Community Pinning  │
+                              │ Pool (shared)      │
+                              │                    │
+                              │ Alice's OrbitDB:   │
+                              │ /orbitdb/Qm../posts│
+                              │                    │
+                              │ Bob's OrbitDB:     │
+                              │ /orbitdb/Qm../posts│
+                              └────────────────────┘
+```
+
+**Key Design: Per-User OrbitDB Folders**
+- Each user has their own OrbitDB event log (e.g., `/orbitdb/Qm.../alice-posts`)
+- Connections exchange OrbitDB addresses during BLE handshake
+- Connections "follow" each other's folders to receive updates
+- Content stored on IPFS via gateway, pinned to community pool
+- Lightweight REST API only for notifications, not content storage
 
 ### 3.2 Data Model
 
@@ -383,6 +426,7 @@ Build a privacy-first platform for discovering local events and building neighbo
   connectionID: "uuid",
   theirPublicKey: Uint8Array(32),
   sharedSecret: Uint8Array(32),  // DH(myPrivate, theirPublic)
+  orbitDBAddress: string,  // NEW: e.g., "/orbitdb/Qm.../alice-posts"
   metadata: {
     name: string,
     photo: string,
@@ -392,6 +436,8 @@ Build a privacy-first platform for discovering local events and building neighbo
   encryptionKey: Uint8Array(32)  // derived from sharedSecret
 }
 ```
+
+**Note:** `orbitDBAddress` exchanged during BLE handshake (post-MVP). For MVP, this field can be null and populated during Month 2 migration.
 
 #### Post
 
@@ -594,13 +640,36 @@ Server → Client: {
   - Supports advertising, scanning, GATT operations, background modes
   - 50% smaller API surface, faster scanning, lower memory usage vs generic libraries
 
-#### Backend (Node.js)
+#### Backend (Node.js) - MVP Phase
 
 - **Framework:** Express.js or Fastify
 - **Database:** PostgreSQL (encrypted blobs) + Redis (real-time)
 - **WebSocket:** Socket.io or ws
 - **Storage:** S3-compatible for photos/files
 - **Deployment:** Docker + Kubernetes or Railway/Render
+
+**Note:** REST API backend for MVP (Month 1). Post-MVP migration to hybrid OrbitDB architecture (see below).
+
+#### Post-MVP: Hybrid OrbitDB Architecture (Month 2+)
+
+**Storage Layer:**
+- **OrbitDB v2+:** Per-user folders for decentralized content storage
+- **IPFS/Helia:** Content-addressed storage with HTTP gateway access
+- **Pinning Service:** Shared community pool (Pinata/web3.storage)
+- **React Native:** Helia HTTP client for mobile gateway access
+
+**Notification Layer (Lightweight REST API):**
+- **Framework:** Express.js (minimal)
+- **Purpose:** Notify connections of new posts ("Alice posted, check her OrbitDB")
+- **No Content Storage:** Only metadata (authorID, postID, timestamp, OrbitDB address)
+- **Deployment:** Railway/Render (low cost)
+
+**Architecture Benefits:**
+- True data ownership (users control their content)
+- Censorship resistance (no central content server)
+- Reduced server costs (content on IPFS, not your database)
+- CRDT-based conflict resolution (built into OrbitDB)
+- Gateway-based access (no full IPFS node on mobile)
 
 #### Alternative: Serverless
 
@@ -672,7 +741,7 @@ Server → Client: {
 
 ## 5. MVP Scope
 
-### In Scope (Event Discovery Core)
+### In Scope (Event Discovery Core - Month 1)
 
 ✅ In-person verification (Bluetooth only for MVP)
 ✅ **Simple server backend** (REST API for encrypted posts/messages)
@@ -683,6 +752,15 @@ Server → Client: {
 ✅ Direct messaging (basic) for event coordination
 ✅ Profile management
 ✅ **Single neighborhood pilot focused on event adoption**
+✅ **Abstract storage layer** (`PostStorageProvider` interface for future flexibility)
+
+### Post-MVP Enhancements (Month 2+)
+
+🚀 **OrbitDB decentralized storage** (per-user folders, community pinning pool)
+🚀 **Hybrid architecture** (REST notifications + OrbitDB content storage)
+🚀 **IPFS/Helia integration** (gateway-based access, no full node on mobile)
+🚀 **Enhanced BLE handshake** (exchange OrbitDB addresses during pairing)
+🚀 **True data ownership** (users control their content, censorship-resistant)
 
 ### Out of Scope (Future Phases)
 
@@ -693,11 +771,11 @@ Server → Client: {
 ❌ Web app
 ❌ Video/voice calls
 ❌ Location-based auto-discovery (stays 100% in-person verification)
-❌ **P2P BLE sync** (nice-to-have for offline scenarios, but not MVP priority)
-❌ **Multi-device sync** (single device only for MVP)
+❌ **P2P BLE sync** (nice-to-have for offline scenarios, Month 3+)
+❌ **Multi-device sync** (single device only for MVP, Month 3+ with OrbitDB CRDTs)
 ❌ **NFC verification** (Bluetooth only for MVP)
-❌ **Signal Protocol** (basic AES-GCM sufficient for MVP)
-❌ **Real-time WebSocket updates** (poll-based refresh for MVP)
+❌ **Signal Protocol** (basic AES-GCM sufficient for MVP, Month 4+)
+❌ **Real-time WebSocket updates** (poll-based refresh for MVP, hybrid REST notifications for Month 2)
 
 ### Success Metrics for MVP
 
@@ -710,13 +788,14 @@ Server → Client: {
 
 ## 6. Implementation Phases
 
-### Phase 1: Core Infrastructure (Weeks 1-4)
+### Phase 1: Core Infrastructure (Weeks 1-4) - COMPLETED
 
-- [ ] Set up React Native project with TypeScript
-- [ ] Implement key generation and storage (Ed25519)
-- [ ] Build basic UI shell (navigation, screens)
-- [ ] Set up development server (Node.js + PostgreSQL)
-- [ ] Implement signature-based authentication
+- [x] Set up React Native project with TypeScript
+- [x] Implement key generation and storage (Ed25519)
+- [x] Build basic UI shell (navigation, screens)
+- [x] Custom Bluetooth TurboModule implementation
+- [ ] Set up development server (Node.js + PostgreSQL) - **Week 3**
+- [ ] Implement signature-based authentication - **Week 3**
 
 ### Phase 2: Verification (Weeks 5-6)
 
@@ -768,6 +847,44 @@ Server → Client: {
 - [ ] Beta testing with 10-20 users
 - [ ] Founding Block Party event
 - [ ] Monitor metrics and iterate
+
+### Phase 7: OrbitDB Migration (Month 2 - Post-MVP)
+
+**Timeline:** 2 weeks after MVP launch
+**Goal:** Add decentralized storage layer while maintaining REST fallback
+
+#### Week 1: Infrastructure Setup
+
+- [ ] Set up community pinning pool account (Pinata/web3.storage)
+- [ ] Deploy lightweight notification REST API
+- [ ] Implement Helia HTTP client wrapper for React Native
+- [ ] Create `PostStorageProvider` abstraction interface
+- [ ] Implement `OrbitDBPostStorage` class
+- [ ] Test OrbitDB + gateway access from physical devices
+
+#### Week 2: Integration & Migration
+
+- [ ] Extend BLE handshake protocol with `orbitDBAddress` field
+- [ ] Implement per-user OrbitDB folder creation
+- [ ] Build follower replication logic (subscribe to connection folders)
+- [ ] Implement hybrid notification system (REST notify + OrbitDB fetch)
+- [ ] Add database migration for `orbitdb_address` column
+- [ ] A/B test: REST vs OrbitDB performance comparison
+- [ ] Optional: Migrate existing posts to OrbitDB
+
+**Success Criteria:**
+- Users can create posts in their OrbitDB folder
+- Connections automatically follow each other's folders after BLE pairing
+- Hybrid notifications work (REST alert → OrbitDB fetch → decrypt)
+- Content persists via community pinning pool (24/7 availability)
+- No regressions in core functionality (event posting, discovery, connections)
+- Gateway-based access works reliably on iOS and Android
+
+**Rollout Strategy:**
+- Run both REST and OrbitDB in parallel during testing
+- Gradual migration: new posts to OrbitDB, old posts remain in REST
+- Monitor costs (pinning, gateway bandwidth) and performance
+- Full migration to OrbitDB by end of Month 2 if successful
 
 ---
 

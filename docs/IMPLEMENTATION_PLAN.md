@@ -8,9 +8,9 @@ This implementation plan outlines the development of a 1-month MVP for the Local
 **Target:** Working prototype with 20-30 beta users
 **Core Flow:** BLE connect → post event to server → fetch from server → discover → attend
 
-## Current Status (Updated 2025-10-21)
+## Current Status (Updated 2025-10-24)
 
-**Progress:** Week 2+ - Physical Device Testing & Connection Flow Refinement
+**Progress:** Week 2+ - Physical Device Testing & Planning OrbitDB Storage Layer
 
 **Completed:**
 - ✅ Week 1: Core Foundation & Identity System (100%)
@@ -90,12 +90,15 @@ This implementation plan outlines the development of a 1-month MVP for the Local
 
 **In Progress:**
 - Week 2, Days 12-13: Event Posting System (hybrid encryption implemented, UI pending)
+- Planning Month 2 OrbitDB storage layer migration (architecture documented)
 
 **Next Up:**
 - Test mutual connection flow end-to-end on physical devices
 - Create Event UI with form inputs
 - Event posting system integration with UI
-- Simple server backend for encrypted post storage/retrieval
+- **Implement abstract `PostStorageProvider` interface** (prepare for OrbitDB)
+- Simple REST API backend for MVP (Month 1)
+- OrbitDB integration for decentralized storage (Month 2)
 
 **Test Status:** 171/171 passing ✅ (base test suite, BLE physical device testing in progress)
 
@@ -120,7 +123,7 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - @react-native-async-storage/async-storage
 - **Image Picker:** expo-image-picker (replaces react-native-image-picker)
 
-### Backend (Required for MVP)
+### Backend (MVP - Month 1)
 
 - **Framework:** Express.js or Fastify
 - **Database:** PostgreSQL for encrypted blob storage
@@ -128,6 +131,17 @@ This implementation plan outlines the development of a 1-month MVP for the Local
 - **Deployment:** Railway.app, Render, or single VPS
 - **API:** Simple REST endpoints (POST/GET for events, messages, RSVPs)
 - **Note:** Server stores encrypted data, cannot decrypt content
+- **Design:** Abstract storage layer (`PostStorageProvider` interface) for future OrbitDB migration
+
+### Backend (Post-MVP - Month 2+)
+
+**Hybrid OrbitDB Architecture:**
+- **OrbitDB v2+:** Per-user folders for decentralized content storage
+- **IPFS/Helia:** Content-addressed storage with HTTP gateway access (Pinata/web3.storage)
+- **Pinning Service:** Shared community pool for 24/7 content availability
+- **Notification API:** Lightweight REST service (metadata only, no content storage)
+- **React Native:** Helia HTTP client for gateway-based mobile access
+- **Migration:** Gradual rollout, both REST and OrbitDB run in parallel during transition
 
 ## Week 1: Core Foundation & Identity System ✅
 
@@ -245,6 +259,15 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - Privacy: Server cannot learn social graph (no userIDs in wrappedKeys)
   - Efficiency: 77x smaller than encrypting content per recipient
 - [x] Database support for encrypted events (COMPLETED)
+- [ ] **Create abstract `PostStorageProvider` interface** (IMPORTANT for Month 2 migration):
+  ```typescript
+  interface PostStorageProvider {
+    publishPost(post: EncryptedPost): Promise<void>;
+    fetchPosts(since: number): Promise<EncryptedPost[]>;
+    subscribeToPosts(userIDs: string[], callback: (post: EncryptedPost) => void): void;
+  }
+  ```
+- [ ] Implement `RESTPostStorage` class (MVP implementation)
 - [ ] Build UI to create and submit events
 
 ### Day 14: Event Feed & Discovery (UI Only)
@@ -536,28 +559,201 @@ local-first-community-network/
 - 1+ real event coordinated
 - <5% crash rate
 
-## Next Steps After MVP
+## Month 2: OrbitDB Storage Layer Migration
 
-### Month 2
+**Timeline:** 2 weeks after MVP launch (Nov 1-14, 2025)
+**Goal:** Add decentralized storage while maintaining REST as fallback
 
+### Week 5 (Days 29-35): Infrastructure & Setup
+
+#### Day 29-30: OrbitDB Foundation
+
+- [ ] Research and test OrbitDB v2 + Helia on React Native
+- [ ] Set up community pinning pool account (Pinata or web3.storage)
+  - Budget: $20-30/month for 1GB storage + bandwidth
+  - Shared account for all users' OrbitDB folders
+- [ ] Deploy lightweight notification REST API
+  - Express.js minimal server
+  - Endpoints: POST /notify, GET /notifications?since={timestamp}
+  - Only stores metadata: {authorID, postID, timestamp, orbitDBAddress}
+  - NO content storage (content lives in OrbitDB/IPFS)
+- [ ] Test IPFS gateway access from physical iOS/Android devices
+
+#### Day 31-32: Helia Integration
+
+- [ ] Install dependencies:
+  ```bash
+  npm install @orbitdb/core helia @helia/http @libp2p/websockets
+  ```
+- [ ] Create Helia HTTP client wrapper for React Native:
+  ```typescript
+  // src/services/storage/ipfs/HeliaClient.ts
+  class HeliaClient {
+    async initialize(gatewayUrl: string): Promise<Helia>;
+    async store(data: Uint8Array): Promise<CID>;
+    async retrieve(cid: CID): Promise<Uint8Array>;
+  }
+  ```
+- [ ] Configure gateway endpoints (Pinata/Infura/web3.storage)
+- [ ] Test upload/download from mobile devices
+- [ ] Implement error handling and retries
+
+#### Day 33-35: OrbitDB Implementation
+
+- [ ] Implement `OrbitDBPostStorage` class:
+  ```typescript
+  // src/services/storage/OrbitDBPostStorage.ts
+  class OrbitDBPostStorage implements PostStorageProvider {
+    private db: OrbitDB;
+    private postsDB: EventLog;
+    private followedDBs: Map<string, EventLog>;
+
+    async initialize(userID: string): Promise<string>; // Returns OrbitDB address
+    async publishPost(post: EncryptedPost): Promise<void>;
+    async fetchPosts(since: number): Promise<EncryptedPost[]>;
+    async followUserFolder(orbitDBAddress: string): Promise<void>;
+    async pinToCommunityPool(address: string): Promise<void>;
+  }
+  ```
+- [ ] Create per-user OrbitDB folder creation logic
+- [ ] Implement pinning service integration
+- [ ] Test with 2 physical devices: create folder on one, subscribe on another
+
+### Week 6 (Days 36-42): Integration & Testing
+
+#### Day 36-37: BLE Handshake Extension
+
+- [ ] Extend `ConnectionHandshake` type:
+  ```typescript
+  interface ConnectionHandshake {
+    publicKey: Uint8Array;
+    displayName: string;
+    profilePhoto?: string;
+    orbitDBAddress: string; // NEW field
+  }
+  ```
+- [ ] Update BLE characteristic to include OrbitDB address
+- [ ] Modify `BLEConnectionHandler` to store OrbitDB address
+- [ ] Add database migration:
+  ```sql
+  ALTER TABLE connections ADD COLUMN orbitdb_address TEXT;
+  CREATE TABLE orbitdb_subscriptions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    orbitdb_address TEXT NOT NULL,
+    last_synced BIGINT,
+    created_at BIGINT
+  );
+  ```
+- [ ] Test BLE handshake with OrbitDB address exchange
+
+#### Day 38-39: Hybrid Notification System
+
+- [ ] Implement notification publishing:
+  ```typescript
+  // When user posts to OrbitDB
+  1. Add post to personal OrbitDB folder
+  2. Pin to community pool
+  3. POST notification to REST API (metadata only)
+  ```
+- [ ] Implement notification polling and fetching:
+  ```typescript
+  // Client receives notification
+  1. Poll REST API for notifications
+  2. Fetch actual content from OrbitDB via gateway
+  3. Attempt decryption with connection shared secrets
+  4. Display if successfully decrypted
+  ```
+- [ ] Build follower replication logic:
+  - Auto-subscribe to connection OrbitDB folders after BLE pairing
+  - Replicate their database locally (cache)
+  - Load new entries on notification
+- [ ] Test end-to-end: Alice posts → Bob gets notification → Bob fetches from OrbitDB
+
+#### Day 40-41: Migration & A/B Testing
+
+- [ ] Create migration script for existing posts (optional):
+  - Export posts from PostgreSQL
+  - Import into OrbitDB folders
+  - Update metadata with OrbitDB addresses
+- [ ] Implement feature flag for REST vs OrbitDB:
+  ```typescript
+  const useOrbitDB = await AsyncStorage.getItem('feature:orbitdb') === 'true';
+  const storage = useOrbitDB
+    ? new OrbitDBPostStorage()
+    : new RESTPostStorage();
+  ```
+- [ ] Run A/B test with beta users:
+  - 50% on REST (control)
+  - 50% on OrbitDB (experimental)
+  - Measure: latency, reliability, battery usage, bandwidth
+- [ ] Monitor pinning costs and gateway bandwidth usage
+
+#### Day 42: Launch & Documentation
+
+- [ ] Deploy OrbitDB support to all users (if tests pass)
+- [ ] Update user documentation
+- [ ] Monitor error rates and performance metrics
+- [ ] Create rollback plan if issues arise
+- [ ] Document lessons learned for future improvements
+
+### Success Criteria (Month 2)
+
+**Technical:**
+- ✅ Users can post to OrbitDB folders via gateway
+- ✅ Content persists 24/7 via community pinning pool
+- ✅ Connections auto-follow each other's folders
+- ✅ Hybrid notifications work reliably (REST → OrbitDB fetch)
+- ✅ Gateway access works on iOS and Android physical devices
+- ✅ No increase in crash rate or critical bugs
+
+**Performance:**
+- ✅ Post latency <5 seconds (vs <3s for REST)
+- ✅ Fetch latency <2 seconds for cached content
+- ✅ Battery impact <5% increase vs REST
+- ✅ Pinning costs <$30/month for 100 active users
+
+**User Experience:**
+- ✅ No regressions in core functionality
+- ✅ Users unaware of backend change (transparent migration)
+- ✅ Same or better reliability than REST
+
+### Risks & Mitigations
+
+| Risk | Likelihood | Mitigation |
+|------|-----------|-----------|
+| Gateway rate limiting | Medium | Implement caching, exponential backoff, multiple gateway failover |
+| Helia React Native issues | Medium | Test early on physical devices; maintain REST fallback |
+| Pinning costs exceed budget | Low | Monitor usage, implement garbage collection for old posts |
+| CRDT conflicts | Low | OrbitDB handles automatically; test edge cases |
+| Migration breaks existing features | Medium | Parallel testing, gradual rollout, feature flag for instant rollback |
+
+---
+
+## Next Steps After Month 2
+
+### Month 3+
+
+- Multi-device sync with OrbitDB CRDTs (natural fit)
+- Direct P2P sync when on same WiFi (bypass gateway)
+- IPNS for stable user addresses
 - iOS and Android polish
 - Push notifications for new events/messages
 - Cloud backup (encrypted)
 - Group events
-- **P2P BLE sync** (offline fallback)
 
-### Month 3
+### Month 4+
 
-- Multi-device sync
 - Advanced messaging (Signal Protocol)
 - Event reminders
 - Search and filtering
-- Real-time updates (WebSockets)
+- Web companion app (OrbitDB works in browsers!)
+- Community moderation tools (blocklists, still user-controlled)
 
 ### Future
 
-- Web companion app
-- Community moderation tools
+- Content moderation via user-controlled blocklists
 - Event categories
 - NFC verification support
 - Location-based features
+- Export to other IPFS-compatible apps
