@@ -24,59 +24,8 @@ jest.mock('react-native-gesture-handler', () => ({
   Directions: {},
 }));
 
-jest.mock('react-native-ble-plx', () => {
-  class MockBleManager {
-    state = jest.fn().mockResolvedValue('PoweredOn');
-    startDeviceScan = jest.fn();
-    stopDeviceScan = jest.fn();
-    onStateChange = jest.fn((callback, emitCurrentState) => {
-      if (emitCurrentState) {
-        callback('PoweredOn');
-      }
-      return { remove: jest.fn() };
-    });
-    destroy = jest.fn();
-    connectToDevice = jest.fn().mockResolvedValue({
-      id: 'mock-device-id',
-      discoverAllServicesAndCharacteristics: jest.fn().mockResolvedValue(true),
-      readCharacteristicForService: jest.fn().mockResolvedValue({
-        value: Buffer.from(JSON.stringify({
-          userId: 'mockUserId123',
-          displayName: 'Mock User',
-          publicKey: Buffer.from(new Uint8Array(32)).toString('base64'),
-        })).toString('base64'),
-      }),
-      writeCharacteristicWithResponseForService: jest.fn().mockResolvedValue(true),
-    });
-    cancelDeviceConnection = jest.fn().mockResolvedValue(true);
-    isDeviceConnected = jest.fn().mockResolvedValue(false);
-  }
-
-  return {
-    BleManager: MockBleManager,
-    State: {
-      Unknown: 'Unknown',
-      Resetting: 'Resetting',
-      Unsupported: 'Unsupported',
-      Unauthorized: 'Unauthorized',
-      PoweredOff: 'PoweredOff',
-      PoweredOn: 'PoweredOn',
-    },
-  };
-});
-
-jest.mock('react-native-ble-advertiser', () => ({
-  setCompanyId: jest.fn(),
-  broadcast: jest.fn().mockResolvedValue('ok'),
-  stopBroadcast: jest.fn().mockResolvedValue('stopped'),
-  ADVERTISE_MODE_LOW_POWER: 0,
-  ADVERTISE_MODE_BALANCED: 1,
-  ADVERTISE_MODE_LOW_LATENCY: 2,
-  ADVERTISE_TX_POWER_LOW: 0,
-  ADVERTISE_TX_POWER_MEDIUM: 1,
-  ADVERTISE_TX_POWER_HIGH: 2,
-  ADVERTISE_TX_POWER_ULTRA_LOW: -1,
-}));
+// Mock custom Bluetooth TurboModule
+jest.mock('@localcommunity/rn-bluetooth');
 
 // Mock expo-crypto for tests
 jest.mock('expo-crypto', () => ({
