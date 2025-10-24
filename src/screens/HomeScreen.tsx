@@ -13,7 +13,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {useFocusEffect} from '@react-navigation/native';
 import EventCard from '../components/events/EventCard';
 import {Event} from '../types/models';
-import Database from '../services/storage/Database';
+import PostStorageService from '../services/storage/PostStorageService';
 import EncryptionService from '../services/crypto/EncryptionService';
 import ConnectionService from '../services/ConnectionService';
 import BLEBroadcastService from '../services/bluetooth/BLEBroadcastService';
@@ -140,8 +140,8 @@ const HomeScreen = () => {
 
   const loadEvents = async () => {
     try {
-      // Get all encrypted events from database
-      const encryptedEvents = await Database.getEncryptedEvents();
+      // Get all encrypted events from storage provider (local for MVP, REST/OrbitDB later)
+      const encryptedEvents = await PostStorageService.fetchPosts(0); // Fetch all events since epoch
 
       // Get all connections for decryption
       const connections = await ConnectionService.getConnections();

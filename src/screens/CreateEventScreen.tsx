@@ -19,7 +19,7 @@ import {Event} from '../types/models';
 import EncryptionService from '../services/crypto/EncryptionService';
 import ConnectionService from '../services/ConnectionService';
 import IdentityService from '../services/IdentityService';
-import Database from '../services/storage/Database';
+import PostStorageService from '../services/storage/PostStorageService';
 import {generateUUID} from '../utils/crypto';
 
 type Props = MainTabScreenProps<'CreateEvent'>;
@@ -161,8 +161,8 @@ const CreateEventScreen = ({navigation}: Props) => {
         connections,
       );
 
-      // Save encrypted event to database
-      await Database.saveEncryptedEvent(encryptedEvent);
+      // Save encrypted event using storage provider (local for MVP, REST/OrbitDB later)
+      await PostStorageService.publishPost(encryptedEvent);
 
       // Success!
       const successMessage = `Your event "${title}" has been created and shared with ${connections.length} ${
