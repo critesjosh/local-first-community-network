@@ -9,7 +9,7 @@
  */
 
 import {EncryptedEvent} from '../crypto/EncryptionService';
-import {Event} from '../../types/models';
+import {Event, EncryptedThread, EncryptedThreadReply} from '../../types/models';
 
 /**
  * Post storage provider interface
@@ -54,6 +54,47 @@ export interface PostStorageProvider {
    * Useful for debugging and feature flags
    */
   getProviderType(): 'local' | 'rest' | 'orbitdb';
+
+  /**
+   * Create a thread with encrypted thread key
+   *
+   * @param encryptedThread - The encrypted thread with wrapped keys
+   * @returns Promise that resolves when thread is created
+   */
+  createThread(encryptedThread: EncryptedThread): Promise<void>;
+
+  /**
+   * Fetch a thread by ID
+   *
+   * @param threadId - The thread ID
+   * @returns Promise with encrypted thread or null if not found
+   */
+  fetchThread(threadId: string): Promise<EncryptedThread | null>;
+
+  /**
+   * Fetch all threads
+   *
+   * @param since - Timestamp (milliseconds since epoch) to fetch threads after
+   * @param limit - Maximum number of threads to fetch (optional)
+   * @returns Promise with array of encrypted threads
+   */
+  fetchThreads(since: number, limit?: number): Promise<EncryptedThread[]>;
+
+  /**
+   * Post a reply to a thread
+   *
+   * @param encryptedReply - The encrypted reply
+   * @returns Promise that resolves when reply is posted
+   */
+  postThreadReply(encryptedReply: EncryptedThreadReply): Promise<void>;
+
+  /**
+   * Fetch replies for a thread
+   *
+   * @param threadId - The thread ID
+   * @returns Promise with array of encrypted replies
+   */
+  fetchThreadReplies(threadId: string): Promise<EncryptedThreadReply[]>;
 }
 
 /**

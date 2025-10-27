@@ -12,6 +12,7 @@
 
 import {PostStorageProvider, StorageProviderConfig} from './PostStorageProvider';
 import {EncryptedEvent} from '../crypto/EncryptionService';
+import {EncryptedThread, EncryptedThreadReply} from '../../types/models';
 import IdentityService from '../IdentityService';
 import KeyManager from '../crypto/KeyManager';
 import {sha256} from '@noble/hashes/sha2.js';
@@ -182,6 +183,192 @@ class RESTPostStorage implements PostStorageProvider {
    */
   getProviderType(): 'rest' {
     return 'rest';
+  }
+
+  /**
+   * Create a thread via REST API
+   *
+   * Signs the request with Ed25519 private key for authentication
+   */
+  async createThread(encryptedThread: EncryptedThread): Promise<void> {
+    try {
+      console.log('[RESTPostStorage] Creating thread via API:', this.config.apiUrl);
+
+      const keyPair = await IdentityService.getKeyPair();
+      if (!keyPair) {
+        throw new Error('Cannot create thread: No key pair available');
+      }
+
+      const body = JSON.stringify(encryptedThread);
+      const bodyBytes = new TextEncoder().encode(body);
+      const bodyHash = Buffer.from(sha256(bodyBytes)).toString('hex');
+      const timestamp = Date.now();
+      const message = `${encryptedThread.authorId}:${timestamp}:${bodyHash}`;
+      const messageBytes = new TextEncoder().encode(message);
+      const signature = await keyManager.signData(messageBytes, keyPair.privateKey);
+      const signatureHex = Buffer.from(signature).toString('hex');
+
+      const response = await fetch(`${this.config.apiUrl}/api/threads`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Signature': signatureHex,
+          'X-Timestamp': timestamp.toString(),
+        },
+        body,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          `Failed to create thread: ${response.status} ${response.statusText} - ${JSON.stringify(errorData)}`
+        );
+      }
+
+      const result = await response.json();
+      console.log('[RESTPostStorage] Thread created successfully:', result.threadId);
+    } catch (error) {
+      console.error('[RESTPostStorage] Error creating thread:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch a thread by ID from REST API
+   */
+  async fetchThread(threadId: string): Promise<EncryptedThread | null> {
+    try {
+      console.log('[RESTPostStorage] Fetching thread from API:', threadId);
+
+      const response = await fetch(`${this.config.apiUrl}/api/threads/${threadId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.status === 404) {
+        return null;
+      }
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch thread: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.thread as EncryptedThread;
+    } catch (error) {
+      console.error('[RESTPostStorage] Error fetching thread:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch threads from REST API
+   */
+  async fetchThreads(since: number, limit?: number): Promise<EncryptedThread[]> {
+    try {
+      console.log('[RESTPostStorage] Fetching threads from API:', this.config.apiUrl);
+
+      const url = new URL(`${this.config.apiUrl}/api/threads`);
+      url.searchParams.set('since', since.toString());
+      if (limit) {
+        url.searchParams.set('limit', limit.toString());
+      }
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch threads: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log(`[RESTPostStorage] Fetched ${data.threads.length} threads`);
+      return data.threads as EncryptedThread[];
+    } catch (error) {
+      console.error('[RESTPostStorage] Error fetching threads:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Post a reply to a thread via REST API
+   *
+   * Signs the request with Ed25519 private key for authentication
+   */
+  async postThreadReply(encryptedReply: EncryptedThreadReply): Promise<void> {
+    try {
+      console.log('[RESTPostStorage] Posting thread reply via API:', this.config.apiUrl);
+
+      const keyPair = await IdentityService.getKeyPair();
+      if (!keyPair) {
+        throw new Error('Cannot post reply: No key pair available');
+      }
+
+      const body = JSON.stringify(encryptedReply);
+      const bodyBytes = new TextEncoder().encode(body);
+      const bodyHash = Buffer.from(sha256(bodyBytes)).toString('hex');
+      const timestamp = Date.now();
+      const message = `${encryptedReply.authorId}:${timestamp}:${bodyHash}`;
+      const messageBytes = new TextEncoder().encode(message);
+      const signature = await keyManager.signData(messageBytes, keyPair.privateKey);
+      const signatureHex = Buffer.from(signature).toString('hex');
+
+      const response = await fetch(`${this.config.apiUrl}/api/threads/${encryptedReply.threadId}/replies`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Signature': signatureHex,
+          'X-Timestamp': timestamp.toString(),
+        },
+        body,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          `Failed to post reply: ${response.status} ${response.statusText} - ${JSON.stringify(errorData)}`
+        );
+      }
+
+      const result = await response.json();
+      console.log('[RESTPostStorage] Reply posted successfully:', result.replyId);
+    } catch (error) {
+      console.error('[RESTPostStorage] Error posting reply:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch replies for a thread from REST API
+   */
+  async fetchThreadReplies(threadId: string): Promise<EncryptedThreadReply[]> {
+    try {
+      console.log('[RESTPostStorage] Fetching thread replies from API:', threadId);
+
+      const response = await fetch(`${this.config.apiUrl}/api/threads/${threadId}/replies`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch replies: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log(`[RESTPostStorage] Fetched ${data.replies.length} replies`);
+      return data.replies as EncryptedThreadReply[];
+    } catch (error) {
+      console.error('[RESTPostStorage] Error fetching replies:', error);
+      throw error;
+    }
   }
 }
 

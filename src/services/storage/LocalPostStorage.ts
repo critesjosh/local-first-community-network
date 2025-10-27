@@ -9,6 +9,7 @@
 
 import {PostStorageProvider} from './PostStorageProvider';
 import {EncryptedEvent} from '../crypto/EncryptionService';
+import {EncryptedThread, EncryptedThreadReply} from '../../types/models';
 import Database from './Database';
 
 class LocalPostStorage implements PostStorageProvider {
@@ -83,6 +84,51 @@ class LocalPostStorage implements PostStorageProvider {
    */
   getProviderType(): 'local' {
     return 'local';
+  }
+
+  /**
+   * Create a thread in local database
+   */
+  async createThread(encryptedThread: EncryptedThread): Promise<void> {
+    await Database.saveEncryptedThread(encryptedThread);
+    console.log(`[LocalPostStorage] Created thread ${encryptedThread.id} locally`);
+  }
+
+  /**
+   * Fetch a thread by ID from local database
+   */
+  async fetchThread(threadId: string): Promise<EncryptedThread | null> {
+    const thread = await Database.getEncryptedThread(threadId);
+    console.log(`[LocalPostStorage] Fetched thread ${threadId}: ${thread ? 'found' : 'not found'}`);
+    return thread;
+  }
+
+  /**
+   * Fetch threads from local database
+   */
+  async fetchThreads(since: number, limit?: number): Promise<EncryptedThread[]> {
+    const threads = await Database.getEncryptedThreads(limit, 0);
+    // Filter by timestamp
+    const filtered = threads.filter(t => t.timestamp >= since);
+    console.log(`[LocalPostStorage] Fetched ${filtered.length} threads since ${new Date(since).toISOString()}`);
+    return filtered;
+  }
+
+  /**
+   * Post a reply to a thread in local database
+   */
+  async postThreadReply(encryptedReply: EncryptedThreadReply): Promise<void> {
+    await Database.saveEncryptedThreadReply(encryptedReply);
+    console.log(`[LocalPostStorage] Posted reply ${encryptedReply.id} to thread ${encryptedReply.threadId} locally`);
+  }
+
+  /**
+   * Fetch replies for a thread from local database
+   */
+  async fetchThreadReplies(threadId: string): Promise<EncryptedThreadReply[]> {
+    const replies = await Database.getEncryptedThreadReplies(threadId);
+    console.log(`[LocalPostStorage] Fetched ${replies.length} replies for thread ${threadId}`);
+    return replies;
   }
 
   /**

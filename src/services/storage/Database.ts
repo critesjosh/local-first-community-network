@@ -3,7 +3,7 @@
  */
 
 import * as SQLite from 'expo-sqlite';
-import {User, Connection, Event, Message} from '../../types/models';
+import {User, Connection, Event, Message, EncryptedThread, EncryptedThreadReply} from '../../types/models';
 import {EncryptedEvent} from '../crypto/EncryptionService';
 
 class Database {
@@ -80,6 +80,27 @@ class Database {
           delivered INTEGER DEFAULT 0,
           read INTEGER DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS threads (
+          id TEXT PRIMARY KEY,
+          root_post_id TEXT NOT NULL,
+          author_id TEXT NOT NULL,
+          timestamp INTEGER NOT NULL,
+          wrapped_thread_keys TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS thread_replies (
+          id TEXT PRIMARY KEY,
+          thread_id TEXT NOT NULL,
+          author_id TEXT NOT NULL,
+          timestamp INTEGER NOT NULL,
+          encrypted_content TEXT NOT NULL,
+          iv TEXT NOT NULL,
+          FOREIGN KEY (thread_id) REFERENCES threads(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_thread_replies_thread_id
+          ON thread_replies(thread_id);
 
         CREATE TABLE IF NOT EXISTS app_state (
           key TEXT PRIMARY KEY,
@@ -691,12 +712,172 @@ class Database {
   }
 
   /**
+   * Save encrypted thread
+   */
+  async saveEncryptedThread(encryptedThread: EncryptedThread): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      INSERT OR REPLACE INTO threads (
+        id, root_post_id, author_id, timestamp, wrapped_thread_keys
+      ) VALUES (?, ?, ?, ?, ?)
+    `;
+
+    await this.db.runAsync(query, [
+      encryptedThread.id,
+      encryptedThread.rootPostId,
+      encryptedThread.authorId,
+      encryptedThread.timestamp,
+      JSON.stringify(encryptedThread.wrappedThreadKeys),
+    ]);
+  }
+
+  /**
+   * Get encrypted thread by ID
+   */
+  async getEncryptedThread(threadId: string): Promise<EncryptedThread | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'SELECT * FROM threads WHERE id = ?';
+    const row = await this.db.getFirstAsync<any>(query, [threadId]);
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      rootPostId: row.root_post_id,
+      authorId: row.author_id,
+      timestamp: row.timestamp,
+      wrappedThreadKeys: JSON.parse(row.wrapped_thread_keys),
+    };
+  }
+
+  /**
+   * Get all encrypted threads
+   */
+  async getEncryptedThreads(limit: number = 100, offset: number = 0): Promise<EncryptedThread[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      SELECT * FROM threads
+      ORDER BY timestamp DESC
+      LIMIT ? OFFSET ?
+    `;
+    const rows = await this.db.getAllAsync<any>(query, [limit, offset]);
+
+    return rows.map(row => ({
+      id: row.id,
+      rootPostId: row.root_post_id,
+      authorId: row.author_id,
+      timestamp: row.timestamp,
+      wrappedThreadKeys: JSON.parse(row.wrapped_thread_keys),
+    }));
+  }
+
+  /**
+   * Save encrypted thread reply
+   */
+  async saveEncryptedThreadReply(reply: EncryptedThreadReply): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      INSERT OR REPLACE INTO thread_replies (
+        id, thread_id, author_id, timestamp, encrypted_content, iv
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `;
+
+    await this.db.runAsync(query, [
+      reply.id,
+      reply.threadId,
+      reply.authorId,
+      reply.timestamp,
+      reply.encryptedContent,
+      reply.iv,
+    ]);
+  }
+
+  /**
+   * Get all encrypted replies for a thread
+   */
+  async getEncryptedThreadReplies(threadId: string): Promise<EncryptedThreadReply[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      SELECT * FROM thread_replies
+      WHERE thread_id = ?
+      ORDER BY timestamp ASC
+    `;
+    const rows = await this.db.getAllAsync<any>(query, [threadId]);
+
+    return rows.map(row => ({
+      id: row.id,
+      threadId: row.thread_id,
+      authorId: row.author_id,
+      timestamp: row.timestamp,
+      encryptedContent: row.encrypted_content,
+      iv: row.iv,
+    }));
+  }
+
+  /**
+   * Get encrypted thread reply by ID
+   */
+  async getEncryptedThreadReply(replyId: string): Promise<EncryptedThreadReply | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'SELECT * FROM thread_replies WHERE id = ?';
+    const row = await this.db.getFirstAsync<any>(query, [replyId]);
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      threadId: row.thread_id,
+      authorId: row.author_id,
+      timestamp: row.timestamp,
+      encryptedContent: row.encrypted_content,
+      iv: row.iv,
+    };
+  }
+
+  /**
+   * Get reply count for a thread
+   */
+  async getThreadReplyCount(threadId: string): Promise<number> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      SELECT COUNT(*) as count FROM thread_replies
+      WHERE thread_id = ?
+    `;
+    const row = await this.db.getFirstAsync<any>(query, [threadId]);
+
+    return row?.count || 0;
+  }
+
+  /**
+   * Delete thread and all its replies
+   */
+  async deleteThread(threadId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    // Delete replies first (cascade)
+    await this.db.runAsync('DELETE FROM thread_replies WHERE thread_id = ?', [threadId]);
+    // Then delete thread
+    await this.db.runAsync('DELETE FROM threads WHERE id = ?', [threadId]);
+  }
+
+  /**
    * Clear all data (factory reset)
    */
   async clearAllData(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const tables = ['users', 'connections', 'events', 'messages', 'app_state'];
+    const tables = ['users', 'connections', 'events', 'messages', 'threads', 'thread_replies', 'app_state'];
 
     for (const table of tables) {
       await this.db.execAsync(`DELETE FROM ${table}`);
