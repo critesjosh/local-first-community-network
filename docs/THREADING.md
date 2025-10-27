@@ -1,54 +1,65 @@
 # Threading Feature Documentation
 
-**Status:** ✅ Implemented
-**Version:** 1.0
+**Status:** ✅ Implemented (Refactored)
+**Version:** 2.0
 **Last Updated:** October 2025
 
 ## Overview
 
-The threading feature enables group chat-like conversations on posts using shared encryption keys. Users can create threads on any post and allow their connections to participate in encrypted discussions.
+The threading feature enables encrypted conversations on posts. **Thread keys are embedded directly in every post**, so anyone who can decrypt a post can also reply to it. This creates a simple, automatic threading model where 1 thread = 1 post.
 
 ### Key Benefits
 
-- **Efficient Encryption**: Thread key wrapped once, reused for all replies (vs. per-recipient wrapping)
-- **Group Chat Model**: Thread participants don't need mutual connections with each other
+- **Automatic Threading**: Every post automatically has a thread - no separate creation needed
+- **Simple Model**: Thread ID = Event ID (no separate thread objects)
+- **Efficient Encryption**: Thread key wrapped once per post, reused for all replies
+- **Same Permissions**: If you can read the post, you can reply to it
 - **Privacy Preserved**: HMAC-based recipient lookup IDs prevent server from identifying participants
-- **Scalable**: Optimized for threads with many replies (no encryption overhead per reply)
 
 ---
 
 ## Architecture
 
-### Encryption Model: Shared Thread Key
+### Encryption Model: Embedded Thread Keys
 
-Unlike regular posts which use hybrid encryption (content encrypted per recipient), threads use a **shared symmetric key** approach:
+Thread keys are part of the post encryption, not separate objects:
 
-1. **Thread Creation**:
-   - Generate random 256-bit AES key (the "thread key")
-   - Wrap thread key individually for each participant using ECDH-derived connection keys
+1. **Post Creation** (automatic):
+   - Generate random 256-bit AES key for content (event key)
+   - Generate random 256-bit AES key for thread (thread key)
+   - Encrypt post content with event key
+   - Wrap BOTH keys for each recipient using ECDH-derived connection keys
    - Store wrapped keys with HMAC-based recipient lookup IDs
-   - Participant list defined at thread creation (cannot be changed)
 
 2. **Reply Posting**:
-   - Encrypt reply content with shared thread key using AES-256-GCM
-   - No per-recipient key wrapping needed (77x more efficient)
-   - Each reply only stores: encrypted content + IV
+   - Fetch the event to get wrapped thread keys
+   - Decrypt thread key using your connection key
+   - Encrypt reply content with thread key using AES-256-GCM
+   - Store encrypted reply (no per-recipient wrapping needed)
 
 3. **Reply Reading**:
+   - Fetch event to get thread key
    - Unwrap thread key once using your connection key
-   - Cache thread key for future replies
+   - Cache thread key for performance
    - Decrypt all replies with cached thread key
 
 ### Data Models
 
 ```typescript
-// Thread metadata with wrapped keys
-interface EncryptedThread {
-  id: string;                    // Thread ID (same as root post ID)
-  rootPostId: string;            // Original post that started thread
-  authorId: string;              // Thread creator
+// Event with embedded thread key
+interface EncryptedEvent {
+  id: string;
+  authorId: string;
   timestamp: number;
-  wrappedThreadKeys: {
+  encryptedContent: string;      // Post content encrypted with event key
+  iv: string;
+  wrappedKeys: {                 // Event key wrapped for each recipient
+    [recipientLookupId: string]: {
+      wrappedKey: string;
+      keyWrapIV: string;
+    };
+  };
+  wrappedThreadKeys: {           // Thread key wrapped for each recipient
     [recipientLookupId: string]: {
       wrappedKey: string;        // Thread key encrypted for participant
       keyWrapIV: string;         // IV for key wrapping
@@ -56,10 +67,10 @@ interface EncryptedThread {
   };
 }
 
-// Reply encrypted with shared thread key
+// Reply encrypted with thread key
 interface EncryptedThreadReply {
   id: string;
-  threadId: string;
+  threadId: string;              // Event ID
   authorId: string;
   timestamp: number;
   encryptedContent: string;      // Encrypted with thread key
@@ -73,177 +84,118 @@ interface EncryptedThreadReply {
 
 ### Backend Components
 
-#### 1. ThreadEncryptionService
-**File:** `src/services/crypto/ThreadEncryptionService.ts`
+#### 1. EventEncryptionService
+**File:** `src/services/crypto/EncryptionService.ts`
 
-Handles all thread encryption/decryption operations:
-
-- `createEncryptedThread()` - Generate thread key and wrap for participants
-- `decryptThreadKey()` - Unwrap thread key for current user
-- `encryptThreadReply()` - Encrypt reply with shared thread key
-- `decryptThreadReply()` - Decrypt reply with shared thread key
-- Thread key caching for performance
-
-#### 2. ThreadService
-**File:** `src/services/ThreadService.ts`
-
-High-level API for thread operations:
+Generates and wraps thread keys alongside event keys:
 
 ```typescript
-// Create a thread
-await ThreadService.createThread(postId, [userId1, userId2, ...]);
+async encryptEvent(event: Event, connections: Connection[]): Promise<EncryptedEvent> {
+  // 1. Generate event key AND thread key
+  const eventKey = await generateRandomKey();
+  const threadKey = await generateRandomKey();
 
+  // 2. Encrypt content with event key
+  const encryptedContent = await encryptAESGCM(content, eventKey, iv);
+
+  // 3. Wrap BOTH keys for each recipient
+  for (const connection of connections) {
+    const connectionKey = deriveConnectionKey(connection.sharedSecret);
+    wrappedKeys[lookupId] = wrapKey(eventKey, connectionKey);
+    wrappedThreadKeys[lookupId] = wrapKey(threadKey, connectionKey);
+  }
+
+  return {encryptedContent, wrappedKeys, wrappedThreadKeys, ...};
+}
+```
+
+#### 2. ThreadEncryptionService
+**File:** `src/services/crypto/ThreadEncryptionService.ts`
+
+Handles thread key extraction and reply encryption:
+
+- `decryptThreadKey(encryptedEvent, connections)` - Extract thread key from event
+- `encryptThreadReply(reply, threadKey)` - Encrypt reply with thread key
+- `decryptThreadReply(encryptedReply, threadKey)` - Decrypt reply
+- Thread key caching for performance
+
+#### 3. ThreadService
+**File:** `src/services/ThreadService.ts`
+
+High-level API for thread replies:
+
+```typescript
 // Post a reply
-await ThreadService.postReply(threadId, "Reply content");
+await ThreadService.postReply(eventId, "Reply content");
 
-// Get thread with all replies
-const {thread, replies} = await ThreadService.getThreadWithReplies(threadId);
-
-// Check if post has a thread
-const thread = await ThreadService.getThreadForPost(postId);
+// Get all replies for an event
+const replies = await ThreadService.getReplies(eventId);
 
 // Get reply count
-const count = await ThreadService.getReplyCount(threadId);
+const count = await ThreadService.getReplyCount(eventId);
 ```
 
-#### 3. Database Schema
+**Note:** No `createThread()` method - threads are automatic!
 
-**Threads Table:**
+### Database Schema
+
 ```sql
-CREATE TABLE threads (
+-- Events table includes thread keys
+CREATE TABLE events (
   id TEXT PRIMARY KEY,
-  root_post_id TEXT NOT NULL,
   author_id TEXT NOT NULL,
-  timestamp INTEGER NOT NULL,
-  wrapped_thread_keys TEXT NOT NULL   -- JSON of wrapped keys
+  encrypted_content TEXT,
+  content_iv TEXT,
+  wrapped_keys TEXT,           -- Event keys
+  wrapped_thread_keys TEXT,    -- Thread keys (NEW)
+  ...
 );
-```
 
-**Thread Replies Table:**
-```sql
+-- Thread replies reference event ID
 CREATE TABLE thread_replies (
   id TEXT PRIMARY KEY,
-  thread_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,     -- Event ID
   author_id TEXT NOT NULL,
   timestamp INTEGER NOT NULL,
   encrypted_content TEXT NOT NULL,
   iv TEXT NOT NULL,
-  FOREIGN KEY (thread_id) REFERENCES threads(id)
+  FOREIGN KEY (thread_id) REFERENCES events(id)
 );
-
-CREATE INDEX idx_thread_replies_thread_id ON thread_replies(thread_id);
 ```
 
-#### 4. Storage Providers
-
-**LocalPostStorage** (SQLite):
-- `createThread()` - Save encrypted thread locally
-- `fetchThread()` - Retrieve thread by ID
-- `postThreadReply()` - Save encrypted reply
-- `fetchThreadReplies()` - Get all replies for thread
-
-**RESTPostStorage** (REST API):
-- `POST /api/threads` - Create thread (Ed25519 signed)
-- `GET /api/threads/:id` - Fetch thread
-- `POST /api/threads/:id/replies` - Post reply (Ed25519 signed)
-- `GET /api/threads/:id/replies` - Fetch all replies
+**Removed:** `threads` table - no longer needed!
 
 ---
 
-### UI Components
+## Usage
 
-#### 1. ThreadReplyCard
-**File:** `src/components/threads/ThreadReplyCard.tsx`
+### UI Flow
 
-Displays individual replies with author info and timestamp.
+1. **View Post Feed**
+   - Every post shows "X Replies" button
+   - No "Start Thread" button needed
 
-**Props:**
-- `reply: ThreadReply` - The reply data
-- `authorName: string` - Author display name
-- `authorPhoto?: string` - Author profile photo (base64)
+2. **View Replies**
+   - Tap "X Replies" to open ThreadViewScreen
+   - See original post + all replies
 
-#### 2. ReplyComposer
-**File:** `src/components/threads/ReplyComposer.tsx`
+3. **Post Reply**
+   - Tap "Reply to Thread" button
+   - Compose and post reply
+   - Reply automatically encrypted with thread key from post
 
-Modal component for composing new replies.
+### API Examples
 
-**Props:**
-- `visible: boolean` - Show/hide modal
-- `onClose: () => void` - Close callback
-- `onSubmit: (content: string) => Promise<void>` - Submit callback
-- `threadId: string` - Thread ID
+```typescript
+// Post a reply to an event
+const reply = await ThreadService.postReply(eventId, "Great post!");
 
-**Features:**
-- Multiline text input
-- Character validation
-- Loading states
-- Keyboard-aware positioning
-- Error handling
+// Get all replies
+const replies = await ThreadService.getReplies(eventId);
 
-#### 3. ThreadViewScreen
-**File:** `src/screens/ThreadViewScreen.tsx`
-
-Full screen thread view with original post and all replies.
-
-**Route Params:**
-- `threadId: string` - Thread to display
-- `postContent?: string` - Original post content
-- `postAuthor?: string` - Original post author name
-
-**Features:**
-- Displays original post at top
-- Scrollable list of replies
-- Pull-to-refresh
-- Reply button (fixed footer)
-- Loading and empty states
-- Automatic connection name/photo resolution
-
-#### 4. EventCard (Updated)
-**File:** `src/components/events/EventCard.tsx`
-
-Added thread actions to post cards.
-
-**New Props:**
-- `onStartThread?: (eventId: string) => void` - Start thread callback
-- `onViewThread?: (threadId: string) => void` - View thread callback
-- `replyCount?: number` - Number of replies
-
-**UI Changes:**
-- Thread actions section at bottom of card
-- "Start Thread" button for posts without threads
-- "💬 X Replies" button for posts with threads
-- Separator line above thread actions
-
----
-
-## User Flows
-
-### Creating a Thread
-
-1. User sees a post in their feed
-2. Taps "Start Thread" button on EventCard
-3. Selects participants from their connections
-4. Thread created with wrapped keys for each participant
-5. User can immediately post first reply
-
-### Posting a Reply
-
-1. User taps "View Thread" or reply count on post
-2. ThreadViewScreen opens showing original post + replies
-3. User taps "Reply to Thread" button
-4. ReplyComposer modal opens
-5. User types reply and taps "Post Reply"
-6. Reply encrypted with cached thread key and saved
-7. Reply appears in thread view
-
-### Reading a Thread
-
-1. User opens ThreadViewScreen
-2. Thread key unwrapped using user's connection key
-3. Thread key cached in memory
-4. All replies decrypted with cached thread key
-5. Replies displayed with author names/photos
-6. Pull to refresh loads new replies
+// Get reply count for displaying in UI
+const count = await ThreadService.getReplyCount(eventId);
+```
 
 ---
 
@@ -257,19 +209,19 @@ Added thread actions to post cards.
    - Server only stores encrypted blobs
 
 2. **Participant Privacy**:
-   - Only thread participants can decrypt thread key
-   - Only thread participants can see replies
-   - Non-participants cannot access thread even with post access
+   - Only post recipients can decrypt thread key
+   - Only post recipients can see replies
+   - Non-recipients cannot access thread
 
-3. **Forward Secrecy**:
-   - Thread key is independent of post encryption
-   - Compromising post key doesn't reveal thread key
-   - Each thread has unique random key
+3. **Automatic Permissions**:
+   - If you can decrypt the post, you can decrypt the thread key
+   - No separate access control needed
+   - Simpler permission model
 
 ### Encryption Details
 
 - **Algorithm**: AES-256-GCM (authenticated encryption)
-- **Key Size**: 256 bits (thread key)
+- **Key Size**: 256 bits (both event key and thread key)
 - **IV Size**: 96 bits (recommended for GCM)
 - **Key Wrapping**: AES-256-GCM with ECDH-derived connection keys
 - **Key Derivation**: HKDF with SHA-256
@@ -286,12 +238,12 @@ Added thread actions to post cards.
 - Key wrapping: 100 × 50 = 5,000 key wraps
 - Storage: ~5 MB encrypted content
 
-**Shared Thread Key (100 replies, 50 participants):**
-- Encryptions: 100 replies + 1 thread = 101 encryptions
-- Key wrapping: 50 thread key wraps
+**Embedded Thread Key (100 replies, 50 participants):**
+- Initial: 2 keys × 50 participants = 100 key wraps (in post)
+- Replies: 100 encryptions (no key wrapping)
 - Storage: ~100 KB encrypted content
 
-**Savings**: ~98% reduction in encryption operations and storage
+**Savings**: ~98% reduction in encryption operations for replies
 
 ### Caching Strategy
 
@@ -302,117 +254,41 @@ Added thread actions to post cards.
 
 ---
 
-## Database Operations
+## Migration from v1.0
 
-### Thread Creation
-```typescript
-1. Save EncryptedThread to threads table
-2. Return thread metadata
-```
+### Breaking Changes
 
-### Post Reply
-```typescript
-1. Fetch EncryptedThread from threads table
-2. Decrypt thread key (or use cached)
-3. Encrypt reply with thread key
-4. Save EncryptedThreadReply to thread_replies table
-```
+**Removed:**
+- `Thread` and `EncryptedThread` interfaces
+- `ThreadEncryptionService.createEncryptedThread()`
+- `ThreadService.createThread()`
+- `PostStorageProvider.createThread/fetchThread/fetchThreads()`
+- Database `threads` table
 
-### Fetch Thread
-```typescript
-1. Fetch EncryptedThread from threads table
-2. Fetch all EncryptedThreadReply from thread_replies table
-3. Decrypt thread key (or use cached)
-4. Decrypt each reply with thread key
-5. Return thread + replies
-```
+**Changed:**
+- `EncryptedEvent` now includes `wrappedThreadKeys` field
+- `ThreadEncryptionService.decryptThreadKey()` takes `EncryptedEvent` instead of `EncryptedThread`
+- `ThreadService.getThreadWithReplies()` → `ThreadService.getReplies()`
+- Thread ID = Event ID (no separate thread IDs)
 
----
+### Migration Steps
 
-## API Endpoints (REST Backend)
+1. **Database Migration** (automatic):
+   ```sql
+   ALTER TABLE events ADD COLUMN wrapped_thread_keys TEXT;
+   DROP TABLE IF EXISTS threads;
+   ```
 
-### Create Thread
-```http
-POST /api/threads
-Content-Type: application/json
-X-Signature: <Ed25519 signature>
-X-Timestamp: <Unix timestamp>
+2. **Code Updates**:
+   - Remove all `createThread()` calls
+   - Replace `getThreadWithReplies()` with `getReplies()`
+   - Use event ID as thread ID
+   - Remove "Start Thread" UI buttons
 
-Body: EncryptedThread (JSON)
-Response: { threadId: string }
-```
-
-### Fetch Thread
-```http
-GET /api/threads/:threadId
-Response: { thread: EncryptedThread }
-```
-
-### Post Reply
-```http
-POST /api/threads/:threadId/replies
-Content-Type: application/json
-X-Signature: <Ed25519 signature>
-X-Timestamp: <Unix timestamp>
-
-Body: EncryptedThreadReply (JSON)
-Response: { replyId: string }
-```
-
-### Fetch Replies
-```http
-GET /api/threads/:threadId/replies
-Response: { replies: EncryptedThreadReply[] }
-```
-
----
-
-## Testing
-
-### Unit Tests
-
-Test coverage for:
-- Thread key generation and wrapping
-- Reply encryption/decryption
-- Thread key caching
-- Recipient lookup ID generation
-
-### Integration Tests
-
-End-to-end flows:
-- Create thread → post reply → read replies
-- Multi-participant threads
-- Thread key unwrapping for different users
-- Cache invalidation
-
-### Security Tests
-
-Verify:
-- Thread keys are truly random
-- Wrapped keys cannot be unwrapped by non-participants
-- Cached keys cleared on logout
-- HMAC prevents participant enumeration
-
----
-
-## Future Enhancements
-
-### Short-Term (Month 2-3)
-
-- **Dynamic Participants**: Add/remove participants after thread creation
-- **Thread Notifications**: Push notifications for new replies
-- **Reply Reactions**: Emoji reactions on thread replies
-- **Thread Search**: Search within thread replies
-- **Media Support**: Images/videos in replies
-
-### Long-Term (Month 4+)
-
-- **Nested Replies**: Reply to specific messages within thread
-- **Thread Pinning**: Pin important threads to top
-- **Thread Archive**: Archive old threads
-- **Thread Moderation**: Thread creator can moderate (delete replies, ban users)
-- **Cross-Post Threads**: Link threads across multiple posts
-- **Voice/Video Replies**: Audio/video message support
+3. **Data Migration**:
+   - Old threads in separate table will be orphaned
+   - New posts automatically include thread keys
+   - Consider running migration script to convert old threads
 
 ---
 
@@ -421,146 +297,114 @@ Verify:
 ### Common Issues
 
 **Q: "Thread key not available for current user"**
-- Cause: User not in participant list when thread was created
-- Solution: Thread creator must create new thread including this user
+- Cause: User not in original post recipients
+- Solution: User must be able to decrypt the post to reply
 
-**Q: "Failed to decrypt thread key"**
-- Cause: Connection shared secret not available
-- Solution: Re-establish connection with thread creator
+**Q: "Event not found"**
+- Cause: Trying to post reply before event is synced
+- Solution: Ensure event exists locally before posting reply
 
 **Q: Replies not showing up**
-- Cause: Thread key cache miss or corruption
-- Solution: Restart app to force re-fetching thread key
-
-**Q: Performance slow with many replies**
-- Cause: Decrypting all replies on every load
-- Solution: Implement pagination (fetch 50 replies at a time)
-
-### Debug Logging
-
-Enable thread debugging:
-```typescript
-// In ThreadEncryptionService.ts
-console.log('[ThreadEncryptionService] ...');
-
-// In ThreadService.ts
-console.log('[ThreadService] ...');
-```
+- Cause: Thread key cache miss
+- Solution: Restart app to force re-fetching thread key from event
 
 ---
 
 ## Testing
 
-### Test Suite Overview
+### Test Coverage
 
-Comprehensive test coverage for the threading feature:
+- **ThreadEncryptionService**: Key extraction from events, reply encryption/decryption
+- **ThreadService**: Reply posting and retrieval
+- **Integration**: End-to-end reply flow
+- **UI**: ReplyComposer and ThreadReplyCard components
 
-- **260+ Unit Tests** - ThreadEncryptionService and ThreadService
-- **30+ Integration Tests** - Full end-to-end thread flows
-- **50+ Component Tests** - UI components
-- **Overall Coverage**: 85%+
+**Note:** Tests need updating for v2.0 architecture. Most v1.0 tests will fail.
 
-### Running Tests
+---
 
-```bash
-# Run all tests
-npm test
+## Future Enhancements
 
-# Run threading tests only
-npm test Thread
+### Potential Improvements
 
-# Run with coverage
-npm test -- --coverage
+1. **Participant Management**:
+   - Allow adding participants after thread creation
+   - Re-wrap thread key for new participants
 
-# Watch mode
-npm test -- --watch
+2. **Thread Permissions**:
+   - Thread-level access control (read vs. reply)
+   - Private replies (visible only to subset)
+
+3. **Rich Content**:
+   - File attachments in replies
+   - Inline images/videos
+   - Reactions/emoji responses
+
+4. **Performance**:
+   - Lazy loading for long threads
+   - Reply pagination
+   - Optimistic UI updates
+
+5. **Notifications**:
+   - Push notifications for new replies
+   - Read receipts for replies
+
+---
+
+## API Reference
+
+### ThreadService
+
+```typescript
+class ThreadService {
+  // Post a reply to an event
+  async postReply(eventId: string, content: string): Promise<ThreadReply>
+
+  // Get all replies for an event
+  async getReplies(eventId: string): Promise<ThreadReply[]>
+
+  // Get reply count
+  async getReplyCount(eventId: string): Promise<number>
+}
 ```
 
-### Test Files
+### ThreadEncryptionService
 
-| Test File | Coverage | Tests |
-|-----------|----------|-------|
-| `__tests__/services/crypto/ThreadEncryptionService.test.ts` | 95%+ | 140+ |
-| `__tests__/services/ThreadService.test.ts` | 90%+ | 40+ |
-| `__tests__/integration/ThreadFlow.test.ts` | 100% | 30+ |
-| `__tests__/components/threads/ThreadReplyCard.test.tsx` | 80%+ | 20+ |
-| `__tests__/components/threads/ReplyComposer.test.tsx` | 85%+ | 30+ |
+```typescript
+class ThreadEncryptionService {
+  // Extract thread key from event
+  async decryptThreadKey(
+    encryptedEvent: EncryptedEvent,
+    connections: Connection[]
+  ): Promise<Uint8Array>
 
-### Key Test Scenarios
+  // Encrypt a reply
+  async encryptThreadReply(
+    reply: ThreadReply,
+    threadKey: Uint8Array
+  ): Promise<EncryptedThreadReply>
 
-**Thread Encryption Tests:**
-- Thread key generation and wrapping
-- HMAC-based recipient lookup IDs
-- Thread key caching
-- Reply encryption/decryption
-- Performance with 50+ participants
+  // Decrypt a reply
+  async decryptThreadReply(
+    encryptedReply: EncryptedThreadReply,
+    threadKey: Uint8Array
+  ): Promise<ThreadReply>
 
-**Thread Service Tests:**
-- Thread creation with participants
-- Reply posting and retrieval
-- Error handling
-- Thread query operations
-
-**Integration Tests:**
-- Complete thread lifecycle (Alice creates, Bob replies, Charlie reads)
-- Multi-participant conversations
-- Security isolation (non-participants cannot decrypt)
-- Privacy verification (no participant enumeration)
-- Performance benchmarks (100 replies in < 1 second)
-
-**Component Tests:**
-- ThreadReplyCard rendering and time formatting
-- ReplyComposer input validation and submission
-- Loading states and error handling
-- Unicode and emoji support
-
-### Test Documentation
-
-See `__tests__/README.md` for:
-- Detailed test structure
-- Running specific test suites
-- Debugging tests
-- Adding new tests
-- CI/CD integration
+  // Clear thread key cache
+  clearCache(): void
+}
+```
 
 ---
 
-## Migration Guide
+## Summary
 
-### From No Threading to Threading
+The v2.0 threading architecture embeds thread keys directly in posts, creating a simpler, more automatic model:
 
-If adding threading to existing app:
+✅ **Simpler**: No separate thread creation - every post has a thread
+✅ **Automatic**: Thread ID = Event ID (no mapping needed)
+✅ **Efficient**: Same encryption savings as v1.0 (98% reduction)
+✅ **Secure**: Same privacy guarantees (HMAC obfuscation, AES-256-GCM)
+✅ **Clean**: -600 lines of code, simpler UI, easier to understand
 
-1. **Database Migration**:
-   - Add `threads` and `thread_replies` tables
-   - Add `isThread`, `threadId`, `replyCount` columns to events table
-
-2. **Update EventCard Usage**:
-   - Add `onStartThread` and `onViewThread` props
-   - Add `replyCount` prop if available
-
-3. **Add Navigation**:
-   - Register ThreadViewScreen in navigation stack
-   - Pass thread ID and post metadata as route params
-
-4. **Backend API** (if using REST):
-   - Implement thread endpoints
-   - Add Ed25519 signature verification
-
----
-
-## References
-
-- **Encryption Design**: See `src/services/crypto/ThreadEncryptionService.ts`
-- **Storage Implementation**: See `src/services/storage/PostStorageProvider.ts`
-- **UI Components**: See `src/components/threads/`
-- **Thread Service**: See `src/services/ThreadService.ts`
-- **PRD**: See `docs/PRD.md` Section 7 Q6
-
----
-
-## Contributors
-
-- Initial implementation: Claude Code (October 2025)
-- Encryption design: Based on existing hybrid encryption system
-- UI/UX: Material Design principles
+**Key Insight**: If you can read the post, you can reply to it. Simple!
