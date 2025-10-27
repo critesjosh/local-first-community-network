@@ -100,8 +100,16 @@ describe('Threading Integration Tests (v2.1)', () => {
     ];
   });
 
+  // Helper function to mock identity for encryption/decryption
+  const mockIdentity = (publicKey: Uint8Array, privateKey: Uint8Array) => {
+    (IdentityService.getKeyPair as jest.Mock).mockResolvedValue({
+      publicKey,
+      privateKey,
+    });
+  };
+
   beforeEach(() => {
-    // Mock IdentityService to return null (forces use of connections only)
+    // Mock IdentityService to return null by default
     (IdentityService.getKeyPair as jest.Mock).mockResolvedValue(null);
   });
 
