@@ -10,6 +10,9 @@ interface EventCardProps {
   onRSVP?: (eventId: string, status: 'going' | 'interested' | 'not_going') => void;
   currentUserRSVP?: 'going' | 'interested' | 'not_going';
   attendeeCount?: number;
+  onStartThread?: (eventId: string) => void;
+  onViewThread?: (threadId: string) => void;
+  replyCount?: number;
 }
 
 const EventCard: React.FC<EventCardProps> = ({
@@ -17,6 +20,9 @@ const EventCard: React.FC<EventCardProps> = ({
   authorName,
   authorPhoto,
   onPress,
+  onStartThread,
+  onViewThread,
+  replyCount,
 }) => {
   const formatTimeAgo = (date: Date): string => {
     const now = new Date();
@@ -64,6 +70,31 @@ const EventCard: React.FC<EventCardProps> = ({
         </View>
 
         <Text style={styles.postContent}>{event.content}</Text>
+
+        {/* Thread Actions */}
+        <View style={styles.threadActions}>
+          {event.isThread && onViewThread ? (
+            <TouchableOpacity
+              style={styles.threadButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                onViewThread(event.id);
+              }}>
+              <Text style={styles.threadButtonText}>
+                💬 {replyCount || 0} {replyCount === 1 ? 'Reply' : 'Replies'}
+              </Text>
+            </TouchableOpacity>
+          ) : onStartThread ? (
+            <TouchableOpacity
+              style={styles.threadButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                onStartThread(event.id);
+              }}>
+              <Text style={styles.threadButtonText}>💬 Start Thread</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -122,6 +153,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#000',
     lineHeight: 22,
+  },
+  threadActions: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+  },
+  threadButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 6,
+  },
+  threadButtonText: {
+    fontSize: 14,
+    color: '#007AFF',
+    fontWeight: '600',
   },
 });
 
