@@ -67,6 +67,7 @@ class Database {
           encrypted_content TEXT,
           content_iv TEXT,
           wrapped_keys TEXT,
+          wrapped_thread_keys TEXT,
           encrypted_for TEXT
         );
 
@@ -81,14 +82,6 @@ class Database {
           read INTEGER DEFAULT 0
         );
 
-        CREATE TABLE IF NOT EXISTS threads (
-          id TEXT PRIMARY KEY,
-          root_post_id TEXT NOT NULL,
-          author_id TEXT NOT NULL,
-          timestamp INTEGER NOT NULL,
-          wrapped_thread_keys TEXT NOT NULL
-        );
-
         CREATE TABLE IF NOT EXISTS thread_replies (
           id TEXT PRIMARY KEY,
           thread_id TEXT NOT NULL,
@@ -96,7 +89,7 @@ class Database {
           timestamp INTEGER NOT NULL,
           encrypted_content TEXT NOT NULL,
           iv TEXT NOT NULL,
-          FOREIGN KEY (thread_id) REFERENCES threads(id)
+          FOREIGN KEY (thread_id) REFERENCES events(id)
         );
 
         CREATE INDEX IF NOT EXISTS idx_thread_replies_thread_id
@@ -135,6 +128,21 @@ class Database {
       `).catch(() => {
         // Column already exists, ignore error
         console.log('[Database] trust_level column already exists');
+      });
+
+      // Migration 3: Add wrapped_thread_keys column to events table if it doesn't exist
+      await this.db.execAsync(`
+        ALTER TABLE events ADD COLUMN wrapped_thread_keys TEXT;
+      `).catch(() => {
+        // Column already exists, ignore error
+        console.log('[Database] wrapped_thread_keys column already exists');
+      });
+
+      // Migration 4: Drop threads table since thread keys are now stored with events
+      await this.db.execAsync(`
+        DROP TABLE IF EXISTS threads;
+      `).catch((error) => {
+        console.log('[Database] Error dropping threads table (may not exist):', error);
       });
 
       console.log('[Database] Migrations completed successfully');
@@ -513,8 +521,8 @@ class Database {
     const query = `
       INSERT OR REPLACE INTO events (
         id, author_id, title, description, datetime, location,
-        photo, created_at, updated_at, encrypted_content, content_iv, wrapped_keys
-      ) VALUES (?, ?, NULL, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?)
+        photo, created_at, updated_at, encrypted_content, content_iv, wrapped_keys, wrapped_thread_keys
+      ) VALUES (?, ?, NULL, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?, ?)
     `;
 
     await this.db.runAsync(query, [
@@ -526,6 +534,7 @@ class Database {
       encryptedEvent.encryptedContent,
       encryptedEvent.iv,
       JSON.stringify(encryptedEvent.wrappedKeys),
+      JSON.stringify(encryptedEvent.wrappedThreadKeys),
     ]);
   }
 
@@ -553,6 +562,7 @@ class Database {
       encryptedContent: row.encrypted_content,
       iv: row.content_iv,
       wrappedKeys: JSON.parse(row.wrapped_keys || '{}'),
+      wrappedThreadKeys: JSON.parse(row.wrapped_thread_keys || '{}'),
     }));
   }
 
@@ -576,6 +586,7 @@ class Database {
       encryptedContent: row.encrypted_content,
       iv: row.content_iv,
       wrappedKeys: JSON.parse(row.wrapped_keys || '{}'),
+      wrappedThreadKeys: JSON.parse(row.wrapped_thread_keys || '{}'),
     };
   }
 

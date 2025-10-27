@@ -101,6 +101,13 @@ export interface EncryptedEvent {
       keyWrapIV: string; // base64 - IV for key wrapping
     };
   };
+  // Thread key wrapped for each recipient (same recipients as event)
+  wrappedThreadKeys: {
+    [recipientLookupId: string]: {
+      wrappedKey: string; // base64 - thread key wrapped with connection key
+      keyWrapIV: string; // base64 - IV for key wrapping
+    };
+  };
 }
 
 /**
@@ -139,8 +146,9 @@ class EncryptionService {
     connections: Connection[],
   ): Promise<EncryptedEvent> {
     try {
-      // 1. Generate random event key
+      // 1. Generate random event key AND thread key
       const eventKey = await generateRandomKey();
+      const threadKey = await generateRandomKey(); // Thread key for replies
       const contentIV = await generateIV();
 
       // 2. Serialize and encrypt event content ONCE
@@ -151,8 +159,9 @@ class EncryptionService {
       const plaintext = new TextEncoder().encode(JSON.stringify(eventContent));
       const encryptedContentBytes = await encryptAESGCM(plaintext, eventKey, contentIV);
 
-      // 3. Wrap event key for author (so they can decrypt their own posts)
+      // 3. Wrap event key AND thread key for author (so they can decrypt their own posts and post replies)
       const wrappedKeys: EncryptedEvent['wrappedKeys'] = {};
+      const wrappedThreadKeys: EncryptedEvent['wrappedThreadKeys'] = {};
 
       const keyPair = await IdentityService.getKeyPair();
       if (keyPair) {
@@ -171,6 +180,7 @@ class EncryptionService {
 
           const authorKey = ECDHService.deriveConnectionKey(authorSharedSecret);
           const authorKeyWrapIV = await generateIV();
+          const authorThreadKeyWrapIV = await generateIV();
 
           const authorWrappedKeyBytes = await encryptAESGCM(
             eventKey,
@@ -178,12 +188,23 @@ class EncryptionService {
             authorKeyWrapIV,
           );
 
+          const authorWrappedThreadKeyBytes = await encryptAESGCM(
+            threadKey,
+            authorKey,
+            authorThreadKeyWrapIV,
+          );
+
           wrappedKeys[authorLookupId] = {
             wrappedKey: Buffer.from(authorWrappedKeyBytes).toString('base64'),
             keyWrapIV: Buffer.from(authorKeyWrapIV).toString('base64'),
           };
 
-          console.log(`[EncryptionService] Wrapped event key for author (self)`);
+          wrappedThreadKeys[authorLookupId] = {
+            wrappedKey: Buffer.from(authorWrappedThreadKeyBytes).toString('base64'),
+            keyWrapIV: Buffer.from(authorThreadKeyWrapIV).toString('base64'),
+          };
+
+          console.log(`[EncryptionService] Wrapped event key and thread key for author (self)`);
         } catch (error) {
           console.error('Error wrapping key for author:', error);
         }
@@ -234,8 +255,9 @@ class EncryptionService {
         // Derive encryption key from shared secret
         const connectionKey = ECDHService.deriveConnectionKey(sharedSecret);
 
-        // Generate IV for key wrapping
+        // Generate IVs for key wrapping (one for event key, one for thread key)
         const keyWrapIV = await generateIV();
+        const threadKeyWrapIV = await generateIV();
 
         // Wrap the event key with connection's key (only 32 bytes)
         const wrappedKeyBytes = await encryptAESGCM(
@@ -244,9 +266,21 @@ class EncryptionService {
           keyWrapIV,
         );
 
+        // Wrap the thread key with connection's key (only 32 bytes)
+        const wrappedThreadKeyBytes = await encryptAESGCM(
+          threadKey,
+          connectionKey,
+          threadKeyWrapIV,
+        );
+
         wrappedKeys[recipientLookupId] = {
           wrappedKey: Buffer.from(wrappedKeyBytes).toString('base64'),
           keyWrapIV: Buffer.from(keyWrapIV).toString('base64'),
+        };
+
+        wrappedThreadKeys[recipientLookupId] = {
+          wrappedKey: Buffer.from(wrappedThreadKeyBytes).toString('base64'),
+          keyWrapIV: Buffer.from(threadKeyWrapIV).toString('base64'),
         };
       }
 
@@ -257,6 +291,7 @@ class EncryptionService {
         encryptedContent: Buffer.from(encryptedContentBytes).toString('base64'),
         iv: Buffer.from(contentIV).toString('base64'),
         wrappedKeys,
+        wrappedThreadKeys,
       };
     } catch (error) {
       console.error('Error encrypting event:', error);

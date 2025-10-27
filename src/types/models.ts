@@ -36,47 +36,18 @@ export interface Event {
   // Posts use hybrid encryption: single encrypted content + wrapped keys per recipient
 
   // Threading fields
-  isThread?: boolean; // True if this post starts a thread (has thread key)
-  threadId?: string; // Reference to parent thread (if this is a reply)
-  replyCount?: number; // Number of replies to this post/thread
+  // Note: All events automatically have a thread key wrapped alongside the content key
+  // Anyone who can decrypt the event can also decrypt the thread key and post replies
+  replyCount?: number; // Number of replies to this post
 }
 
 /**
- * Thread metadata with shared encryption key
- * The thread key is encrypted for each participant using hybrid encryption
- */
-export interface Thread {
-  id: string; // UUID - same as the root Event.id
-  rootPostId: string; // The original post that started the thread
-  authorId: string; // Creator of the thread
-  participants: string[]; // Array of user IDs who can access thread
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-/**
- * Encrypted thread with wrapped thread key for each participant
- * This is stored in the database/sent over the network
- */
-export interface EncryptedThread {
-  id: string;
-  rootPostId: string;
-  authorId: string;
-  timestamp: number;
-  wrappedThreadKeys: {
-    [recipientLookupId: string]: {
-      wrappedKey: string; // base64 - thread key encrypted for recipient
-      keyWrapIV: string; // base64 - IV for key wrapping
-    };
-  };
-}
-
-/**
- * A reply in a thread (plaintext/decrypted)
+ * A reply to a post/event (plaintext/decrypted)
+ * Replies use the thread key that was distributed with the original post
  */
 export interface ThreadReply {
   id: string; // UUID
-  threadId: string; // Reference to parent thread
+  threadId: string; // Reference to parent event (the original post)
   authorId: string; // base58 public key
   content: string; // The reply text content
   createdAt: Date;
