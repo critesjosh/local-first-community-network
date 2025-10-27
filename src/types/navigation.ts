@@ -16,6 +16,7 @@ export type RootStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabParamList>;
   ConnectionScan: undefined;
   ConnectionDetail: {connectionId: string};
+  ThreadView: {threadId: string; postContent?: string; postAuthor?: string};
 };
 
 /**

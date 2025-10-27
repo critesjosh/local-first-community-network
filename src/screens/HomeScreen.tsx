@@ -21,6 +21,8 @@ import BLEConnectionHandler from '../services/bluetooth/BLEConnectionHandler';
 import IdentityService from '../services/IdentityService';
 import {addBluetoothListener} from '@localcommunity/rn-bluetooth';
 import {initLogger} from '../utils/logger';
+import ThreadService from '../services/ThreadService';
+import {MainTabScreenProps} from '../types/navigation';
 
 interface RSVPState {
   [eventId: string]: {
@@ -29,13 +31,16 @@ interface RSVPState {
   };
 }
 
-const HomeScreen = () => {
+type Props = MainTabScreenProps<'Home'>;
+
+const HomeScreen: React.FC<Props> = ({navigation}) => {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [rsvpState, setRsvpState] = useState<RSVPState>({});
   const [connections, setConnections] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [threadReplyCounts, setThreadReplyCounts] = useState<{[threadId: string]: number}>({});
 
   // Initialize logger with user display name
   useEffect(() => {
@@ -227,6 +232,84 @@ const HomeScreen = () => {
     // TODO: In Week 3, this will POST to the server
   };
 
+  const handleStartThread = async (eventId: string) => {
+    try {
+      console.log('[HomeScreen] Starting thread for event:', eventId);
+
+      // For now, create thread with all connections as participants
+      const allConnections = await ConnectionService.getConnections();
+      const participantIds = allConnections.map(c => c.userId);
+
+      if (participantIds.length === 0) {
+        Alert.alert(
+          'No Connections',
+          'You need connections to create a thread. Connect with neighbors first!',
+        );
+        return;
+      }
+
+      await ThreadService.createThread(eventId, participantIds);
+
+      // Update the event to mark it as having a thread
+      const event = events.find(e => e.id === eventId);
+      if (event) {
+        event.isThread = true;
+        setEvents([...events]);
+      }
+
+      // Navigate to thread view
+      const authorInfo = getAuthorInfo(event?.authorId || '');
+      navigation.navigate('ThreadView', {
+        threadId: eventId,
+        postContent: event?.content,
+        postAuthor: authorInfo.displayName,
+      });
+    } catch (error) {
+      console.error('[HomeScreen] Error starting thread:', error);
+      Alert.alert('Error', 'Failed to create thread. Please try again.');
+    }
+  };
+
+  const handleViewThread = async (threadId: string) => {
+    try {
+      console.log('[HomeScreen] Viewing thread:', threadId);
+
+      const event = events.find(e => e.id === threadId);
+      const authorInfo = getAuthorInfo(event?.authorId || '');
+
+      navigation.navigate('ThreadView', {
+        threadId,
+        postContent: event?.content,
+        postAuthor: authorInfo.displayName,
+      });
+    } catch (error) {
+      console.error('[HomeScreen] Error viewing thread:', error);
+      Alert.alert('Error', 'Failed to open thread. Please try again.');
+    }
+  };
+
+  // Load thread reply counts
+  useEffect(() => {
+    const loadReplyCounts = async () => {
+      const counts: {[threadId: string]: number} = {};
+      for (const event of events) {
+        if (event.isThread) {
+          try {
+            const count = await ThreadService.getReplyCount(event.id);
+            counts[event.id] = count;
+          } catch (error) {
+            console.error(`[HomeScreen] Error loading reply count for ${event.id}:`, error);
+          }
+        }
+      }
+      setThreadReplyCounts(counts);
+    };
+
+    if (events.length > 0) {
+      loadReplyCounts();
+    }
+  }, [events]);
+
   // Load events when screen comes into focus
   useFocusEffect(
     useCallback(() => {
@@ -269,6 +352,9 @@ const HomeScreen = () => {
         onRSVP={handleRSVP}
         currentUserRSVP={rsvpState[item.id]?.status}
         attendeeCount={rsvpState[item.id]?.count}
+        onStartThread={handleStartThread}
+        onViewThread={handleViewThread}
+        replyCount={threadReplyCounts[item.id]}
       />
     );
   };

@@ -12,6 +12,7 @@ import ProfileScreen from '../screens/ProfileScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import ConnectionScanScreen from '../screens/ConnectionScanScreen';
 import ConnectionDetailScreen from '../screens/ConnectionDetailScreen';
+import ThreadViewScreen from '../screens/ThreadViewScreen';
 
 // Type imports
 import {RootStackParamList, MainTabParamList} from '../types/navigation';
@@ -79,6 +80,15 @@ const AppNavigator = () => {
           <Stack.Screen
             name="ConnectionDetail"
             component={ConnectionDetailScreen}
+          />
+          <Stack.Screen
+            name="ThreadView"
+            component={ThreadViewScreen}
+            options={{
+              headerShown: true,
+              title: 'Thread',
+              headerBackTitle: 'Back',
+            }}
           />
         </Stack.Navigator>
       </NavigationContainer>

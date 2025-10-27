@@ -8,18 +8,14 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import ThreadService from '../services/ThreadService';
 import ConnectionService from '../services/ConnectionService';
 import {ThreadReply, Connection} from '../types/models';
 import ThreadReplyCard from '../components/threads/ThreadReplyCard';
 import ReplyComposer from '../components/threads/ReplyComposer';
+import {RootStackScreenProps} from '../types/navigation';
 
-type RootStackParamList = {
-  ThreadView: {threadId: string; postContent?: string; postAuthor?: string};
-};
-
-type Props = NativeStackScreenProps<RootStackParamList, 'ThreadView'>;
+type Props = RootStackScreenProps<'ThreadView'>;
 
 const ThreadViewScreen: React.FC<Props> = ({route, navigation}) => {
   const {threadId, postContent, postAuthor} = route.params;
