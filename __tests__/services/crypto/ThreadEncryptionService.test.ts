@@ -1,14 +1,23 @@
 /**
- * Tests for ThreadEncryptionService (Shared Thread Key Encryption)
+ * Tests for ThreadEncryptionService (Event Key Reuse for Replies)
+ *
+ * v2.1 Architecture: Thread keys = Event keys
+ * Event keys are extracted from posts and reused for reply encryption
  */
 
 import ThreadEncryptionService from '../../../src/services/crypto/ThreadEncryptionService';
+import EncryptionService from '../../../src/services/crypto/EncryptionService';
 import ECDHService from '../../../src/services/crypto/ECDH';
-import {Connection, Thread, ThreadReply, EncryptedThread} from '../../../src/types/models';
+import {Connection, Event, ThreadReply} from '../../../src/types/models';
+import {EncryptedEvent} from '../../../src/services/crypto/EncryptionService';
+import IdentityService from '../../../src/services/IdentityService';
 import * as ed25519 from '@noble/ed25519';
 import * as base58 from '../../../src/utils/base58';
 
-describe('ThreadEncryptionService', () => {
+// Mock IdentityService
+jest.mock('../../../src/services/IdentityService');
+
+describe('ThreadEncryptionService (v2.1 - Event Key Reuse)', () => {
   let alicePrivateKey: Uint8Array;
   let alicePublicKey: Uint8Array;
   let bobPrivateKey: Uint8Array;
@@ -97,140 +106,131 @@ describe('ThreadEncryptionService', () => {
     ];
   });
 
+  beforeEach(() => {
+    // Mock IdentityService to return null (forces use of connections only)
+    (IdentityService.getKeyPair as jest.Mock).mockResolvedValue(null);
+  });
+
   afterEach(() => {
     // Clear thread key cache after each test
     ThreadEncryptionService.clearCache();
+    jest.clearAllMocks();
   });
 
-  describe('Thread Creation and Encryption', () => {
-    it('should create encrypted thread with wrapped keys for participants', async () => {
-      const thread: Thread = {
-        id: 'thread-123',
-        rootPostId: 'post-456',
-        authorId: base58.encode(alicePublicKey),
-        participants: [base58.encode(bobPublicKey), base58.encode(charliePublicKey)],
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      const encryptedThread = await ThreadEncryptionService.createEncryptedThread(
-        thread,
-        aliceConnections,
-      );
-
-      // Verify structure
-      expect(encryptedThread.id).toBe(thread.id);
-      expect(encryptedThread.rootPostId).toBe(thread.rootPostId);
-      expect(encryptedThread.authorId).toBe(thread.authorId);
-      expect(encryptedThread.timestamp).toBe(thread.createdAt.getTime());
-      expect(encryptedThread.wrappedThreadKeys).toBeDefined();
-
-      // Should have wrapped keys for author + 2 participants = 3 total
-      const wrappedKeyCount = Object.keys(encryptedThread.wrappedThreadKeys).length;
-      expect(wrappedKeyCount).toBeGreaterThanOrEqual(2); // At least Bob and Charlie
-
-      // Each wrapped key should have both key and IV
-      Object.values(encryptedThread.wrappedThreadKeys).forEach(wrappedKey => {
-        expect(wrappedKey.wrappedKey).toBeTruthy();
-        expect(wrappedKey.keyWrapIV).toBeTruthy();
-        // Base64 strings
-        expect(typeof wrappedKey.wrappedKey).toBe('string');
-        expect(typeof wrappedKey.keyWrapIV).toBe('string');
+  describe('Event Key Extraction for Replies', () => {
+    it('should extract event key from wrappedKeys (Bob as recipient)', async () => {
+      // Mock Alice's identity for event encryption
+      (IdentityService.getKeyPair as jest.Mock).mockResolvedValue({
+        publicKey: alicePublicKey,
+        privateKey: alicePrivateKey,
       });
-    });
 
-    it('should use HMAC-based recipient lookup IDs for privacy', async () => {
-      const thread: Thread = {
-        id: 'thread-789',
-        rootPostId: 'post-789',
+      // Alice creates a post
+      const event: Omit<Event, 'encryptedFor'> = {
+        id: 'event-123',
         authorId: base58.encode(alicePublicKey),
-        participants: [base58.encode(bobPublicKey)],
+        content: 'Test post content',
         createdAt: new Date(),
         updatedAt: new Date(),
       };
 
-      const encryptedThread = await ThreadEncryptionService.createEncryptedThread(
-        thread,
+      const encryptedEvent = await EncryptionService.encryptEvent(
+        event,
         aliceConnections,
       );
 
-      // Recipient lookup IDs should not directly reveal participant identities
-      const lookupIds = Object.keys(encryptedThread.wrappedThreadKeys);
-      lookupIds.forEach(lookupId => {
-        // Should be base64-encoded HMAC
-        expect(lookupId.length).toBeGreaterThan(20);
-        // Should not match any participant ID directly
-        expect(lookupId).not.toBe(base58.encode(bobPublicKey));
-        expect(lookupId).not.toBe(base58.encode(charliePublicKey));
+      // Mock Bob's identity for decryption (or null to force connections-only)
+      (IdentityService.getKeyPair as jest.Mock).mockResolvedValue({
+        publicKey: bobPublicKey,
+        privateKey: bobPrivateKey,
       });
-    });
-  });
 
-  describe('Thread Key Decryption', () => {
-    let encryptedThread: EncryptedThread;
-
-    beforeEach(async () => {
-      const thread: Thread = {
-        id: 'thread-decrypt-test',
-        rootPostId: 'post-decrypt-test',
-        authorId: base58.encode(alicePublicKey),
-        participants: [base58.encode(bobPublicKey), base58.encode(charliePublicKey)],
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      encryptedThread = await ThreadEncryptionService.createEncryptedThread(
-        thread,
-        aliceConnections,
-      );
-    });
-
-    it('should allow Bob to decrypt thread key', async () => {
-      const threadKey = await ThreadEncryptionService.decryptThreadKey(
-        encryptedThread,
+      // Bob extracts the event key
+      const eventKey = await ThreadEncryptionService.decryptThreadKey(
+        encryptedEvent,
         bobConnections,
       );
 
-      expect(threadKey).toBeDefined();
-      expect(threadKey).toBeInstanceOf(Uint8Array);
-      expect(threadKey.length).toBe(32); // 256-bit key
+      expect(eventKey).toBeDefined();
+      expect(eventKey).toBeInstanceOf(Uint8Array);
+      expect(eventKey.length).toBe(32); // 256-bit key
     });
 
-    it('should allow Charlie to decrypt thread key', async () => {
-      const threadKey = await ThreadEncryptionService.decryptThreadKey(
-        encryptedThread,
+    it('should extract event key from wrappedKeys (Charlie as recipient)', async () => {
+      const event: Omit<Event, 'encryptedFor'> = {
+        id: 'event-456',
+        authorId: base58.encode(alicePublicKey),
+        content: 'Another test post',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const encryptedEvent = await EncryptionService.encryptEvent(
+        event,
+        aliceConnections,
+      );
+
+      // Charlie extracts the event key
+      const eventKey = await ThreadEncryptionService.decryptThreadKey(
+        encryptedEvent,
         charlieConnections,
       );
 
-      expect(threadKey).toBeDefined();
-      expect(threadKey).toBeInstanceOf(Uint8Array);
-      expect(threadKey.length).toBe(32);
+      expect(eventKey).toBeDefined();
+      expect(eventKey).toBeInstanceOf(Uint8Array);
+      expect(eventKey.length).toBe(32);
     });
 
-    it('should cache thread key after first decryption', async () => {
-      // First decryption
-      const threadKey1 = await ThreadEncryptionService.decryptThreadKey(
-        encryptedThread,
+    it('should cache event key after first extraction', async () => {
+      const event: Omit<Event, 'encryptedFor'> = {
+        id: 'event-cache-test',
+        authorId: base58.encode(alicePublicKey),
+        content: 'Cache test post',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const encryptedEvent = await EncryptionService.encryptEvent(
+        event,
+        aliceConnections,
+      );
+
+      // First extraction
+      const eventKey1 = await ThreadEncryptionService.decryptThreadKey(
+        encryptedEvent,
         bobConnections,
       );
 
       // Get cached key
-      const cachedKey = ThreadEncryptionService.getCachedThreadKey(encryptedThread.id);
+      const cachedKey = ThreadEncryptionService.getCachedThreadKey(encryptedEvent.id);
 
       expect(cachedKey).toBeDefined();
-      expect(cachedKey).toEqual(threadKey1);
+      expect(cachedKey).toEqual(eventKey1);
 
-      // Second decryption should use cache (same reference)
-      const threadKey2 = await ThreadEncryptionService.decryptThreadKey(
-        encryptedThread,
+      // Second extraction should use cache
+      const eventKey2 = await ThreadEncryptionService.decryptThreadKey(
+        encryptedEvent,
         bobConnections,
       );
 
-      expect(threadKey2).toEqual(threadKey1);
+      expect(eventKey2).toEqual(eventKey1);
     });
 
-    it('should fail for user not in participant list', async () => {
-      // Dave is not a participant
+    it('should fail for user not in recipient list', async () => {
+      const event: Omit<Event, 'encryptedFor'> = {
+        id: 'event-unauthorized',
+        authorId: base58.encode(alicePublicKey),
+        content: 'Private post',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const encryptedEvent = await EncryptionService.encryptEvent(
+        event,
+        aliceConnections,
+      );
+
+      // Dave is not a recipient
       const davePrivateKey = ed25519.utils.randomSecretKey();
       const davePublicKey = await ed25519.getPublicKeyAsync(davePrivateKey);
 
@@ -252,41 +252,40 @@ describe('ThreadEncryptionService', () => {
       ];
 
       await expect(
-        ThreadEncryptionService.decryptThreadKey(encryptedThread, daveConnections),
+        ThreadEncryptionService.decryptThreadKey(encryptedEvent, daveConnections),
       ).rejects.toThrow('Thread key not available for current user');
     });
   });
 
-  describe('Thread Reply Encryption and Decryption', () => {
-    let threadKey: Uint8Array;
-    let encryptedThread: EncryptedThread;
+  describe('Reply Encryption with Event Key', () => {
+    let eventKey: Uint8Array;
+    let encryptedEvent: EncryptedEvent;
 
     beforeEach(async () => {
-      const thread: Thread = {
-        id: 'thread-reply-test',
-        rootPostId: 'post-reply-test',
+      const event: Omit<Event, 'encryptedFor'> = {
+        id: 'event-reply-test',
         authorId: base58.encode(alicePublicKey),
-        participants: [base58.encode(bobPublicKey)],
+        content: 'Original post',
         createdAt: new Date(),
         updatedAt: new Date(),
       };
 
-      encryptedThread = await ThreadEncryptionService.createEncryptedThread(
-        thread,
+      encryptedEvent = await EncryptionService.encryptEvent(
+        event,
         aliceConnections,
       );
 
-      // Bob decrypts the thread key
-      threadKey = await ThreadEncryptionService.decryptThreadKey(
-        encryptedThread,
+      // Bob extracts the event key
+      eventKey = await ThreadEncryptionService.decryptThreadKey(
+        encryptedEvent,
         bobConnections,
       );
     });
 
-    it('should encrypt reply with shared thread key', async () => {
+    it('should encrypt reply with event key', async () => {
       const reply: ThreadReply = {
         id: 'reply-1',
-        threadId: 'thread-reply-test',
+        threadId: 'event-reply-test',
         authorId: base58.encode(bobPublicKey),
         content: 'This is a test reply',
         createdAt: new Date(),
@@ -294,7 +293,7 @@ describe('ThreadEncryptionService', () => {
 
       const encryptedReply = await ThreadEncryptionService.encryptThreadReply(
         reply,
-        threadKey,
+        eventKey,
       );
 
       expect(encryptedReply.id).toBe(reply.id);
@@ -308,10 +307,10 @@ describe('ThreadEncryptionService', () => {
       expect(encryptedReply.encryptedContent).not.toContain(reply.content);
     });
 
-    it('should decrypt reply with shared thread key', async () => {
+    it('should decrypt reply with event key', async () => {
       const originalReply: ThreadReply = {
         id: 'reply-2',
-        threadId: 'thread-reply-test',
+        threadId: 'event-reply-test',
         authorId: base58.encode(bobPublicKey),
         content: 'Hello from Bob!',
         createdAt: new Date(),
@@ -320,13 +319,13 @@ describe('ThreadEncryptionService', () => {
       // Encrypt
       const encryptedReply = await ThreadEncryptionService.encryptThreadReply(
         originalReply,
-        threadKey,
+        eventKey,
       );
 
       // Decrypt
       const decryptedReply = await ThreadEncryptionService.decryptThreadReply(
         encryptedReply,
-        threadKey,
+        eventKey,
       );
 
       expect(decryptedReply.id).toBe(originalReply.id);
@@ -336,11 +335,11 @@ describe('ThreadEncryptionService', () => {
       expect(decryptedReply.createdAt.getTime()).toBe(originalReply.createdAt.getTime());
     });
 
-    it('should allow any participant to encrypt and decrypt replies', async () => {
+    it('should allow any recipient to encrypt and decrypt replies', async () => {
       // Bob creates a reply
       const bobReply: ThreadReply = {
         id: 'reply-bob',
-        threadId: 'thread-reply-test',
+        threadId: 'event-reply-test',
         authorId: base58.encode(bobPublicKey),
         content: 'Reply from Bob',
         createdAt: new Date(),
@@ -348,18 +347,18 @@ describe('ThreadEncryptionService', () => {
 
       const encryptedBobReply = await ThreadEncryptionService.encryptThreadReply(
         bobReply,
-        threadKey,
+        eventKey,
       );
 
-      // Alice decrypts Bob's reply using same thread key
-      const aliceThreadKey = await ThreadEncryptionService.decryptThreadKey(
-        encryptedThread,
+      // Alice extracts the same event key and decrypts Bob's reply
+      const aliceEventKey = await ThreadEncryptionService.decryptThreadKey(
+        encryptedEvent,
         aliceConnections,
       );
 
       const decryptedBobReply = await ThreadEncryptionService.decryptThreadReply(
         encryptedBobReply,
-        aliceThreadKey,
+        aliceEventKey,
       );
 
       expect(decryptedBobReply.content).toBe(bobReply.content);
@@ -368,7 +367,7 @@ describe('ThreadEncryptionService', () => {
     it('should handle unicode and special characters in replies', async () => {
       const reply: ThreadReply = {
         id: 'reply-unicode',
-        threadId: 'thread-reply-test',
+        threadId: 'event-reply-test',
         authorId: base58.encode(bobPublicKey),
         content: 'Hello 世界! 🌍 Special chars: @#$%^&*()',
         createdAt: new Date(),
@@ -376,12 +375,12 @@ describe('ThreadEncryptionService', () => {
 
       const encryptedReply = await ThreadEncryptionService.encryptThreadReply(
         reply,
-        threadKey,
+        eventKey,
       );
 
       const decryptedReply = await ThreadEncryptionService.decryptThreadReply(
         encryptedReply,
-        threadKey,
+        eventKey,
       );
 
       expect(decryptedReply.content).toBe(reply.content);
@@ -390,7 +389,7 @@ describe('ThreadEncryptionService', () => {
     it('should handle empty reply content', async () => {
       const reply: ThreadReply = {
         id: 'reply-empty',
-        threadId: 'thread-reply-test',
+        threadId: 'event-reply-test',
         authorId: base58.encode(bobPublicKey),
         content: '',
         createdAt: new Date(),
@@ -398,58 +397,94 @@ describe('ThreadEncryptionService', () => {
 
       const encryptedReply = await ThreadEncryptionService.encryptThreadReply(
         reply,
-        threadKey,
+        eventKey,
       );
 
       const decryptedReply = await ThreadEncryptionService.decryptThreadReply(
         encryptedReply,
-        threadKey,
+        eventKey,
       );
 
       expect(decryptedReply.content).toBe('');
     });
+
+    it('should use unique IVs for each reply encryption', async () => {
+      const reply: ThreadReply = {
+        id: 'reply-iv-test',
+        threadId: 'event-reply-test',
+        authorId: base58.encode(bobPublicKey),
+        content: 'Same content',
+        createdAt: new Date(),
+      };
+
+      // Encrypt same content twice
+      const encryptedReply1 = await ThreadEncryptionService.encryptThreadReply(
+        reply,
+        eventKey,
+      );
+
+      const encryptedReply2 = await ThreadEncryptionService.encryptThreadReply(
+        {...reply, id: 'reply-iv-test-2'},
+        eventKey,
+      );
+
+      // IVs should be different
+      expect(encryptedReply1.iv).not.toBe(encryptedReply2.iv);
+
+      // Both should decrypt correctly
+      const decrypted1 = await ThreadEncryptionService.decryptThreadReply(
+        encryptedReply1,
+        eventKey,
+      );
+      const decrypted2 = await ThreadEncryptionService.decryptThreadReply(
+        encryptedReply2,
+        eventKey,
+      );
+
+      expect(decrypted1.content).toBe(reply.content);
+      expect(decrypted2.content).toBe(reply.content);
+    });
   });
 
   describe('Cache Management', () => {
-    it('should clear thread key cache', async () => {
-      const thread: Thread = {
-        id: 'thread-cache-test',
-        rootPostId: 'post-cache-test',
+    it('should clear event key cache', async () => {
+      const event: Omit<Event, 'encryptedFor'> = {
+        id: 'event-clear-cache',
         authorId: base58.encode(alicePublicKey),
-        participants: [base58.encode(bobPublicKey)],
+        content: 'Cache clear test',
         createdAt: new Date(),
         updatedAt: new Date(),
       };
 
-      const encryptedThread = await ThreadEncryptionService.createEncryptedThread(
-        thread,
+      const encryptedEvent = await EncryptionService.encryptEvent(
+        event,
         aliceConnections,
       );
 
-      // Decrypt to cache the key
-      await ThreadEncryptionService.decryptThreadKey(encryptedThread, bobConnections);
+      // Extract to cache the key
+      await ThreadEncryptionService.decryptThreadKey(encryptedEvent, bobConnections);
 
       // Verify key is cached
-      expect(ThreadEncryptionService.getCachedThreadKey(thread.id)).toBeDefined();
+      expect(ThreadEncryptionService.getCachedThreadKey(event.id)).toBeDefined();
 
       // Clear cache
       ThreadEncryptionService.clearCache();
 
       // Verify key is no longer cached
-      expect(ThreadEncryptionService.getCachedThreadKey(thread.id)).toBeUndefined();
+      expect(ThreadEncryptionService.getCachedThreadKey(event.id)).toBeUndefined();
     });
 
     it('should return undefined for non-existent cached key', () => {
-      const cachedKey = ThreadEncryptionService.getCachedThreadKey('non-existent-thread');
+      const cachedKey = ThreadEncryptionService.getCachedThreadKey('non-existent-event');
       expect(cachedKey).toBeUndefined();
     });
   });
 
   describe('Error Handling', () => {
-    it('should throw error when encrypting with invalid thread key', async () => {
+    it('should throw error when encrypting with invalid event key', async () => {
       const reply: ThreadReply = {
         id: 'reply-error',
-        threadId: 'thread-error',
+        threadId: 'event-error',
         authorId: base58.encode(bobPublicKey),
         content: 'Test',
         createdAt: new Date(),
@@ -462,29 +497,28 @@ describe('ThreadEncryptionService', () => {
       ).rejects.toThrow();
     });
 
-    it('should throw error when decrypting with wrong thread key', async () => {
-      const thread: Thread = {
-        id: 'thread-wrong-key',
-        rootPostId: 'post-wrong-key',
+    it('should throw error when decrypting with wrong event key', async () => {
+      const event: Omit<Event, 'encryptedFor'> = {
+        id: 'event-wrong-key',
         authorId: base58.encode(alicePublicKey),
-        participants: [base58.encode(bobPublicKey)],
+        content: 'Original post',
         createdAt: new Date(),
         updatedAt: new Date(),
       };
 
-      const encryptedThread = await ThreadEncryptionService.createEncryptedThread(
-        thread,
+      const encryptedEvent = await EncryptionService.encryptEvent(
+        event,
         aliceConnections,
       );
 
       const correctKey = await ThreadEncryptionService.decryptThreadKey(
-        encryptedThread,
+        encryptedEvent,
         bobConnections,
       );
 
       const reply: ThreadReply = {
         id: 'reply-wrong-key',
-        threadId: thread.id,
+        threadId: event.id,
         authorId: base58.encode(bobPublicKey),
         content: 'Secret message',
         createdAt: new Date(),
@@ -505,8 +539,64 @@ describe('ThreadEncryptionService', () => {
     });
   });
 
+  describe('Event Key Reuse Security', () => {
+    it('should safely reuse event key for multiple replies with unique IVs', async () => {
+      const event: Omit<Event, 'encryptedFor'> = {
+        id: 'event-reuse-test',
+        authorId: base58.encode(alicePublicKey),
+        content: 'Original post',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const encryptedEvent = await EncryptionService.encryptEvent(
+        event,
+        aliceConnections,
+      );
+
+      // Extract event key
+      const eventKey = await ThreadEncryptionService.decryptThreadKey(
+        encryptedEvent,
+        bobConnections,
+      );
+
+      // Create 10 replies with same event key
+      const replies: ThreadReply[] = [];
+      for (let i = 0; i < 10; i++) {
+        replies.push({
+          id: `reply-${i}`,
+          threadId: event.id,
+          authorId: base58.encode(bobPublicKey),
+          content: `Reply ${i}`,
+          createdAt: new Date(),
+        });
+      }
+
+      // Encrypt all replies with same key
+      const encryptedReplies = await Promise.all(
+        replies.map(reply => ThreadEncryptionService.encryptThreadReply(reply, eventKey)),
+      );
+
+      // All IVs should be unique
+      const ivs = encryptedReplies.map(r => r.iv);
+      const uniqueIVs = new Set(ivs);
+      expect(uniqueIVs.size).toBe(10);
+
+      // All should decrypt correctly
+      const decryptedReplies = await Promise.all(
+        encryptedReplies.map(encrypted =>
+          ThreadEncryptionService.decryptThreadReply(encrypted, eventKey),
+        ),
+      );
+
+      decryptedReplies.forEach((decrypted, i) => {
+        expect(decrypted.content).toBe(`Reply ${i}`);
+      });
+    });
+  });
+
   describe('Performance', () => {
-    it('should efficiently handle threads with many participants', async () => {
+    it('should efficiently handle events with many recipients', async () => {
       // Create 50 connections
       const participants: Connection[] = [];
       for (let i = 0; i < 50; i++) {
@@ -528,18 +618,17 @@ describe('ThreadEncryptionService', () => {
         });
       }
 
-      const thread: Thread = {
-        id: 'thread-perf-test',
-        rootPostId: 'post-perf-test',
+      const event: Omit<Event, 'encryptedFor'> = {
+        id: 'event-perf-test',
         authorId: base58.encode(alicePublicKey),
-        participants: participants.map(p => p.userId),
+        content: 'Performance test post',
         createdAt: new Date(),
         updatedAt: new Date(),
       };
 
       const startTime = Date.now();
-      const encryptedThread = await ThreadEncryptionService.createEncryptedThread(
-        thread,
+      const encryptedEvent = await EncryptionService.encryptEvent(
+        event,
         participants,
       );
       const encryptionTime = Date.now() - startTime;
@@ -548,7 +637,7 @@ describe('ThreadEncryptionService', () => {
       expect(encryptionTime).toBeLessThan(1000);
 
       // Should have wrapped keys for all participants
-      expect(Object.keys(encryptedThread.wrappedThreadKeys).length).toBeGreaterThanOrEqual(
+      expect(Object.keys(encryptedEvent.wrappedKeys).length).toBeGreaterThanOrEqual(
         50,
       );
     });
