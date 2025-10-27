@@ -27,8 +27,8 @@ const ThreadViewScreen: React.FC<Props> = ({route, navigation}) => {
 
   const loadReplies = useCallback(async () => {
     try {
-      console.log('[ThreadViewScreen] Loading replies for thread:', threadId);
-      const {replies: threadReplies} = await ThreadService.getThreadWithReplies(threadId);
+      console.log('[ThreadViewScreen] Loading replies for event:', threadId);
+      const threadReplies = await ThreadService.getReplies(threadId);
       setReplies(threadReplies);
       console.log(`[ThreadViewScreen] Loaded ${threadReplies.length} replies`);
     } catch (error) {

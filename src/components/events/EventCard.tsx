@@ -10,8 +10,7 @@ interface EventCardProps {
   onRSVP?: (eventId: string, status: 'going' | 'interested' | 'not_going') => void;
   currentUserRSVP?: 'going' | 'interested' | 'not_going';
   attendeeCount?: number;
-  onStartThread?: (eventId: string) => void;
-  onViewThread?: (threadId: string) => void;
+  onViewReplies?: (eventId: string) => void;
   replyCount?: number;
 }
 
@@ -20,8 +19,7 @@ const EventCard: React.FC<EventCardProps> = ({
   authorName,
   authorPhoto,
   onPress,
-  onStartThread,
-  onViewThread,
+  onViewReplies,
   replyCount,
 }) => {
   const formatTimeAgo = (date: Date): string => {
@@ -71,30 +69,21 @@ const EventCard: React.FC<EventCardProps> = ({
 
         <Text style={styles.postContent}>{event.content}</Text>
 
-        {/* Thread Actions */}
-        <View style={styles.threadActions}>
-          {event.isThread && onViewThread ? (
+        {/* Reply Actions - All posts have threads now */}
+        {onViewReplies && (
+          <View style={styles.threadActions}>
             <TouchableOpacity
               style={styles.threadButton}
               onPress={(e) => {
                 e.stopPropagation();
-                onViewThread(event.id);
+                onViewReplies(event.id);
               }}>
               <Text style={styles.threadButtonText}>
                 💬 {replyCount || 0} {replyCount === 1 ? 'Reply' : 'Replies'}
               </Text>
             </TouchableOpacity>
-          ) : onStartThread ? (
-            <TouchableOpacity
-              style={styles.threadButton}
-              onPress={(e) => {
-                e.stopPropagation();
-                onStartThread(event.id);
-              }}>
-              <Text style={styles.threadButtonText}>💬 Start Thread</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );

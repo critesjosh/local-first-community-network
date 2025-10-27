@@ -232,59 +232,21 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
     // TODO: In Week 3, this will POST to the server
   };
 
-  const handleStartThread = async (eventId: string) => {
+  const handleViewReplies = async (eventId: string) => {
     try {
-      console.log('[HomeScreen] Starting thread for event:', eventId);
+      console.log('[HomeScreen] Viewing replies for event:', eventId);
 
-      // For now, create thread with all connections as participants
-      const allConnections = await ConnectionService.getConnections();
-      const participantIds = allConnections.map(c => c.userId);
-
-      if (participantIds.length === 0) {
-        Alert.alert(
-          'No Connections',
-          'You need connections to create a thread. Connect with neighbors first!',
-        );
-        return;
-      }
-
-      await ThreadService.createThread(eventId, participantIds);
-
-      // Update the event to mark it as having a thread
       const event = events.find(e => e.id === eventId);
-      if (event) {
-        event.isThread = true;
-        setEvents([...events]);
-      }
-
-      // Navigate to thread view
       const authorInfo = getAuthorInfo(event?.authorId || '');
+
       navigation.navigate('ThreadView', {
-        threadId: eventId,
+        threadId: eventId, // Event ID is the thread ID
         postContent: event?.content,
         postAuthor: authorInfo.displayName,
       });
     } catch (error) {
-      console.error('[HomeScreen] Error starting thread:', error);
-      Alert.alert('Error', 'Failed to create thread. Please try again.');
-    }
-  };
-
-  const handleViewThread = async (threadId: string) => {
-    try {
-      console.log('[HomeScreen] Viewing thread:', threadId);
-
-      const event = events.find(e => e.id === threadId);
-      const authorInfo = getAuthorInfo(event?.authorId || '');
-
-      navigation.navigate('ThreadView', {
-        threadId,
-        postContent: event?.content,
-        postAuthor: authorInfo.displayName,
-      });
-    } catch (error) {
-      console.error('[HomeScreen] Error viewing thread:', error);
-      Alert.alert('Error', 'Failed to open thread. Please try again.');
+      console.error('[HomeScreen] Error viewing replies:', error);
+      Alert.alert('Error', 'Failed to open replies. Please try again.');
     }
   };
 
@@ -352,8 +314,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
         onRSVP={handleRSVP}
         currentUserRSVP={rsvpState[item.id]?.status}
         attendeeCount={rsvpState[item.id]?.count}
-        onStartThread={handleStartThread}
-        onViewThread={handleViewThread}
+        onViewReplies={handleViewReplies}
         replyCount={threadReplyCounts[item.id]}
       />
     );
