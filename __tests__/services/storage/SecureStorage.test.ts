@@ -3,9 +3,12 @@
  */
 
 import '../../../__tests__/setup';
-import Keychain from 'react-native-keychain';
+import * as SecureStore from 'expo-secure-store';
 import SecureStorage from '../../../src/services/storage/SecureStorage';
 import {KeyPair} from '../../../src/types/crypto';
+
+// Mock expo-secure-store
+jest.mock('expo-secure-store');
 
 describe('SecureStorage', () => {
   beforeEach(() => {
@@ -19,18 +22,21 @@ describe('SecureStorage', () => {
         privateKey: new Uint8Array([5, 6, 7, 8]),
       };
 
+      (SecureStore.setItemAsync as jest.Mock).mockResolvedValueOnce(undefined);
+
       const result = await SecureStorage.storeKeyPair(keyPair);
 
       expect(result).toBe(true);
-      expect(Keychain.setGenericPassword).toHaveBeenCalledWith(
+      expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
         'identity_keys',
         expect.stringContaining('publicKey'),
-        {service: 'LocalCommunityNetwork'},
       );
     });
 
     it('should handle storage failure', async () => {
-      (Keychain.setGenericPassword as jest.Mock).mockResolvedValueOnce(false);
+      (SecureStore.setItemAsync as jest.Mock).mockRejectedValueOnce(
+        new Error('Storage error')
+      );
 
       const keyPair: KeyPair = {
         publicKey: new Uint8Array([1, 2, 3]),
@@ -50,9 +56,7 @@ describe('SecureStorage', () => {
         privateKey: '05060708',
       });
 
-      (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce({
-        password: storedData,
-      });
+      (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(storedData);
 
       const result = await SecureStorage.getKeyPair();
 
@@ -62,7 +66,7 @@ describe('SecureStorage', () => {
     });
 
     it('should return null if no keys stored', async () => {
-      (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce(false);
+      (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(null);
 
       const result = await SecureStorage.getKeyPair();
 
@@ -70,8 +74,8 @@ describe('SecureStorage', () => {
     });
 
     it('should handle retrieval errors gracefully', async () => {
-      (Keychain.getGenericPassword as jest.Mock).mockRejectedValueOnce(
-        new Error('Keychain error'),
+      (SecureStore.getItemAsync as jest.Mock).mockRejectedValueOnce(
+        new Error('Storage error'),
       );
 
       const result = await SecureStorage.getKeyPair();
@@ -82,9 +86,7 @@ describe('SecureStorage', () => {
 
   describe('hasKeys', () => {
     it('should return true if keys exist', async () => {
-      (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce({
-        password: 'some_data',
-      });
+      (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce('some_data');
 
       const result = await SecureStorage.hasKeys();
 
@@ -92,7 +94,7 @@ describe('SecureStorage', () => {
     });
 
     it('should return false if no keys exist', async () => {
-      (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce(false);
+      (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(null);
 
       const result = await SecureStorage.hasKeys();
 
@@ -100,7 +102,7 @@ describe('SecureStorage', () => {
     });
 
     it('should handle errors and return false', async () => {
-      (Keychain.getGenericPassword as jest.Mock).mockRejectedValueOnce(
+      (SecureStore.getItemAsync as jest.Mock).mockRejectedValueOnce(
         new Error('Error'),
       );
 
@@ -112,18 +114,18 @@ describe('SecureStorage', () => {
 
   describe('deleteKeys', () => {
     it('should delete keys successfully', async () => {
-      (Keychain.resetGenericPassword as jest.Mock).mockResolvedValueOnce(true);
+      (SecureStore.deleteItemAsync as jest.Mock).mockResolvedValueOnce(undefined);
 
       const result = await SecureStorage.deleteKeys();
 
       expect(result).toBe(true);
-      expect(Keychain.resetGenericPassword).toHaveBeenCalledWith({
-        service: 'LocalCommunityNetwork',
-      });
+      expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith('identity_keys');
     });
 
     it('should handle deletion failure', async () => {
-      (Keychain.resetGenericPassword as jest.Mock).mockResolvedValueOnce(false);
+      (SecureStore.deleteItemAsync as jest.Mock).mockRejectedValueOnce(
+        new Error('Deletion error')
+      );
 
       const result = await SecureStorage.deleteKeys();
 
@@ -136,65 +138,24 @@ describe('SecureStorage', () => {
       const key = 'test_key';
       const value = 'test_value';
 
+      (SecureStore.setItemAsync as jest.Mock).mockResolvedValueOnce(undefined);
+
       const storeResult = await SecureStorage.storeSecureData(key, value);
       expect(storeResult).toBe(true);
-      expect(Keychain.setGenericPassword).toHaveBeenCalledWith(
-        key,
-        value,
-        {service: `LocalCommunityNetwork_${key}`},
-      );
+      expect(SecureStore.setItemAsync).toHaveBeenCalledWith(key, value);
 
-      (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce({
-        password: value,
-      });
+      (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(value);
 
       const retrievedValue = await SecureStorage.getSecureData(key);
       expect(retrievedValue).toBe(value);
     });
 
     it('should return null for non-existent data', async () => {
-      (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce(false);
+      (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(null);
 
       const result = await SecureStorage.getSecureData('non_existent');
 
       expect(result).toBeNull();
-    });
-  });
-
-  describe('checkDeviceSecurity', () => {
-    it('should return supported with biometry type', async () => {
-      (Keychain.getSupportedBiometryType as jest.Mock).mockResolvedValueOnce('FaceID');
-
-      const result = await SecureStorage.checkDeviceSecurity();
-
-      expect(result).toEqual({
-        supported: true,
-        biometryType: 'FaceID',
-      });
-    });
-
-    it('should return not supported if no biometry', async () => {
-      (Keychain.getSupportedBiometryType as jest.Mock).mockResolvedValueOnce(null);
-
-      const result = await SecureStorage.checkDeviceSecurity();
-
-      expect(result).toEqual({
-        supported: false,
-        biometryType: null,
-      });
-    });
-
-    it('should handle errors gracefully', async () => {
-      (Keychain.getSupportedBiometryType as jest.Mock).mockRejectedValueOnce(
-        new Error('Error'),
-      );
-
-      const result = await SecureStorage.checkDeviceSecurity();
-
-      expect(result).toEqual({
-        supported: false,
-        biometryType: null,
-      });
     });
   });
 
@@ -205,16 +166,16 @@ describe('SecureStorage', () => {
         privateKey: new Uint8Array(32).fill(137),
       };
 
+      (SecureStore.setItemAsync as jest.Mock).mockResolvedValueOnce(undefined);
+
       // Store
       await SecureStorage.storeKeyPair(originalKeyPair);
 
       // Mock retrieval
-      const storedCall = (Keychain.setGenericPassword as jest.Mock).mock.calls[0];
-      const storedData = storedCall[1]; // password is second argument now
+      const storedCall = (SecureStore.setItemAsync as jest.Mock).mock.calls[0];
+      const storedData = storedCall[1]; // value is second argument
 
-      (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce({
-        password: storedData,
-      });
+      (SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(storedData);
 
       // Retrieve
       const retrievedKeyPair = await SecureStorage.getKeyPair();

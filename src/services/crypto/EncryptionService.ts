@@ -12,6 +12,9 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { gcm } from '@noble/ciphers/aes.js';
 import { randomBytes as nobleRandomBytes } from '@noble/ciphers/webcrypto.js';
 import ECDHService from './ECDH';
+import IdentityService from '../IdentityService';
+import KeyManager from './KeyManager';
+import * as base58 from '../../utils/base58';
 
 // AES-256-GCM encryption using @noble/ciphers (works in React Native)
 
@@ -142,34 +145,94 @@ class EncryptionService {
 
       // 2. Serialize and encrypt event content ONCE
       const eventContent = {
-        title: event.title,
-        description: event.description,
-        datetime: event.datetime.toISOString(),
-        location: event.location,
-        photo: event.photo,
+        content: event.content,
       };
 
       const plaintext = new TextEncoder().encode(JSON.stringify(eventContent));
       const encryptedContentBytes = await encryptAESGCM(plaintext, eventKey, contentIV);
 
-      // 3. Wrap event key for each connection using HMAC-based lookup IDs
+      // 3. Wrap event key for author (so they can decrypt their own posts)
       const wrappedKeys: EncryptedEvent['wrappedKeys'] = {};
 
+      const keyPair = await IdentityService.getKeyPair();
+      if (keyPair) {
+        try {
+          // For the author, use a self-derived key based on their own keypair
+          // This allows them to decrypt their own posts
+          const authorSharedSecret = await ECDHService.deriveSharedSecret(
+            keyPair.privateKey,
+            keyPair.publicKey,
+          );
+
+          const authorLookupId = ECDHService.generateRecipientLookupId(
+            authorSharedSecret,
+            event.id,
+          );
+
+          const authorKey = ECDHService.deriveConnectionKey(authorSharedSecret);
+          const authorKeyWrapIV = await generateIV();
+
+          const authorWrappedKeyBytes = await encryptAESGCM(
+            eventKey,
+            authorKey,
+            authorKeyWrapIV,
+          );
+
+          wrappedKeys[authorLookupId] = {
+            wrappedKey: Buffer.from(authorWrappedKeyBytes).toString('base64'),
+            keyWrapIV: Buffer.from(authorKeyWrapIV).toString('base64'),
+          };
+
+          console.log(`[EncryptionService] Wrapped event key for author (self)`);
+        } catch (error) {
+          console.error('Error wrapping key for author:', error);
+        }
+      }
+
+      // 4. Wrap event key for each connection using HMAC-based lookup IDs
+      console.log(`[EncryptionService] Encrypting for ${connections.length} connections`);
       for (const connection of connections) {
-        if (!connection.sharedSecret) {
-          console.warn(`Skipping connection ${connection.id} - no shared secret`);
-          continue;
+        console.log(`[EncryptionService] Processing connection: ${connection.displayName} (userId: ${connection.userId.substring(0, 12)}..., status: ${connection.status})`);
+
+        // Derive shared secret on the fly if not cached
+        let sharedSecret = connection.sharedSecret;
+
+        if (!sharedSecret) {
+          try {
+            // Get my private key
+            const keyPair = await IdentityService.getKeyPair();
+            if (!keyPair) {
+              console.warn(`Skipping connection ${connection.id} - no key pair available`);
+              continue;
+            }
+
+            // Decode their public key from base58 userId
+            const theirPublicKey = base58.decode(connection.userId);
+
+            // Derive shared secret using ECDH
+            sharedSecret = await ECDHService.deriveSharedSecret(
+              keyPair.privateKey,
+              theirPublicKey,
+            );
+
+            console.log(`[EncryptionService] Derived shared secret on-the-fly for connection ${connection.displayName}`);
+          } catch (error) {
+            console.error(`Error deriving shared secret for connection ${connection.id}:`, error);
+            continue;
+          }
         }
 
         // Generate recipient lookup ID: HMAC(sharedSecret, postID)
         // This prevents server from learning who the recipients are
         const recipientLookupId = ECDHService.generateRecipientLookupId(
-          connection.sharedSecret,
+          sharedSecret,
           event.id,
         );
 
+        console.log(`[EncryptionService] Generated recipientLookupId for ${connection.displayName}: ${recipientLookupId.substring(0, 16)}...`);
+
         // Derive encryption key from shared secret
-        const connectionKey = ECDHService.deriveConnectionKey(connection.sharedSecret);
+        const connectionKey = ECDHService.deriveConnectionKey(sharedSecret);
 
         // Generate IV for key wrapping
         const keyWrapIV = await generateIV();
@@ -223,32 +286,90 @@ class EncryptionService {
     try {
       let eventKey: Uint8Array | null = null;
 
-      // 1. Find which connection can decrypt this event
-      for (const connection of connections) {
-        if (!connection.sharedSecret) {
-          continue;
+      // 1. First, try to decrypt as the author (if this is our own post)
+      const keyPair = await IdentityService.getKeyPair();
+      if (keyPair) {
+        try {
+          const authorSharedSecret = await ECDHService.deriveSharedSecret(
+            keyPair.privateKey,
+            keyPair.publicKey,
+          );
+
+          const authorLookupId = ECDHService.generateRecipientLookupId(
+            authorSharedSecret,
+            encryptedEvent.id,
+          );
+
+          const authorWrappedKeyData = encryptedEvent.wrappedKeys[authorLookupId];
+          if (authorWrappedKeyData) {
+            const authorKey = ECDHService.deriveConnectionKey(authorSharedSecret);
+            const wrappedKeyBytes = Buffer.from(authorWrappedKeyData.wrappedKey, 'base64');
+            const keyWrapIVBytes = Buffer.from(authorWrappedKeyData.keyWrapIV, 'base64');
+
+            eventKey = await decryptAESGCM(wrappedKeyBytes, authorKey, keyWrapIVBytes);
+            console.log(`[EncryptionService] Decrypted event as author (self)`);
+          }
+        } catch (error) {
+          // Not the author, continue to check connections
+          console.log(`[EncryptionService] Not the author, checking connections...`);
         }
+      }
 
-        // 2. Compute HMAC-based recipient lookup ID
-        const recipientLookupId = ECDHService.generateRecipientLookupId(
-          connection.sharedSecret,
-          encryptedEvent.id,
-        );
+      // 2. If not decrypted yet, try to find which connection can decrypt this event
+      if (!eventKey) {
+        console.log(`[EncryptionService] Attempting to decrypt post ${encryptedEvent.id.substring(0, 8)} with ${connections.length} connections`);
+        console.log(`[EncryptionService] Available wrappedKeys:`, Object.keys(encryptedEvent.wrappedKeys).map(k => k.substring(0, 16) + '...'));
 
-        // 3. Check if this connection can decrypt the event
-        const wrappedKeyData = encryptedEvent.wrappedKeys[recipientLookupId];
-        if (!wrappedKeyData) {
-          continue; // Not for this connection, try next
+        for (const connection of connections) {
+          console.log(`[EncryptionService] Trying connection: ${connection.displayName} (userId: ${connection.userId.substring(0, 12)}..., status: ${connection.status})`);
+
+          // Derive shared secret on the fly if not cached
+          let sharedSecret = connection.sharedSecret;
+
+          if (!sharedSecret) {
+            try {
+              const keyPair = await IdentityService.getKeyPair();
+              if (!keyPair) {
+                continue;
+              }
+
+              const theirPublicKey = base58.decode(connection.userId);
+
+              sharedSecret = await ECDHService.deriveSharedSecret(
+                keyPair.privateKey,
+                theirPublicKey,
+              );
+            } catch (error) {
+              console.error(`[EncryptionService] Error deriving shared secret for ${connection.displayName}:`, error);
+              continue;
+            }
+          }
+
+          // 3. Compute HMAC-based recipient lookup ID
+          const recipientLookupId = ECDHService.generateRecipientLookupId(
+            sharedSecret,
+            encryptedEvent.id,
+          );
+
+          console.log(`[EncryptionService] Generated recipientLookupId: ${recipientLookupId.substring(0, 16)}...`);
+
+          // 4. Check if this connection can decrypt the event
+          const wrappedKeyData = encryptedEvent.wrappedKeys[recipientLookupId];
+          if (!wrappedKeyData) {
+            console.log(`[EncryptionService] No match for ${connection.displayName}`);
+            continue; // Not for this connection, try next
+          }
+
+          // 5. Found a match! Unwrap the event key
+          const connectionKey = ECDHService.deriveConnectionKey(sharedSecret);
+
+          const wrappedKeyBytes = Buffer.from(wrappedKeyData.wrappedKey, 'base64');
+          const keyWrapIVBytes = Buffer.from(wrappedKeyData.keyWrapIV, 'base64');
+
+          eventKey = await decryptAESGCM(wrappedKeyBytes, connectionKey, keyWrapIVBytes);
+          console.log(`[EncryptionService] Decrypted event using connection ${connection.id}`);
+          break; // Early termination - found the key
         }
-
-        // 4. Found a match! Unwrap the event key
-        const connectionKey = ECDHService.deriveConnectionKey(connection.sharedSecret);
-
-        const wrappedKeyBytes = Buffer.from(wrappedKeyData.wrappedKey, 'base64');
-        const keyWrapIVBytes = Buffer.from(wrappedKeyData.keyWrapIV, 'base64');
-
-        eventKey = await decryptAESGCM(wrappedKeyBytes, connectionKey, keyWrapIVBytes);
-        break; // Early termination - found the key
       }
 
       if (!eventKey) {
@@ -271,11 +392,7 @@ class EncryptionService {
       return {
         id: encryptedEvent.id,
         authorId: encryptedEvent.authorId,
-        title: eventContent.title,
-        description: eventContent.description,
-        datetime: new Date(eventContent.datetime),
-        location: eventContent.location,
-        photo: eventContent.photo,
+        content: eventContent.content,
         createdAt: new Date(encryptedEvent.timestamp),
         updatedAt: new Date(encryptedEvent.timestamp),
       };

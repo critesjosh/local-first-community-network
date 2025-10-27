@@ -28,16 +28,12 @@ export interface Connection {
 export interface Event {
   id: string; // UUID
   authorId: string; // base58 public key
-  title: string;
-  description?: string;
-  datetime: Date;
-  location?: string;
-  photo?: string; // base64 encoded
+  content: string; // The main text content of the post
   createdAt: Date;
   updatedAt: Date;
   // Note: This is the plaintext/decrypted event model
   // For encrypted storage, see EncryptedEvent in EncryptionService
-  // Events use hybrid encryption: single encrypted content + wrapped keys per recipient
+  // Posts use hybrid encryption: single encrypted content + wrapped keys per recipient
 }
 
 export interface Message {

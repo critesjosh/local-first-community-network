@@ -4,6 +4,8 @@ import {Event} from '../../types/models';
 
 interface EventCardProps {
   event: Event;
+  authorName: string;
+  authorPhoto?: string;
   onPress?: () => void;
   onRSVP?: (eventId: string, status: 'going' | 'interested' | 'not_going') => void;
   currentUserRSVP?: 'going' | 'interested' | 'not_going';
@@ -12,22 +14,10 @@ interface EventCardProps {
 
 const EventCard: React.FC<EventCardProps> = ({
   event,
+  authorName,
+  authorPhoto,
   onPress,
-  onRSVP,
-  currentUserRSVP,
-  attendeeCount = 0,
 }) => {
-  const formatDateTime = (date: Date): string => {
-    return new Date(date).toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-  };
-
   const formatTimeAgo = (date: Date): string => {
     const now = new Date();
     const eventDate = new Date(date);
@@ -53,81 +43,27 @@ const EventCard: React.FC<EventCardProps> = ({
       onPress={onPress}
       activeOpacity={0.7}
       disabled={!onPress}>
-      {event.photo && (
-        <Image
-          source={{uri: `data:image/jpeg;base64,${event.photo}`}}
-          style={styles.photo}
-        />
-      )}
-
       <View style={styles.content}>
-        <Text style={styles.title}>{event.title}</Text>
-
-        <View style={styles.dateTimeContainer}>
-          <Text style={styles.dateTime}>{formatDateTime(event.datetime)}</Text>
-        </View>
-
-        {event.location && (
-          <View style={styles.locationContainer}>
-            <Text style={styles.locationIcon}>📍</Text>
-            <Text style={styles.location}>{event.location}</Text>
-          </View>
-        )}
-
-        {event.description && (
-          <Text style={styles.description} numberOfLines={3}>
-            {event.description}
-          </Text>
-        )}
-
-        <View style={styles.footer}>
-          <Text style={styles.postedTime}>
-            Posted {formatTimeAgo(event.createdAt)}
-          </Text>
-
-          {attendeeCount > 0 && (
-            <View style={styles.attendeeCount}>
-              <Text style={styles.attendeeCountText}>
-                {attendeeCount} {attendeeCount === 1 ? 'person' : 'people'} going
+        <View style={styles.header}>
+          {authorPhoto ? (
+            <Image
+              source={{uri: `data:image/jpeg;base64,${authorPhoto}`}}
+              style={styles.authorPhoto}
+            />
+          ) : (
+            <View style={[styles.authorPhoto, styles.authorPhotoPlaceholder]}>
+              <Text style={styles.authorInitial}>
+                {authorName.charAt(0).toUpperCase()}
               </Text>
             </View>
           )}
+          <View style={styles.authorInfo}>
+            <Text style={styles.authorName}>{authorName}</Text>
+            <Text style={styles.postTime}>{formatTimeAgo(event.createdAt)}</Text>
+          </View>
         </View>
 
-        {onRSVP && (
-          <View style={styles.rsvpContainer}>
-            <TouchableOpacity
-              style={[
-                styles.rsvpButton,
-                currentUserRSVP === 'going' && styles.rsvpButtonActive,
-              ]}
-              onPress={() => onRSVP(event.id, 'going')}>
-              <Text
-                style={[
-                  styles.rsvpButtonText,
-                  currentUserRSVP === 'going' && styles.rsvpButtonTextActive,
-                ]}>
-                I'm Going
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.rsvpButton,
-                styles.rsvpButtonSecondary,
-                currentUserRSVP === 'interested' && styles.rsvpButtonActive,
-              ]}
-              onPress={() => onRSVP(event.id, 'interested')}>
-              <Text
-                style={[
-                  styles.rsvpButtonText,
-                  currentUserRSVP === 'interested' && styles.rsvpButtonTextActive,
-                ]}>
-                Interested
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        <Text style={styles.postContent}>{event.content}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -145,98 +81,47 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  photo: {
-    width: '100%',
-    height: 200,
-    resizeMode: 'cover',
-  },
   content: {
     padding: 16,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    color: '#000',
-  },
-  dateTimeContainer: {
+  header: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  dateTime: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#007AFF',
-  },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  locationIcon: {
-    fontSize: 14,
-    marginRight: 4,
-  },
-  location: {
-    fontSize: 14,
-    color: '#8E8E93',
-    flex: 1,
-  },
-  description: {
-    fontSize: 15,
-    color: '#3C3C43',
-    marginBottom: 12,
-    lineHeight: 20,
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  postedTime: {
-    fontSize: 12,
-    color: '#8E8E93',
+  authorPhoto: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
   },
-  attendeeCount: {
-    backgroundColor: '#F2F2F7',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  attendeeCountText: {
-    fontSize: 12,
-    color: '#007AFF',
-    fontWeight: '600',
-  },
-  rsvpContainer: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  rsvpButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#007AFF',
-    backgroundColor: 'white',
-    alignItems: 'center',
-  },
-  rsvpButtonSecondary: {
-    borderColor: '#8E8E93',
-  },
-  rsvpButtonActive: {
+  authorPhotoPlaceholder: {
     backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  rsvpButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#007AFF',
-  },
-  rsvpButtonTextActive: {
+  authorInitial: {
     color: 'white',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  authorInfo: {
+    flex: 1,
+  },
+  authorName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 2,
+  },
+  postTime: {
+    fontSize: 12,
+    color: '#8E8E93',
+  },
+  postContent: {
+    fontSize: 16,
+    color: '#000',
+    lineHeight: 22,
   },
 });
 

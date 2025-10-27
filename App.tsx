@@ -3,14 +3,19 @@
  * Privacy-first neighborhood event discovery
  */
 
+// MUST be imported first to configure crypto libraries
+import './src/services/crypto/cryptoConfig';
+
 import React, {useEffect, useState} from 'react';
 import 'react-native-gesture-handler';
 import {ActivityIndicator, View, StyleSheet} from 'react-native';
 import * as Updates from 'expo-updates';
+import Constants from 'expo-constants';
 import AppNavigator from './src/navigation/AppNavigator';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import IdentityService from './src/services/IdentityService';
 import BLEBroadcastService from './src/services/bluetooth/BLEBroadcastService';
+import PostStorageService from './src/services/storage/PostStorageService';
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -27,6 +32,14 @@ function App() {
 
       // Initialize identity service
       await IdentityService.init();
+
+      // Initialize post storage with REST backend
+      const apiUrl = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:3000';
+      PostStorageService.initialize({
+        type: 'rest',
+        apiUrl,
+      });
+      console.log('📡 Post storage initialized with backend:', apiUrl);
 
       // Check if user has identity
       const identityExists = await IdentityService.hasIdentity();
