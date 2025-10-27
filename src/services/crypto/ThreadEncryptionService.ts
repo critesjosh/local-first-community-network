@@ -1,19 +1,23 @@
 /**
- * ThreadEncryptionService - Handles encryption/decryption of threads and replies
+ * ThreadEncryptionService - Handles encryption/decryption of thread replies
  *
- * Implements shared thread key approach:
- * - Thread creation: Generate shared thread key, wrap it for each participant
+ * Thread keys are now embedded in posts (EncryptedEvent.wrappedThreadKeys).
+ * Anyone who can decrypt a post can also decrypt its thread key and post replies.
+ *
+ * This service handles:
+ * - Extracting thread keys from events
  * - Reply encryption: Encrypt with shared thread key (no per-recipient wrapping)
- * - Decryption: Unwrap thread key once, use for all replies
+ * - Reply decryption: Decrypt with cached thread key
  *
  * Benefits:
- * - Very efficient for threads with many replies (only root needs key wrapping)
- * - Group chat-like model (thread participants don't need connections with each other)
- * - Simpler encryption for replies (just symmetric AES)
+ * - 1 thread per post automatically (no separate thread creation)
+ * - Anyone who can see post can participate in thread
+ * - Very efficient for threads with many replies
  */
 
 import * as Crypto from 'expo-crypto';
-import { Thread, ThreadReply, EncryptedThread, EncryptedThreadReply, Connection } from '../../types/models';
+import { ThreadReply, EncryptedThreadReply, Connection } from '../../types/models';
+import { EncryptedEvent } from './EncryptionService';
 import { gcm } from '@noble/ciphers/aes.js';
 import ECDHService from './ECDH';
 import IdentityService from '../IdentityService';
@@ -80,138 +84,10 @@ class ThreadEncryptionService {
   private threadKeyCache: Map<string, Uint8Array> = new Map();
 
   /**
-   * Create an encrypted thread with shared thread key
+   * Decrypt thread key from an event
    *
-   * Flow:
-   * 1. Generate random thread key (will be shared by all participants)
-   * 2. Wrap thread key for each participant using ECDH-derived connection keys
-   * 3. Return encrypted thread structure
-   *
-   * The thread key is wrapped using the same hybrid encryption as events,
-   * but the key will be reused for all replies in the thread.
-   *
-   * @param thread - The thread metadata
-   * @param participants - List of connections who can participate in the thread
-   * @returns Encrypted thread with wrapped keys
-   */
-  async createEncryptedThread(
-    thread: Thread,
-    participants: Connection[],
-  ): Promise<EncryptedThread> {
-    try {
-      console.log(`[ThreadEncryptionService] Creating thread ${thread.id} with ${participants.length} participants`);
-
-      // 1. Generate random thread key (shared by all participants)
-      const threadKey = await generateRandomKey();
-
-      // Cache the thread key for this thread
-      this.threadKeyCache.set(thread.id, threadKey);
-
-      // 2. Wrap thread key for each participant
-      const wrappedThreadKeys: EncryptedThread['wrappedThreadKeys'] = {};
-
-      // 3. Wrap thread key for author (so they can decrypt thread replies)
-      const keyPair = await IdentityService.getKeyPair();
-      if (keyPair) {
-        try {
-          const authorSharedSecret = await ECDHService.deriveSharedSecret(
-            keyPair.privateKey,
-            keyPair.publicKey,
-          );
-
-          const authorLookupId = ECDHService.generateRecipientLookupId(
-            authorSharedSecret,
-            thread.id,
-          );
-
-          const authorKey = ECDHService.deriveConnectionKey(authorSharedSecret);
-          const authorKeyWrapIV = await generateIV();
-
-          const authorWrappedKeyBytes = await encryptAESGCM(
-            threadKey,
-            authorKey,
-            authorKeyWrapIV,
-          );
-
-          wrappedThreadKeys[authorLookupId] = {
-            wrappedKey: Buffer.from(authorWrappedKeyBytes).toString('base64'),
-            keyWrapIV: Buffer.from(authorKeyWrapIV).toString('base64'),
-          };
-
-          console.log(`[ThreadEncryptionService] Wrapped thread key for author (self)`);
-        } catch (error) {
-          console.error('Error wrapping thread key for author:', error);
-        }
-      }
-
-      // 4. Wrap thread key for each participant
-      for (const participant of participants) {
-        console.log(`[ThreadEncryptionService] Wrapping thread key for: ${participant.displayName}`);
-
-        // Derive shared secret on the fly if not cached
-        let sharedSecret = participant.sharedSecret;
-
-        if (!sharedSecret) {
-          try {
-            const keyPair = await IdentityService.getKeyPair();
-            if (!keyPair) {
-              console.warn(`Skipping participant ${participant.id} - no key pair available`);
-              continue;
-            }
-
-            const theirPublicKey = base58.decode(participant.userId);
-            sharedSecret = await ECDHService.deriveSharedSecret(
-              keyPair.privateKey,
-              theirPublicKey,
-            );
-
-            console.log(`[ThreadEncryptionService] Derived shared secret for ${participant.displayName}`);
-          } catch (error) {
-            console.error(`Error deriving shared secret for ${participant.id}:`, error);
-            continue;
-          }
-        }
-
-        // Generate recipient lookup ID
-        const recipientLookupId = ECDHService.generateRecipientLookupId(
-          sharedSecret,
-          thread.id,
-        );
-
-        // Derive encryption key from shared secret
-        const connectionKey = ECDHService.deriveConnectionKey(sharedSecret);
-
-        // Generate IV for key wrapping
-        const keyWrapIV = await generateIV();
-
-        // Wrap the thread key with participant's key
-        const wrappedKeyBytes = await encryptAESGCM(
-          threadKey,
-          connectionKey,
-          keyWrapIV,
-        );
-
-        wrappedThreadKeys[recipientLookupId] = {
-          wrappedKey: Buffer.from(wrappedKeyBytes).toString('base64'),
-          keyWrapIV: Buffer.from(keyWrapIV).toString('base64'),
-        };
-      }
-
-      return {
-        id: thread.id,
-        rootPostId: thread.rootPostId,
-        authorId: thread.authorId,
-        timestamp: thread.createdAt.getTime(),
-        wrappedThreadKeys,
-      };
-    } catch (error) {
-      console.error('Error creating encrypted thread:', error);
-      throw new Error('Failed to create encrypted thread');
-    }
-  }
-
-  /**
-   * Decrypt thread key for the current user
+   * Thread keys are embedded in events (wrappedThreadKeys field).
+   * Anyone who can decrypt the event can also decrypt the thread key.
    *
    * Flow:
    * 1. Check cache first
@@ -219,25 +95,25 @@ class ThreadEncryptionService {
    * 3. Try each connection to find matching wrapped key
    * 4. Cache the decrypted thread key
    *
-   * @param encryptedThread - The encrypted thread
+   * @param encryptedEvent - The encrypted event containing thread key
    * @param connections - All my connections
    * @returns Decrypted thread key
    */
   async decryptThreadKey(
-    encryptedThread: EncryptedThread,
+    encryptedEvent: EncryptedEvent,
     connections: Connection[],
   ): Promise<Uint8Array> {
     try {
       // Check cache first
-      const cachedKey = this.threadKeyCache.get(encryptedThread.id);
+      const cachedKey = this.threadKeyCache.get(encryptedEvent.id);
       if (cachedKey) {
-        console.log(`[ThreadEncryptionService] Using cached thread key for ${encryptedThread.id}`);
+        console.log(`[ThreadEncryptionService] Using cached thread key for ${encryptedEvent.id}`);
         return cachedKey;
       }
 
       let threadKey: Uint8Array | null = null;
 
-      // 1. Try to decrypt as the author (if this is our own thread)
+      // 1. Try to decrypt as the author (if this is our own post)
       const keyPair = await IdentityService.getKeyPair();
       if (keyPair) {
         try {
@@ -248,10 +124,10 @@ class ThreadEncryptionService {
 
           const authorLookupId = ECDHService.generateRecipientLookupId(
             authorSharedSecret,
-            encryptedThread.id,
+            encryptedEvent.id,
           );
 
-          const authorWrappedKeyData = encryptedThread.wrappedThreadKeys[authorLookupId];
+          const authorWrappedKeyData = encryptedEvent.wrappedThreadKeys[authorLookupId];
           if (authorWrappedKeyData) {
             const authorKey = ECDHService.deriveConnectionKey(authorSharedSecret);
             const wrappedKeyBytes = Buffer.from(authorWrappedKeyData.wrappedKey, 'base64');
@@ -267,7 +143,7 @@ class ThreadEncryptionService {
 
       // 2. Try each connection to find who can decrypt
       if (!threadKey) {
-        console.log(`[ThreadEncryptionService] Attempting to decrypt thread ${encryptedThread.id} with ${connections.length} connections`);
+        console.log(`[ThreadEncryptionService] Attempting to decrypt thread key from event ${encryptedEvent.id} with ${connections.length} connections`);
 
         for (const connection of connections) {
           // Derive shared secret on the fly if not cached
@@ -294,11 +170,11 @@ class ThreadEncryptionService {
           // Generate recipient lookup ID
           const recipientLookupId = ECDHService.generateRecipientLookupId(
             sharedSecret,
-            encryptedThread.id,
+            encryptedEvent.id,
           );
 
           // Check if this connection can decrypt
-          const wrappedKeyData = encryptedThread.wrappedThreadKeys[recipientLookupId];
+          const wrappedKeyData = encryptedEvent.wrappedThreadKeys[recipientLookupId];
           if (!wrappedKeyData) {
             continue;
           }
@@ -319,7 +195,7 @@ class ThreadEncryptionService {
       }
 
       // Cache the decrypted thread key
-      this.threadKeyCache.set(encryptedThread.id, threadKey);
+      this.threadKeyCache.set(encryptedEvent.id, threadKey);
 
       return threadKey;
     } catch (error) {

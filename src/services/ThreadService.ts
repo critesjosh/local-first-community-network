@@ -1,102 +1,47 @@
 /**
- * ThreadService - High-level service for managing threads
+ * ThreadService - High-level service for managing thread replies
  *
- * Provides convenient methods for creating threads and posting replies
+ * Thread keys are embedded in posts (events). Every post automatically
+ * has a thread key that anyone who can read the post can use to post replies.
+ *
+ * Provides convenient methods for posting and reading thread replies
  * with automatic encryption and storage handling.
  *
  * Usage:
  * ```typescript
  * import ThreadService from './services/ThreadService';
  *
- * // Create a thread
- * const thread = await ThreadService.createThread(eventId, participants);
+ * // Post a reply (eventId is the thread ID)
+ * await ThreadService.postReply(eventId, content);
  *
- * // Post a reply
- * await ThreadService.postReply(threadId, content);
- *
- * // Get thread with replies
- * const conversation = await ThreadService.getThreadWithReplies(threadId);
+ * // Get all replies for a post
+ * const replies = await ThreadService.getReplies(eventId);
  * ```
  */
 
 import {v4 as uuidv4} from 'uuid';
-import {Thread, ThreadReply, Connection, EncryptedThread, EncryptedThreadReply} from '../types/models';
+import {ThreadReply} from '../types/models';
 import ThreadEncryptionService from './crypto/ThreadEncryptionService';
 import PostStorageService from './storage/PostStorageService';
 import ConnectionService from './ConnectionService';
 import IdentityService from './IdentityService';
+import Database from './storage/Database';
 import * as base58 from '../utils/base58';
 
 class ThreadService {
   /**
-   * Create a new thread
+   * Post a reply to an event's thread
    *
-   * @param rootPostId - The ID of the post that starts the thread
-   * @param participantUserIds - Array of user IDs who can participate
-   * @returns The created thread
-   */
-  async createThread(
-    rootPostId: string,
-    participantUserIds: string[],
-  ): Promise<Thread> {
-    try {
-      console.log(`[ThreadService] Creating thread for post ${rootPostId} with ${participantUserIds.length} participants`);
-
-      // Get current user's identity
-      const keyPair = await IdentityService.getKeyPair();
-      if (!keyPair) {
-        throw new Error('No identity found. Please create an identity first.');
-      }
-
-      const authorId = base58.encode(keyPair.publicKey);
-
-      // Get connections for the participants
-      const allConnections = await ConnectionService.getConnections();
-      const participantConnections = allConnections.filter(conn =>
-        participantUserIds.includes(conn.userId)
-      );
-
-      if (participantConnections.length !== participantUserIds.length) {
-        console.warn(`[ThreadService] Not all participants are connections. Expected ${participantUserIds.length}, found ${participantConnections.length}`);
-      }
-
-      // Create thread metadata
-      const thread: Thread = {
-        id: uuidv4(),
-        rootPostId,
-        authorId,
-        participants: participantUserIds,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      // Encrypt thread and wrap keys for participants
-      const encryptedThread = await ThreadEncryptionService.createEncryptedThread(
-        thread,
-        participantConnections,
-      );
-
-      // Store the encrypted thread
-      await PostStorageService.createThread(encryptedThread);
-
-      console.log(`[ThreadService] Thread ${thread.id} created successfully`);
-      return thread;
-    } catch (error) {
-      console.error('[ThreadService] Error creating thread:', error);
-      throw new Error('Failed to create thread');
-    }
-  }
-
-  /**
-   * Post a reply to a thread
+   * Thread keys are embedded in events, so we fetch the event to get the thread key.
+   * The eventId serves as the threadId.
    *
-   * @param threadId - The thread ID
+   * @param eventId - The event ID (also the thread ID)
    * @param content - The reply content (plaintext)
    * @returns The created reply
    */
-  async postReply(threadId: string, content: string): Promise<ThreadReply> {
+  async postReply(eventId: string, content: string): Promise<ThreadReply> {
     try {
-      console.log(`[ThreadService] Posting reply to thread ${threadId}`);
+      console.log(`[ThreadService] Posting reply to event ${eventId}`);
 
       // Get current user's identity
       const keyPair = await IdentityService.getKeyPair();
@@ -106,23 +51,23 @@ class ThreadService {
 
       const authorId = base58.encode(keyPair.publicKey);
 
-      // Fetch the encrypted thread to get the thread key
-      const encryptedThread = await PostStorageService.fetchThread(threadId);
-      if (!encryptedThread) {
-        throw new Error('Thread not found');
+      // Fetch the encrypted event to get the thread key
+      const encryptedEvent = await Database.getEncryptedEvent(eventId);
+      if (!encryptedEvent) {
+        throw new Error('Event not found');
       }
 
-      // Decrypt the thread key
+      // Decrypt the thread key from the event
       const connections = await ConnectionService.getConnections();
       const threadKey = await ThreadEncryptionService.decryptThreadKey(
-        encryptedThread,
+        encryptedEvent,
         connections,
       );
 
       // Create reply
       const reply: ThreadReply = {
         id: uuidv4(),
-        threadId,
+        threadId: eventId, // Thread ID is the event ID
         authorId,
         content,
         createdAt: new Date(),
@@ -146,43 +91,35 @@ class ThreadService {
   }
 
   /**
-   * Get a thread with all its replies (decrypted)
+   * Get all replies for an event (decrypted)
    *
-   * @param threadId - The thread ID
-   * @returns Object with thread metadata and decrypted replies
+   * @param eventId - The event ID (thread ID)
+   * @returns Array of decrypted replies
    */
-  async getThreadWithReplies(
-    threadId: string,
-  ): Promise<{thread: Thread | null; replies: ThreadReply[]}> {
+  async getReplies(eventId: string): Promise<ThreadReply[]> {
     try {
-      console.log(`[ThreadService] Fetching thread ${threadId} with replies`);
+      console.log(`[ThreadService] Fetching replies for event ${eventId}`);
 
-      // Fetch encrypted thread
-      const encryptedThread = await PostStorageService.fetchThread(threadId);
-      if (!encryptedThread) {
-        console.log(`[ThreadService] Thread ${threadId} not found`);
-        return {thread: null, replies: []};
+      // Fetch encrypted event to get thread key
+      const encryptedEvent = await Database.getEncryptedEvent(eventId);
+      if (!encryptedEvent) {
+        console.log(`[ThreadService] Event ${eventId} not found`);
+        return [];
       }
 
       // Fetch encrypted replies
-      const encryptedReplies = await PostStorageService.fetchThreadReplies(threadId);
+      const encryptedReplies = await PostStorageService.fetchThreadReplies(eventId);
 
-      // Decrypt thread key
+      if (encryptedReplies.length === 0) {
+        return [];
+      }
+
+      // Decrypt thread key from event
       const connections = await ConnectionService.getConnections();
       const threadKey = await ThreadEncryptionService.decryptThreadKey(
-        encryptedThread,
+        encryptedEvent,
         connections,
       );
-
-      // Reconstruct thread metadata
-      const thread: Thread = {
-        id: encryptedThread.id,
-        rootPostId: encryptedThread.rootPostId,
-        authorId: encryptedThread.authorId,
-        participants: [], // We don't store this in encrypted form
-        createdAt: new Date(encryptedThread.timestamp),
-        updatedAt: new Date(encryptedThread.timestamp),
-      };
 
       // Decrypt all replies
       const replies: ThreadReply[] = [];
@@ -199,84 +136,24 @@ class ThreadService {
         }
       }
 
-      console.log(`[ThreadService] Fetched thread with ${replies.length} replies`);
-      return {thread, replies};
+      console.log(`[ThreadService] Fetched ${replies.length} replies`);
+      return replies;
     } catch (error) {
-      console.error('[ThreadService] Error getting thread with replies:', error);
-      throw new Error('Failed to get thread with replies');
+      console.error('[ThreadService] Error getting replies:', error);
+      throw new Error('Failed to get replies');
     }
   }
 
   /**
-   * Get all threads (just metadata, no replies)
+   * Get reply count for an event
    *
-   * @param since - Timestamp to fetch threads after (default: 0)
-   * @param limit - Maximum number of threads to fetch
-   * @returns Array of thread metadata
-   */
-  async getThreads(since: number = 0, limit?: number): Promise<Thread[]> {
-    try {
-      console.log(`[ThreadService] Fetching threads since ${new Date(since).toISOString()}`);
-
-      const encryptedThreads = await PostStorageService.fetchThreads(since, limit);
-
-      const threads: Thread[] = encryptedThreads.map(encryptedThread => ({
-        id: encryptedThread.id,
-        rootPostId: encryptedThread.rootPostId,
-        authorId: encryptedThread.authorId,
-        participants: [],
-        createdAt: new Date(encryptedThread.timestamp),
-        updatedAt: new Date(encryptedThread.timestamp),
-      }));
-
-      console.log(`[ThreadService] Fetched ${threads.length} threads`);
-      return threads;
-    } catch (error) {
-      console.error('[ThreadService] Error getting threads:', error);
-      throw new Error('Failed to get threads');
-    }
-  }
-
-  /**
-   * Check if a post has a thread
-   *
-   * @param postId - The post ID
-   * @returns Thread if exists, null otherwise
-   */
-  async getThreadForPost(postId: string): Promise<Thread | null> {
-    try {
-      // For now, we assume thread ID = post ID (root post)
-      // In a more complex implementation, you might need a separate mapping
-      const encryptedThread = await PostStorageService.fetchThread(postId);
-
-      if (!encryptedThread) {
-        return null;
-      }
-
-      return {
-        id: encryptedThread.id,
-        rootPostId: encryptedThread.rootPostId,
-        authorId: encryptedThread.authorId,
-        participants: [],
-        createdAt: new Date(encryptedThread.timestamp),
-        updatedAt: new Date(encryptedThread.timestamp),
-      };
-    } catch (error) {
-      console.error('[ThreadService] Error getting thread for post:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Get reply count for a thread
-   *
-   * @param threadId - The thread ID
+   * @param eventId - The event ID (thread ID)
    * @returns Number of replies
    */
-  async getReplyCount(threadId: string): Promise<number> {
+  async getReplyCount(eventId: string): Promise<number> {
     try {
-      const encryptedReplies = await PostStorageService.fetchThreadReplies(threadId);
-      return encryptedReplies.length;
+      const count = await Database.getThreadReplyCount(eventId);
+      return count;
     } catch (error) {
       console.error('[ThreadService] Error getting reply count:', error);
       return 0;

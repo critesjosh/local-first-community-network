@@ -3,7 +3,7 @@
  */
 
 import * as SQLite from 'expo-sqlite';
-import {User, Connection, Event, Message, EncryptedThread, EncryptedThreadReply} from '../../types/models';
+import {User, Connection, Event, Message, EncryptedThreadReply} from '../../types/models';
 import {EncryptedEvent} from '../crypto/EncryptionService';
 
 class Database {
@@ -723,71 +723,6 @@ class Database {
   }
 
   /**
-   * Save encrypted thread
-   */
-  async saveEncryptedThread(encryptedThread: EncryptedThread): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
-
-    const query = `
-      INSERT OR REPLACE INTO threads (
-        id, root_post_id, author_id, timestamp, wrapped_thread_keys
-      ) VALUES (?, ?, ?, ?, ?)
-    `;
-
-    await this.db.runAsync(query, [
-      encryptedThread.id,
-      encryptedThread.rootPostId,
-      encryptedThread.authorId,
-      encryptedThread.timestamp,
-      JSON.stringify(encryptedThread.wrappedThreadKeys),
-    ]);
-  }
-
-  /**
-   * Get encrypted thread by ID
-   */
-  async getEncryptedThread(threadId: string): Promise<EncryptedThread | null> {
-    if (!this.db) throw new Error('Database not initialized');
-
-    const query = 'SELECT * FROM threads WHERE id = ?';
-    const row = await this.db.getFirstAsync<any>(query, [threadId]);
-
-    if (!row) {
-      return null;
-    }
-
-    return {
-      id: row.id,
-      rootPostId: row.root_post_id,
-      authorId: row.author_id,
-      timestamp: row.timestamp,
-      wrappedThreadKeys: JSON.parse(row.wrapped_thread_keys),
-    };
-  }
-
-  /**
-   * Get all encrypted threads
-   */
-  async getEncryptedThreads(limit: number = 100, offset: number = 0): Promise<EncryptedThread[]> {
-    if (!this.db) throw new Error('Database not initialized');
-
-    const query = `
-      SELECT * FROM threads
-      ORDER BY timestamp DESC
-      LIMIT ? OFFSET ?
-    `;
-    const rows = await this.db.getAllAsync<any>(query, [limit, offset]);
-
-    return rows.map(row => ({
-      id: row.id,
-      rootPostId: row.root_post_id,
-      authorId: row.author_id,
-      timestamp: row.timestamp,
-      wrappedThreadKeys: JSON.parse(row.wrapped_thread_keys),
-    }));
-  }
-
-  /**
    * Save encrypted thread reply
    */
   async saveEncryptedThreadReply(reply: EncryptedThreadReply): Promise<void> {
@@ -868,18 +803,6 @@ class Database {
     const row = await this.db.getFirstAsync<any>(query, [threadId]);
 
     return row?.count || 0;
-  }
-
-  /**
-   * Delete thread and all its replies
-   */
-  async deleteThread(threadId: string): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized');
-
-    // Delete replies first (cascade)
-    await this.db.runAsync('DELETE FROM thread_replies WHERE thread_id = ?', [threadId]);
-    // Then delete thread
-    await this.db.runAsync('DELETE FROM threads WHERE id = ?', [threadId]);
   }
 
   /**
