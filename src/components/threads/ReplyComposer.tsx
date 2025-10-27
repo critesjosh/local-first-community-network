@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 
 interface ReplyComposerProps {
@@ -36,7 +37,7 @@ const ReplyComposer: React.FC<ReplyComposerProps> = ({
       onClose();
     } catch (error) {
       console.error('Error submitting reply:', error);
-      alert('Failed to post reply. Please try again.');
+      Alert.alert('Error', 'Failed to post reply. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
