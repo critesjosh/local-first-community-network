@@ -106,8 +106,16 @@ describe('ThreadEncryptionService (v2.1 - Event Key Reuse)', () => {
     ];
   });
 
+  // Helper function to mock identity for encryption/decryption
+  const mockIdentity = (publicKey: Uint8Array, privateKey: Uint8Array) => {
+    (IdentityService.getKeyPair as jest.Mock).mockResolvedValue({
+      publicKey,
+      privateKey,
+    });
+  };
+
   beforeEach(() => {
-    // Mock IdentityService to return null (forces use of connections only)
+    // Mock IdentityService to return null by default
     (IdentityService.getKeyPair as jest.Mock).mockResolvedValue(null);
   });
 
@@ -157,6 +165,8 @@ describe('ThreadEncryptionService (v2.1 - Event Key Reuse)', () => {
     });
 
     it('should extract event key from wrappedKeys (Charlie as recipient)', async () => {
+      mockIdentity(alicePublicKey, alicePrivateKey);
+
       const event: Omit<Event, 'encryptedFor'> = {
         id: 'event-456',
         authorId: base58.encode(alicePublicKey),
@@ -170,6 +180,8 @@ describe('ThreadEncryptionService (v2.1 - Event Key Reuse)', () => {
         aliceConnections,
       );
 
+      mockIdentity(charliePublicKey, charliePrivateKey);
+
       // Charlie extracts the event key
       const eventKey = await ThreadEncryptionService.decryptThreadKey(
         encryptedEvent,
@@ -182,6 +194,8 @@ describe('ThreadEncryptionService (v2.1 - Event Key Reuse)', () => {
     });
 
     it('should cache event key after first extraction', async () => {
+      mockIdentity(alicePublicKey, alicePrivateKey);
+
       const event: Omit<Event, 'encryptedFor'> = {
         id: 'event-cache-test',
         authorId: base58.encode(alicePublicKey),
@@ -194,6 +208,8 @@ describe('ThreadEncryptionService (v2.1 - Event Key Reuse)', () => {
         event,
         aliceConnections,
       );
+
+      mockIdentity(bobPublicKey, bobPrivateKey);
 
       // First extraction
       const eventKey1 = await ThreadEncryptionService.decryptThreadKey(
@@ -262,6 +278,8 @@ describe('ThreadEncryptionService (v2.1 - Event Key Reuse)', () => {
     let encryptedEvent: EncryptedEvent;
 
     beforeEach(async () => {
+      mockIdentity(alicePublicKey, alicePrivateKey);
+
       const event: Omit<Event, 'encryptedFor'> = {
         id: 'event-reply-test',
         authorId: base58.encode(alicePublicKey),
@@ -274,6 +292,8 @@ describe('ThreadEncryptionService (v2.1 - Event Key Reuse)', () => {
         event,
         aliceConnections,
       );
+
+      mockIdentity(bobPublicKey, bobPrivateKey);
 
       // Bob extracts the event key
       eventKey = await ThreadEncryptionService.decryptThreadKey(
@@ -448,6 +468,8 @@ describe('ThreadEncryptionService (v2.1 - Event Key Reuse)', () => {
 
   describe('Cache Management', () => {
     it('should clear event key cache', async () => {
+      mockIdentity(alicePublicKey, alicePrivateKey);
+
       const event: Omit<Event, 'encryptedFor'> = {
         id: 'event-clear-cache',
         authorId: base58.encode(alicePublicKey),
@@ -460,6 +482,8 @@ describe('ThreadEncryptionService (v2.1 - Event Key Reuse)', () => {
         event,
         aliceConnections,
       );
+
+      mockIdentity(bobPublicKey, bobPrivateKey);
 
       // Extract to cache the key
       await ThreadEncryptionService.decryptThreadKey(encryptedEvent, bobConnections);
@@ -498,6 +522,8 @@ describe('ThreadEncryptionService (v2.1 - Event Key Reuse)', () => {
     });
 
     it('should throw error when decrypting with wrong event key', async () => {
+      mockIdentity(alicePublicKey, alicePrivateKey);
+
       const event: Omit<Event, 'encryptedFor'> = {
         id: 'event-wrong-key',
         authorId: base58.encode(alicePublicKey),
@@ -510,6 +536,8 @@ describe('ThreadEncryptionService (v2.1 - Event Key Reuse)', () => {
         event,
         aliceConnections,
       );
+
+      mockIdentity(bobPublicKey, bobPrivateKey);
 
       const correctKey = await ThreadEncryptionService.decryptThreadKey(
         encryptedEvent,
@@ -541,6 +569,8 @@ describe('ThreadEncryptionService (v2.1 - Event Key Reuse)', () => {
 
   describe('Event Key Reuse Security', () => {
     it('should safely reuse event key for multiple replies with unique IVs', async () => {
+      mockIdentity(alicePublicKey, alicePrivateKey);
+
       const event: Omit<Event, 'encryptedFor'> = {
         id: 'event-reuse-test',
         authorId: base58.encode(alicePublicKey),
@@ -553,6 +583,8 @@ describe('ThreadEncryptionService (v2.1 - Event Key Reuse)', () => {
         event,
         aliceConnections,
       );
+
+      mockIdentity(bobPublicKey, bobPrivateKey);
 
       // Extract event key
       const eventKey = await ThreadEncryptionService.decryptThreadKey(
