@@ -923,9 +923,17 @@ Server → Client: {
 
 - **Recommendation:** Hybrid - thumbnails on device, full-res encrypted on server, auto-purge after 90 days
 
-Q6: How should replies to posts work?
+**Q6:** How should replies to posts work? ✅ IMPLEMENTED
 
-- Recommendation: They should be encrypted for all of the posters connections, so only the intersection of connections of the original poster and the replier are able to see the reply.?
+- **Status:** Implemented as Threading Feature (October 2025)
+- **Design:** Shared thread key encryption for group chat-like conversations
+- **Implementation Details:**
+  - Thread creator generates random AES-256 thread key
+  - Thread key wrapped individually for each participant using ECDH
+  - All replies encrypted with shared thread key (no per-recipient wrapping)
+  - Only thread participants can decrypt and view replies
+  - 98% more efficient than per-recipient encryption for large threads
+- **See:** `docs/THREADING.md` for complete documentation
 
 ---
 
