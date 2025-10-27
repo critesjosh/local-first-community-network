@@ -34,6 +34,8 @@ const HomeScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [rsvpState, setRsvpState] = useState<RSVPState>({});
+  const [connections, setConnections] = useState<any[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   // Initialize logger with user display name
   useEffect(() => {
@@ -140,13 +142,18 @@ const HomeScreen = () => {
 
   const loadEvents = async () => {
     try {
+      // Get current user
+      const user = await IdentityService.getCurrentUser();
+      setCurrentUser(user);
+
       // Get all encrypted events from storage provider (local for MVP, REST/OrbitDB later)
       const encryptedEvents = await PostStorageService.fetchPosts(0); // Fetch all events since epoch
 
       // Get all connections for decryption
-      const connections = await ConnectionService.getConnections();
+      const fetchedConnections = await ConnectionService.getConnections();
+      setConnections(fetchedConnections);
 
-      if (connections.length === 0) {
+      if (fetchedConnections.length === 0) {
         setEvents([]);
         return;
       }
@@ -157,7 +164,7 @@ const HomeScreen = () => {
         try {
           const decrypted = await EncryptionService.decryptEvent(
             encryptedEvent,
-            connections,
+            fetchedConnections,
           );
           if (decrypted) {
             decryptedEvents.push(decrypted);
@@ -168,9 +175,9 @@ const HomeScreen = () => {
         }
       }
 
-      // Sort by datetime (newest first)
+      // Sort by createdAt (newest first)
       decryptedEvents.sort((a, b) => {
-        return new Date(b.datetime).getTime() - new Date(a.datetime).getTime();
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       });
 
       setEvents(decryptedEvents);
@@ -227,14 +234,44 @@ const HomeScreen = () => {
     }, []),
   );
 
-  const renderEvent = ({item}: {item: Event}) => (
-    <EventCard
-      event={item}
-      onRSVP={handleRSVP}
-      currentUserRSVP={rsvpState[item.id]?.status}
-      attendeeCount={rsvpState[item.id]?.count}
-    />
-  );
+  const getAuthorInfo = (authorId: string) => {
+    // Check if it's the current user
+    if (currentUser && currentUser.id === authorId) {
+      return {
+        displayName: currentUser.displayName,
+        profilePhoto: currentUser.profilePhoto,
+      };
+    }
+
+    // Look up in connections
+    const connection = connections.find(c => c.userId === authorId);
+    if (connection) {
+      return {
+        displayName: connection.displayName,
+        profilePhoto: connection.profilePhoto,
+      };
+    }
+
+    // Fallback
+    return {
+      displayName: 'Unknown',
+      profilePhoto: undefined,
+    };
+  };
+
+  const renderEvent = ({item}: {item: Event}) => {
+    const authorInfo = getAuthorInfo(item.authorId);
+    return (
+      <EventCard
+        event={item}
+        authorName={authorInfo.displayName}
+        authorPhoto={authorInfo.profilePhoto}
+        onRSVP={handleRSVP}
+        currentUserRSVP={rsvpState[item.id]?.status}
+        attendeeCount={rsvpState[item.id]?.count}
+      />
+    );
+  };
 
   const renderEmpty = () => (
     <View style={styles.placeholder}>

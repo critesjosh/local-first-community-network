@@ -3,7 +3,7 @@
  */
 
 import {Request, Response, NextFunction} from 'express';
-import {verifySignature} from '../../middleware/authMiddleware';
+import {verifySignature} from '../../middleware/authMiddleware.js';
 import * as ed from '@noble/ed25519';
 import {base58} from '@scure/base';
 import {createHash} from 'crypto';

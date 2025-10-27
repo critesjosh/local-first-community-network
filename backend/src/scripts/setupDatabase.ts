@@ -5,7 +5,7 @@
  * Run with: npm run db:setup
  */
 
-import pool from '../config/database';
+import pool from '../config/database.js';
 
 async function setupDatabase() {
   const client = await pool.connect();

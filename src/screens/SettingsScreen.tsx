@@ -1,15 +1,21 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useCallback} from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Switch} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
+import {useFocusEffect} from '@react-navigation/native';
 import Database from '../services/storage/Database';
+import ConnectionService from '../services/ConnectionService';
 
 const SettingsScreen = () => {
   const [autoAcceptConnections, setAutoAcceptConnections] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [connectionCount, setConnectionCount] = useState(0);
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadSettings();
+      loadConnectionCount();
+    }, [])
+  );
 
   const loadSettings = async () => {
     try {
@@ -19,6 +25,17 @@ const SettingsScreen = () => {
       console.error('Error loading settings:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadConnectionCount = async () => {
+    try {
+      const connections = await ConnectionService.getConnections();
+      // Count only mutual connections (not pending)
+      const mutualConnections = connections.filter(c => c.status === 'mutual');
+      setConnectionCount(mutualConnections.length);
+    } catch (error) {
+      console.error('Error loading connection count:', error);
     }
   };
 
@@ -66,7 +83,9 @@ const SettingsScreen = () => {
             <Text style={styles.sectionTitle}>Connections</Text>
             <TouchableOpacity style={styles.settingItem}>
               <Text style={styles.settingLabel}>View All Connections</Text>
-              <Text style={styles.settingValue}>0 connections</Text>
+              <Text style={styles.settingValue}>
+                {connectionCount} {connectionCount === 1 ? 'connection' : 'connections'}
+              </Text>
             </TouchableOpacity>
           </View>
 

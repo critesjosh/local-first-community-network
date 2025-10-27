@@ -37,6 +37,7 @@
   "dependencies": {
     "@localcommunity/rn-bluetooth": "file:./packages/rn-bluetooth",
     "@noble/ciphers": "^2.0.1",
+    "@noble/curves": "^2.0.1",
     "@noble/ed25519": "^3.0.0",
     "@noble/hashes": "^2.0.1",
     "@noble/secp256k1": "^3.0.0",

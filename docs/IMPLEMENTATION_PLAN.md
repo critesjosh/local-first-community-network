@@ -98,15 +98,23 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - PostStorageProvider abstraction layer for future OrbitDB migration
   - Comprehensive test suite for authentication (RESTPostStorage + authMiddleware)
 
+- ✅ **ECDH Key Exchange with X25519** (2025-10-26)
+  - Fixed ECDH implementation to use proper X25519 scalar multiplication
+  - Added @noble/curves dependency for Ed25519 → Curve25519 key conversion
+  - Implemented edwardsToMontgomery conversion using @noble/curves/ed25519 utilities
+  - Verified symmetric shared secret derivation: X25519(alicePriv, bobPub) = X25519(bobPriv, alicePub)
+  - Fixed native Bluetooth module registration (RNLCBluetoothModule naming)
+  - End-to-end encryption tested and working between physical devices
+  - Alice and Bob successfully encrypt/decrypt posts using ECDH-derived shared secrets
+
 **In Progress:**
-- Week 2, Days 12-13: Event Posting System (hybrid encryption implemented, UI pending)
+- Week 3: Server Backend & API Integration (REST API complete, deploy to production pending)
 - Planning Month 2 OrbitDB storage layer migration (architecture documented)
 
 **Next Up:**
-- Test mutual connection flow end-to-end on physical devices
-- Create Event UI with form inputs
-- Event posting system integration with UI
 - Deploy backend to production environment (Railway/Render)
+- UI polish and error handling improvements
+- RSVP functionality implementation
 - OrbitDB integration for decentralized storage (Month 2)
 
 **Test Status:** 171/171 passing ✅ (base test suite, BLE physical device testing in progress)
@@ -119,10 +127,10 @@ This implementation plan outlines the development of a 1-month MVP for the Local
 - **State Management:** Zustand for local state
 - **Database:** expo-sqlite (v16) with async/await API
 - **Crypto Libraries:**
-  - @noble/ed25519 for identity keys
-  - @noble/secp256k1 for ECDH key exchange
+  - @noble/ed25519 for identity keys and signatures
+  - @noble/curves for Ed25519 → Curve25519 conversion and X25519 ECDH
   - @noble/hashes for SHA-256 and HMAC
-  - react-native-crypto for AES-256-GCM encryption
+  - @noble/ciphers for AES-256-GCM encryption
 - **BLE:** `@localcommunity/rn-bluetooth` (custom TurboModule)
   - Replaces react-native-ble-plx and react-native-ble-advertiser
   - Native iOS (Swift/Objective-C) and Android (Kotlin) implementations
@@ -254,15 +262,10 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - Auto-accept toggle in SettingsScreen
   - Both parties store public keys for E2E encryption
 
-### Day 12-13: Event Posting System
+### Day 12-13: Event Posting System ✅
 
-- [ ] Create Event data model
-- [ ] Build "Create Event" screen:
-  - Title input (required)
-  - Date/time picker (required)
-  - Location input (optional)
-  - Description textarea (optional)
-  - Photo capture/selection (single)
+- [x] Create Event data model (simplified to generic posts)
+- [x] Build "Create Event" screen (text-only post creation)
 - [x] Implement hybrid encryption (COMPLETED):
   - Generate random AES-256 key for event (once)
   - Encrypt event content with this key (single encryption)
@@ -272,35 +275,30 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - Store: {encryptedContent, wrappedKeys: {lookupID: wrappedKey, ...}}
   - Privacy: Server cannot learn social graph (no userIDs in wrappedKeys)
   - Efficiency: 77x smaller than encrypting content per recipient
+  - Fixed ECDH X25519 implementation for symmetric shared secrets (2025-10-26)
 - [x] Database support for encrypted events (COMPLETED)
-- [ ] **Create abstract `PostStorageProvider` interface** (IMPORTANT for Month 2 migration):
-  ```typescript
-  interface PostStorageProvider {
-    publishPost(post: EncryptedPost): Promise<void>;
-    fetchPosts(since: number): Promise<EncryptedPost[]>;
-    subscribeToPosts(userIDs: string[], callback: (post: EncryptedPost) => void): void;
-  }
-  ```
-- [ ] Implement `RESTPostStorage` class (MVP implementation)
-- [ ] Build UI to create and submit events
+- [x] **Create abstract `PostStorageProvider` interface** (COMPLETED)
+- [x] Implement `RESTPostStorage` class (COMPLETED)
+- [x] Build UI to create and submit events (COMPLETED)
+- [x] End-to-end encryption/decryption working between users (COMPLETED)
 
-### Day 14: Event Feed & Discovery (UI Only)
+### Day 14: Event Feed & Discovery ✅
 
-- [ ] Build event feed screen:
+- [x] Build event feed screen (COMPLETED):
   - Chronological list view
-  - Event cards with all details
-  - Pull-to-refresh (will connect to server in Week 3)
+  - Event cards with author info and timestamps
+  - Pull-to-refresh connected to REST API
 - [x] Implement event decryption (COMPLETED):
   - For each post, iterate through connections:
     - Compute HMAC(sharedSecret, postID)
     - Check if wrappedKeys[HMAC] exists
     - If found, unwrap to get post key
     - Decrypt content and stop (early termination)
-  - Performance: <100 connections × <100 posts = ~25ms (imperceptible)
-  - Cache decrypted posts to avoid recomputation
-- [ ] Add "I'm Going" RSVP functionality (UI only)
-- [ ] Show attendee counts (UI only)
-- [ ] Note: Server integration happens in Week 3
+  - Author self-decryption implemented
+  - Verified working end-to-end with physical devices
+- [ ] Add "I'm Going" RSVP functionality (deferred)
+- [ ] Show attendee counts (deferred)
+- [x] Server integration completed (REST API + authentication)
 
 ## Week 3: Server Backend & API Integration
 

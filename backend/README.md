@@ -179,16 +179,72 @@ npm start
 
 ### Docker
 
-```dockerfile
-# Coming soon
+The easiest way to run the backend with PostgreSQL:
+
+```bash
+# Start both backend and PostgreSQL
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+
+# Stop and remove data
+docker-compose down -v
 ```
 
-## Security Notes
+The setup includes:
+- PostgreSQL 14 with persistent volume
+- Backend API with auto-restart
+- Health checks for both services
+- Environment variables from `.env` file
+
+**First-time setup:**
+
+1. Copy `.env.example` to `.env`
+2. Run `docker-compose up -d`
+3. The database will be automatically created and initialized
+
+**Manual database setup (if needed):**
+
+```bash
+# Access the database container
+docker-compose exec postgres psql -U postgres -d local_community
+
+# Or run setup script from host
+docker-compose exec backend npm run db:setup
+```
+
+**Build only the backend image:**
+
+```bash
+docker build -t local-community-backend .
+docker run -p 3000:3000 --env-file .env local-community-backend
+```
+
+## Security Features
 
 - **Server cannot decrypt content**: All post data is end-to-end encrypted
 - **HMAC-based recipient lookup**: Server cannot determine who can read each post
-- **No authentication yet**: MVP stores all posts publicly (add signature-based auth in Week 3)
-- **Rate limiting recommended**: Add in production
+- **Ed25519 signature authentication**: Required for creating posts
+- **Rate limiting**: 30 posts per 15 min, 100 API requests per 15 min
+- **Request validation**: Input sanitization and size limits
+- **Security headers**: Helmet.js protection
+- **Resource limits**: Docker CPU and memory constraints
+- **Database protection**: Query timeouts, connection pooling, parameterized queries
+
+### Production Deployment
+
+⚠️ **IMPORTANT**: Before deploying to the internet, read **[DEPLOYMENT_SECURITY.md](DEPLOYMENT_SECURITY.md)** for the complete security checklist.
+
+**Critical requirements:**
+1. Use HTTPS with a reverse proxy (Nginx/Caddy)
+2. Configure firewall to block direct access to backend
+3. Set strong database password
+4. Configure ALLOWED_ORIGINS environment variable
+5. Set up monitoring and backups
 
 ## Performance
 

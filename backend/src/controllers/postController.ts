@@ -3,8 +3,8 @@
  */
 
 import {Request, Response} from 'express';
-import pool from '../config/database';
-import {EncryptedPost, PostRow} from '../models/Post';
+import pool from '../config/database.js';
+import {EncryptedPost, PostRow} from '../models/Post.js';
 
 /**
  * Create a new encrypted post
@@ -14,12 +14,7 @@ export const createPost = async (req: Request, res: Response): Promise<void> => 
   try {
     const post: EncryptedPost = req.body;
 
-    // Validate required fields
-    if (!post.id || !post.authorId || !post.encryptedContent || !post.iv) {
-      res.status(400).json({error: 'Missing required fields'});
-      return;
-    }
-
+    // Validation is now handled by middleware
     // Insert into database
     const query = `
       INSERT INTO posts (id, author_id, timestamp, encrypted_content, iv, wrapped_keys)

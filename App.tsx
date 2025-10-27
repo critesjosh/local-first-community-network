@@ -3,6 +3,9 @@
  * Privacy-first neighborhood event discovery
  */
 
+// MUST be imported first to configure crypto libraries
+import './src/services/crypto/cryptoConfig';
+
 import React, {useEffect, useState} from 'react';
 import 'react-native-gesture-handler';
 import {ActivityIndicator, View, StyleSheet} from 'react-native';

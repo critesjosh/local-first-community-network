@@ -64,7 +64,7 @@
       "eas": {
         "projectId": "ccbafd9b-37cb-422b-a8a3-cb3a2f3d781e"
       },
-      "apiUrl": "http://localhost:3000"
+      "apiUrl": "http://192.168.50.38:3000"
     },
     "plugins": [
       "expo-sqlite",

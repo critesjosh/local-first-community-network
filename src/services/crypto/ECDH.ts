@@ -8,7 +8,8 @@
 // Import crypto config first to ensure proper random setup
 import './cryptoConfig';
 
-import * as ed25519 from '@noble/ed25519';
+import * as ed25519Old from '@noble/ed25519'; // Keep for other uses
+import {ed25519, x25519} from '@noble/curves/ed25519';
 import {sha256} from '@noble/hashes/sha2.js';
 import {hkdf} from '@noble/hashes/hkdf.js';
 import {hmac} from '@noble/hashes/hmac.js';
@@ -57,32 +58,23 @@ function ed25519PrivateKeyToCurve25519(ed25519PrivateKey: Uint8Array): Uint8Arra
 }
 
 /**
- * Perform scalar multiplication for ECDH
+ * Perform X25519 scalar multiplication for ECDH
  *
- * This is a simplified SYMMETRIC implementation for MVP testing.
- * In production, use proper X25519 scalar multiplication from @noble/curves.
+ * Converts Ed25519 keys to Curve25519 format, then performs X25519 scalar multiplication.
+ * X25519(alicePriv, bobPub) = X25519(bobPriv, alicePub) ensures both parties
+ * derive the same shared secret.
  *
- * To ensure both parties derive the same shared secret regardless of who
- * is "Alice" and who is "Bob", we sort the keys lexicographically.
+ * @param privateKey - Ed25519 private key
+ * @param publicKey - Ed25519 public key
+ * @returns Shared secret (32 bytes)
  */
 function scalarMult(privateKey: Uint8Array, publicKey: Uint8Array): Uint8Array {
-  // For MVP, use a simple symmetric approach
-  // In production, use proper X25519 from @noble/curves
+  // Convert Ed25519 keys to Curve25519 (X25519) format using noble/curves utilities
+  const curve25519PrivateKey = ed25519.utils.toMontgomerySecret(privateKey);
+  const curve25519PublicKey = ed25519.utils.toMontgomery(publicKey);
 
-  // Sort keys to ensure symmetry: hash(sort(key1, key2))
-  const key1Hex = Buffer.from(privateKey).toString('hex');
-  const key2Hex = Buffer.from(publicKey).toString('hex');
-
-  const combined = new Uint8Array(64);
-  if (key1Hex < key2Hex) {
-    combined.set(privateKey, 0);
-    combined.set(publicKey, 32);
-  } else {
-    combined.set(publicKey, 0);
-    combined.set(privateKey, 32);
-  }
-
-  return sha256(combined);
+  // Perform X25519 scalar multiplication
+  return x25519.getSharedSecret(curve25519PrivateKey, curve25519PublicKey);
 }
 
 class ECDHService {
@@ -98,15 +90,9 @@ class ECDHService {
     theirPublicKey: Uint8Array,
   ): Promise<Uint8Array> {
     try {
-      // For MVP: simplified symmetric approach
-      // In production, properly convert Ed25519 -> Curve25519 and use X25519
-
-      // Derive my public key from my private key
-      const myPublicKey = await ed25519.getPublicKeyAsync(myPrivateKey);
-
-      // Create symmetric shared secret by hashing sorted public keys + private key mix
+      // Use X25519 scalar multiplication: myPrivateKey * theirPublicKey
       // This ensures Alice(privA, pubB) == Bob(privB, pubA)
-      const sharedSecret = scalarMult(myPublicKey, theirPublicKey);
+      const sharedSecret = scalarMult(myPrivateKey, theirPublicKey);
 
       return sharedSecret;
     } catch (error) {
@@ -195,7 +181,7 @@ class ECDHService {
     try {
       // Generate Ed25519 key pair
       const privateKey = ed25519.utils.randomSecretKey();
-      const publicKey = await ed25519.getPublicKeyAsync(privateKey);
+      const publicKey = ed25519.getPublicKey(privateKey);
 
       return {
         publicKey,

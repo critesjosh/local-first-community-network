@@ -147,6 +147,13 @@ class IdentityService {
   }
 
   /**
+   * Get current key pair
+   */
+  async getKeyPair(): Promise<KeyPair | null> {
+    return this.keyPair;
+  }
+
+  /**
    * Update user profile
    */
   async updateProfile(updates: Partial<User>): Promise<void> {
