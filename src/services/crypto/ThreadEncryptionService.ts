@@ -84,20 +84,20 @@ class ThreadEncryptionService {
   private threadKeyCache: Map<string, Uint8Array> = new Map();
 
   /**
-   * Decrypt thread key from an event
+   * Decrypt thread key (event key) from an event
    *
-   * Thread keys are embedded in events (wrappedThreadKeys field).
-   * Anyone who can decrypt the event can also decrypt the thread key.
+   * Thread key = Event key (same key used for both post content and replies).
+   * Anyone who can decrypt the event can also use the key for replies.
    *
    * Flow:
    * 1. Check cache first
    * 2. Try to unwrap as author (self)
    * 3. Try each connection to find matching wrapped key
-   * 4. Cache the decrypted thread key
+   * 4. Cache the decrypted key
    *
-   * @param encryptedEvent - The encrypted event containing thread key
+   * @param encryptedEvent - The encrypted event containing wrapped keys
    * @param connections - All my connections
-   * @returns Decrypted thread key
+   * @returns Decrypted event key (reused as thread key)
    */
   async decryptThreadKey(
     encryptedEvent: EncryptedEvent,
@@ -127,14 +127,14 @@ class ThreadEncryptionService {
             encryptedEvent.id,
           );
 
-          const authorWrappedKeyData = encryptedEvent.wrappedThreadKeys[authorLookupId];
+          const authorWrappedKeyData = encryptedEvent.wrappedKeys[authorLookupId];
           if (authorWrappedKeyData) {
             const authorKey = ECDHService.deriveConnectionKey(authorSharedSecret);
             const wrappedKeyBytes = Buffer.from(authorWrappedKeyData.wrappedKey, 'base64');
             const keyWrapIVBytes = Buffer.from(authorWrappedKeyData.keyWrapIV, 'base64');
 
             threadKey = await decryptAESGCM(wrappedKeyBytes, authorKey, keyWrapIVBytes);
-            console.log(`[ThreadEncryptionService] Decrypted thread key as author (self)`);
+            console.log(`[ThreadEncryptionService] Decrypted event key as author (self) - reusing for replies`);
           }
         } catch (error) {
           console.log(`[ThreadEncryptionService] Not the author, checking connections...`);
@@ -174,18 +174,18 @@ class ThreadEncryptionService {
           );
 
           // Check if this connection can decrypt
-          const wrappedKeyData = encryptedEvent.wrappedThreadKeys[recipientLookupId];
+          const wrappedKeyData = encryptedEvent.wrappedKeys[recipientLookupId];
           if (!wrappedKeyData) {
             continue;
           }
 
-          // Found a match! Unwrap the thread key
+          // Found a match! Unwrap the event key (reused as thread key)
           const connectionKey = ECDHService.deriveConnectionKey(sharedSecret);
           const wrappedKeyBytes = Buffer.from(wrappedKeyData.wrappedKey, 'base64');
           const keyWrapIVBytes = Buffer.from(wrappedKeyData.keyWrapIV, 'base64');
 
           threadKey = await decryptAESGCM(wrappedKeyBytes, connectionKey, keyWrapIVBytes);
-          console.log(`[ThreadEncryptionService] Decrypted thread key using connection ${connection.displayName}`);
+          console.log(`[ThreadEncryptionService] Decrypted event key using connection ${connection.displayName} - reusing for replies`);
           break;
         }
       }

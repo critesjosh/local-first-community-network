@@ -1,7 +1,7 @@
 # Threading Feature Documentation
 
 **Status:** ✅ Implemented (Refactored)
-**Version:** 2.0
+**Version:** 2.1 (Event Key Reuse)
 **Last Updated:** October 2025
 
 ## Overview
@@ -12,7 +12,7 @@ The threading feature enables encrypted conversations on posts. **Thread keys ar
 
 - **Automatic Threading**: Every post automatically has a thread - no separate creation needed
 - **Simple Model**: Thread ID = Event ID (no separate thread objects)
-- **Efficient Encryption**: Thread key wrapped once per post, reused for all replies
+- **Efficient Encryption**: Event key wrapped once per post, reused for all replies
 - **Same Permissions**: If you can read the post, you can reply to it
 - **Privacy Preserved**: HMAC-based recipient lookup IDs prevent server from identifying participants
 
@@ -20,61 +20,60 @@ The threading feature enables encrypted conversations on posts. **Thread keys ar
 
 ## Architecture
 
-### Encryption Model: Embedded Thread Keys
+### Encryption Model: Event Key Reuse
 
-Thread keys are part of the post encryption, not separate objects:
+**Key insight**: Thread key = Event key. We reuse the same key for both post content and replies.
+
+This is cryptographically safe because:
+- ✅ AES-GCM is secure for multiple messages with the same key
+- ✅ We use a unique random IV for each encryption operation
+- ✅ Simpler implementation with no security tradeoff
 
 1. **Post Creation** (automatic):
-   - Generate random 256-bit AES key for content (event key)
-   - Generate random 256-bit AES key for thread (thread key)
+   - Generate random 256-bit AES key (event key)
    - Encrypt post content with event key
-   - Wrap BOTH keys for each recipient using ECDH-derived connection keys
+   - Wrap event key for each recipient using ECDH-derived connection keys
    - Store wrapped keys with HMAC-based recipient lookup IDs
 
 2. **Reply Posting**:
-   - Fetch the event to get wrapped thread keys
-   - Decrypt thread key using your connection key
-   - Encrypt reply content with thread key using AES-256-GCM
+   - Fetch the event to get wrapped event key
+   - Decrypt event key using your connection key
+   - Encrypt reply content with **same event key** using AES-256-GCM
+   - Generate unique random IV for the reply
    - Store encrypted reply (no per-recipient wrapping needed)
 
 3. **Reply Reading**:
-   - Fetch event to get thread key
-   - Unwrap thread key once using your connection key
-   - Cache thread key for performance
-   - Decrypt all replies with cached thread key
+   - Fetch event to get event key
+   - Unwrap event key once using your connection key
+   - Cache event key for performance
+   - Decrypt all replies with cached event key
 
 ### Data Models
 
 ```typescript
-// Event with embedded thread key
+// Event with wrapped keys (reused for both content and replies)
 interface EncryptedEvent {
   id: string;
   authorId: string;
   timestamp: number;
   encryptedContent: string;      // Post content encrypted with event key
-  iv: string;
+  iv: string;                    // IV for content encryption
   wrappedKeys: {                 // Event key wrapped for each recipient
-    [recipientLookupId: string]: {
-      wrappedKey: string;
-      keyWrapIV: string;
-    };
-  };
-  wrappedThreadKeys: {           // Thread key wrapped for each recipient
-    [recipientLookupId: string]: {
-      wrappedKey: string;        // Thread key encrypted for participant
-      keyWrapIV: string;         // IV for key wrapping
+    [recipientLookupId: string]: {  // (reused as thread key for replies)
+      wrappedKey: string;        // base64 - event key wrapped with connection key
+      keyWrapIV: string;         // base64 - IV for key wrapping
     };
   };
 }
 
-// Reply encrypted with thread key
+// Reply encrypted with event key (no separate thread key)
 interface EncryptedThreadReply {
   id: string;
   threadId: string;              // Event ID
   authorId: string;
   timestamp: number;
-  encryptedContent: string;      // Encrypted with thread key
-  iv: string;                    // AES-GCM IV
+  encryptedContent: string;      // Encrypted with event key (reused from post)
+  iv: string;                    // Unique IV for this reply
 }
 ```
 
@@ -87,37 +86,35 @@ interface EncryptedThreadReply {
 #### 1. EventEncryptionService
 **File:** `src/services/crypto/EncryptionService.ts`
 
-Generates and wraps thread keys alongside event keys:
+Generates and wraps event key (reused for replies):
 
 ```typescript
 async encryptEvent(event: Event, connections: Connection[]): Promise<EncryptedEvent> {
-  // 1. Generate event key AND thread key
-  const eventKey = await generateRandomKey();
-  const threadKey = await generateRandomKey();
+  // 1. Generate ONE event key (used for both content and replies)
+  const eventKey = await generateRandomKey();  // 256-bit AES key
 
   // 2. Encrypt content with event key
   const encryptedContent = await encryptAESGCM(content, eventKey, iv);
 
-  // 3. Wrap BOTH keys for each recipient
+  // 3. Wrap event key for each recipient
   for (const connection of connections) {
     const connectionKey = deriveConnectionKey(connection.sharedSecret);
     wrappedKeys[lookupId] = wrapKey(eventKey, connectionKey);
-    wrappedThreadKeys[lookupId] = wrapKey(threadKey, connectionKey);
   }
 
-  return {encryptedContent, wrappedKeys, wrappedThreadKeys, ...};
+  return {encryptedContent, wrappedKeys, ...};
 }
 ```
 
 #### 2. ThreadEncryptionService
 **File:** `src/services/crypto/ThreadEncryptionService.ts`
 
-Handles thread key extraction and reply encryption:
+Extracts event key and uses it for reply encryption:
 
-- `decryptThreadKey(encryptedEvent, connections)` - Extract thread key from event
-- `encryptThreadReply(reply, threadKey)` - Encrypt reply with thread key
-- `decryptThreadReply(encryptedReply, threadKey)` - Decrypt reply
-- Thread key caching for performance
+- `decryptThreadKey(encryptedEvent, connections)` - Extract event key from wrappedKeys
+- `encryptThreadReply(reply, eventKey)` - Encrypt reply with event key
+- `decryptThreadReply(encryptedReply, eventKey)` - Decrypt reply
+- Event key caching for performance
 
 #### 3. ThreadService
 **File:** `src/services/ThreadService.ts`
@@ -140,14 +137,13 @@ const count = await ThreadService.getReplyCount(eventId);
 ### Database Schema
 
 ```sql
--- Events table includes thread keys
+-- Events table with wrapped keys (reused for replies)
 CREATE TABLE events (
   id TEXT PRIMARY KEY,
   author_id TEXT NOT NULL,
   encrypted_content TEXT,
   content_iv TEXT,
-  wrapped_keys TEXT,           -- Event keys
-  wrapped_thread_keys TEXT,    -- Thread keys (NEW)
+  wrapped_keys TEXT,           -- Event keys (reused for replies)
   ...
 );
 
@@ -221,7 +217,7 @@ const count = await ThreadService.getReplyCount(eventId);
 ### Encryption Details
 
 - **Algorithm**: AES-256-GCM (authenticated encryption)
-- **Key Size**: 256 bits (both event key and thread key)
+- **Key Size**: 256 bits (event key, reused for replies)
 - **IV Size**: 96 bits (recommended for GCM)
 - **Key Wrapping**: AES-256-GCM with ECDH-derived connection keys
 - **Key Derivation**: HKDF with SHA-256
@@ -238,8 +234,8 @@ const count = await ThreadService.getReplyCount(eventId);
 - Key wrapping: 100 × 50 = 5,000 key wraps
 - Storage: ~5 MB encrypted content
 
-**Embedded Thread Key (100 replies, 50 participants):**
-- Initial: 2 keys × 50 participants = 100 key wraps (in post)
+**Event Key Reuse (100 replies, 50 participants):**
+- Initial: 1 key × 50 participants = 50 key wraps (in post)
 - Replies: 100 encryptions (no key wrapping)
 - Storage: ~100 KB encrypted content
 
@@ -266,17 +262,17 @@ const count = await ThreadService.getReplyCount(eventId);
 - Database `threads` table
 
 **Changed:**
-- `EncryptedEvent` now includes `wrappedThreadKeys` field
-- `ThreadEncryptionService.decryptThreadKey()` takes `EncryptedEvent` instead of `EncryptedThread`
+- `ThreadEncryptionService.decryptThreadKey()` now extracts event key from `wrappedKeys` (no separate thread keys)
 - `ThreadService.getThreadWithReplies()` → `ThreadService.getReplies()`
 - Thread ID = Event ID (no separate thread IDs)
+- Event key is reused for both post content and replies
 
 ### Migration Steps
 
 1. **Database Migration** (automatic):
    ```sql
-   ALTER TABLE events ADD COLUMN wrapped_thread_keys TEXT;
    DROP TABLE IF EXISTS threads;
+   -- Note: No new columns needed - event keys are reused for replies
    ```
 
 2. **Code Updates**:
@@ -319,7 +315,7 @@ const count = await ThreadService.getReplyCount(eventId);
 - **Integration**: End-to-end reply flow
 - **UI**: ReplyComposer and ThreadReplyCard components
 
-**Note:** Tests need updating for v2.0 architecture. Most v1.0 tests will fail.
+**Note:** Tests need updating for v2.1 architecture. Most v1.0 tests will fail.
 
 ---
 
@@ -329,7 +325,7 @@ const count = await ThreadService.getReplyCount(eventId);
 
 1. **Participant Management**:
    - Allow adding participants after thread creation
-   - Re-wrap thread key for new participants
+   - Re-wrap event key for new participants
 
 2. **Thread Permissions**:
    - Thread-level access control (read vs. reply)
@@ -399,7 +395,7 @@ class ThreadEncryptionService {
 
 ## Summary
 
-The v2.0 threading architecture embeds thread keys directly in posts, creating a simpler, more automatic model:
+The v2.1 threading architecture reuses event keys for replies, creating a simpler, more automatic model:
 
 ✅ **Simpler**: No separate thread creation - every post has a thread
 ✅ **Automatic**: Thread ID = Event ID (no mapping needed)

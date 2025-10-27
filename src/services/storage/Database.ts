@@ -67,7 +67,6 @@ class Database {
           encrypted_content TEXT,
           content_iv TEXT,
           wrapped_keys TEXT,
-          wrapped_thread_keys TEXT,
           encrypted_for TEXT
         );
 
@@ -130,20 +129,17 @@ class Database {
         console.log('[Database] trust_level column already exists');
       });
 
-      // Migration 3: Add wrapped_thread_keys column to events table if it doesn't exist
-      await this.db.execAsync(`
-        ALTER TABLE events ADD COLUMN wrapped_thread_keys TEXT;
-      `).catch(() => {
-        // Column already exists, ignore error
-        console.log('[Database] wrapped_thread_keys column already exists');
-      });
-
-      // Migration 4: Drop threads table since thread keys are now stored with events
+      // Migration 3: Drop threads table (no longer needed)
       await this.db.execAsync(`
         DROP TABLE IF EXISTS threads;
       `).catch((error) => {
         console.log('[Database] Error dropping threads table (may not exist):', error);
       });
+
+      // Migration 4: Remove wrapped_thread_keys column (we reuse event keys for replies)
+      // Note: SQLite doesn't support DROP COLUMN easily, so we just ignore if it exists
+      // New installs won't have the column, existing ones will have unused column (harmless)
+      console.log('[Database] Note: wrapped_thread_keys column (if exists) is no longer used - event keys are reused for replies');
 
       console.log('[Database] Migrations completed successfully');
     } catch (error) {
@@ -521,8 +517,8 @@ class Database {
     const query = `
       INSERT OR REPLACE INTO events (
         id, author_id, title, description, datetime, location,
-        photo, created_at, updated_at, encrypted_content, content_iv, wrapped_keys, wrapped_thread_keys
-      ) VALUES (?, ?, NULL, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?, ?)
+        photo, created_at, updated_at, encrypted_content, content_iv, wrapped_keys
+      ) VALUES (?, ?, NULL, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?)
     `;
 
     await this.db.runAsync(query, [
@@ -534,7 +530,6 @@ class Database {
       encryptedEvent.encryptedContent,
       encryptedEvent.iv,
       JSON.stringify(encryptedEvent.wrappedKeys),
-      JSON.stringify(encryptedEvent.wrappedThreadKeys),
     ]);
   }
 
@@ -562,7 +557,6 @@ class Database {
       encryptedContent: row.encrypted_content,
       iv: row.content_iv,
       wrappedKeys: JSON.parse(row.wrapped_keys || '{}'),
-      wrappedThreadKeys: JSON.parse(row.wrapped_thread_keys || '{}'),
     }));
   }
 
@@ -586,7 +580,6 @@ class Database {
       encryptedContent: row.encrypted_content,
       iv: row.content_iv,
       wrappedKeys: JSON.parse(row.wrapped_keys || '{}'),
-      wrappedThreadKeys: JSON.parse(row.wrapped_thread_keys || '{}'),
     };
   }
 
