@@ -11,6 +11,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import postRoutes from './routes/posts.js';
+import threadRoutes from './routes/threads.js';
 import {healthCheckLimiter} from './middleware/rateLimitMiddleware.js';
 import {pool} from './config/database.js';
 
@@ -77,6 +78,7 @@ app.get('/health', healthCheckLimiter, async (req: Request, res: Response) => {
 
 // API Routes
 app.use('/api/posts', postRoutes);
+app.use('/api/threads', threadRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
@@ -97,6 +99,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Local Community Backend running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`📮 Posts API: http://localhost:${PORT}/api/posts`);
+  console.log(`💬 Threads API: http://localhost:${PORT}/api/threads`);
 });
 
 export default app;
