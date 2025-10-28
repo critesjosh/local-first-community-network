@@ -54,22 +54,38 @@ When two devices want to connect, they exchange profile information and establis
      "timestamp": "2025-10-23T18:45:00Z"
    }
    ```
-5. Waits 2 seconds for response (if auto-accept enabled)
-6. Creates connection record with status:
-   - `pending-sent` if waiting for manual approval
-   - `mutual` if auto-accepted
-7. Disconnects from GATT
-8. Shows success message to user
+5. Subscribes to Handshake characteristic notifications to receive response
+6. Waits up to 8 seconds for response notification
+7. Creates connection record with status based on response:
+   - `mutual` if response status is `accepted`
+   - `pending-sent` if no response received or status is `pending`
+   - Throws error if status is `rejected`
+8. Disconnects from GATT
+9. Shows success message to user
 
 **Device A (Responder):**
 1. Receives write to Handshake characteristic
-2. Parses connection request
-3. Checks if auto-accept is enabled (default: true)
-4. Creates connection record:
+2. Parses connection request and emits followRequestReceived event to JavaScript
+3. BLEConnectionHandler processes request via ConnectionService
+4. Checks if auto-accept is enabled (default: true)
+5. Creates connection record:
    - `mutual` if auto-accept enabled
    - `pending-received` if manual approval required
-5. Emits followRequestReceived event to JavaScript
-6. Connection appears in connections list
+6. Sends connection response via BLE notification:
+   ```json
+   {
+     "type": "connection-response",
+     "status": "accepted" | "pending" | "rejected",
+     "responder": {
+       "userId": "def456...",
+       "displayName": "JG",
+       "publicKey": "base64...",
+       "profilePhoto": "base64..." (optional)
+     },
+     "timestamp": "2025-10-23T18:45:01Z"
+   }
+   ```
+7. Connection appears in connections list
 
 ### Phase 3: Mutual Connection
 
@@ -104,10 +120,11 @@ Example:
 - Type: READ
 - Value: JSON string of ConnectionProfile
 
-### Handshake Characteristic (Write)
+### Handshake Characteristic (Write + Notify)
 - UUID: `6e400003-b5a3-f393-e0a9-e50e24dcca9e`
-- Type: WRITE
-- Value: JSON string of ConnectionRequest
+- Type: WRITE + NOTIFY
+- Write Value: JSON string of ConnectionRequest
+- Notify Value: JSON string of ConnectionResponse
 
 ## Connection States
 

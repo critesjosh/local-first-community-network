@@ -12,6 +12,8 @@ import AppNavigator from './src/navigation/AppNavigator';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import IdentityService from './src/services/IdentityService';
 import BLEBroadcastService from './src/services/bluetooth/BLEBroadcastService';
+import BLEConnectionHandler from './src/services/bluetooth/BLEConnectionHandler';
+import SessionService from './src/services/SessionService';
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -29,12 +31,18 @@ function App() {
       // Initialize identity service
       await IdentityService.init();
 
+      // Clean up expired sessions
+      await SessionService.cleanupExpiredSessions();
+
       // Check if user has identity
       const identityExists = await IdentityService.hasIdentity();
       setHasIdentity(identityExists);
 
       if (identityExists) {
         await startBroadcasting();
+        
+        // Start listening for connection requests/responses
+        BLEConnectionHandler.start();
       }
     } catch (error) {
       console.error('App initialization error:', error);

@@ -19,11 +19,14 @@ export interface BroadcastProfile {
   displayName: string;
 }
 
+type BroadcastStateListener = (isAdvertising: boolean) => void;
+
 class BLEBroadcastService {
   private isBroadcasting = false;
   private rotationTimer: NodeJS.Timeout | null = null;
   private currentProfile: BroadcastProfile | null = null;
   private localFingerprint: string | null = null;
+  private stateListeners: Set<BroadcastStateListener> = new Set();
 
   /**
    * Start advertising the current user's presence
@@ -32,22 +35,20 @@ class BLEBroadcastService {
     this.currentProfile = profile;
 
     try {
-      // Check Bluetooth permissions and state first
-      console.log('🔧 Initializing Bluetooth for broadcasting...');
       await this.checkBluetoothPermissions();
       
-      // Set up GATT server profile data if provided
       if (fullProfile) {
-        console.log('📋 Setting profile data for GATT server...');
         await this.setProfileData(JSON.stringify(fullProfile));
       }
 
-      console.log('📡 Starting BLE broadcast...');
       await this.refreshBroadcast();
       this.startRotationTimer();
-      console.log('✅ BLE broadcast started successfully');
+      this.isBroadcasting = true;
+      this.notifyStateListeners();
     } catch (error) {
       console.error('❌ Failed to start BLE broadcasting:', error);
+      this.isBroadcasting = false;
+      this.notifyStateListeners();
       throw error;
     }
   }
@@ -74,13 +75,12 @@ class BLEBroadcastService {
 
     if (this.isBroadcasting) {
       try {
-        // Note: The custom module might not have stopAdvertising method
-        // We'll just set the state to false for now
-        console.log('🛑 Stopping BLE broadcast');
         this.isBroadcasting = false;
+        this.notifyStateListeners();
       } catch (error) {
         console.warn('Failed to stop BLE broadcast', error);
         this.isBroadcasting = false;
+        this.notifyStateListeners();
       }
     }
   }
@@ -97,14 +97,8 @@ class BLEBroadcastService {
    */
   private async checkBluetoothPermissions(): Promise<void> {
     try {
-      // Initialize Bluetooth and request permissions
-      console.log('🔧 Initializing Bluetooth...');
       await Bluetooth.initialize();
-      
-      console.log('🔐 Requesting Bluetooth permissions...');
       await Bluetooth.requestPermissions();
-      
-      console.log('✅ Bluetooth initialized and permissions requested');
     } catch (error) {
       console.error('❌ Bluetooth initialization failed:', error);
       throw new Error(`Bluetooth initialization failed: ${error.message}`);
@@ -116,17 +110,13 @@ class BLEBroadcastService {
    */
   private async refreshBroadcast(): Promise<void> {
     if (!this.currentProfile) {
-      console.warn('⚠️ No profile set, cannot start broadcast');
       return;
     }
 
     const payload = this.buildManufacturerPayload(this.currentProfile);
     this.localFingerprint = payload.fingerprint;
 
-    console.log(`📡 Broadcasting as "${payload.displayName}" (hash: ${payload.userHashHex})`);
-
     try {
-      // Start advertising with the custom module
       await Bluetooth.startAdvertising(
         payload.displayName,
         payload.userHashHex,
@@ -134,9 +124,7 @@ class BLEBroadcastService {
       );
       
       this.isBroadcasting = true;
-      console.log(`✅ BLE advertisement active - fingerprint: ${this.localFingerprint}`);
     } catch (error) {
-      console.error('❌ Error advertising BLE presence:', error);
       this.isBroadcasting = false;
       
       // Provide more specific error messages
@@ -145,11 +133,9 @@ class BLEBroadcastService {
       } else if (error.message && error.message.includes('powered off')) {
         throw new Error('Bluetooth is powered off. Please enable Bluetooth in device settings.');
       } else if (error.message && error.message.includes('initializing')) {
-        console.log('⏳ Bluetooth is initializing, advertisement will start automatically...');
-        this.isBroadcasting = true; // Mark as attempting to broadcast
+        this.isBroadcasting = true;
         return;
       } else if (error.message && error.message.includes('already advertising')) {
-        console.log('⚠️ Already advertising, continuing...');
         this.isBroadcasting = true;
         return;
       } else {
@@ -182,33 +168,24 @@ class BLEBroadcastService {
     followTokenHex: string;
     fingerprint: string;
   } {
-    console.log('🏗️ [BLEBroadcast] Building payload for:', profile.displayName, 'userId:', profile.userId);
-    
     const normalizedName = this.normaliseName(profile.displayName);
     const truncatedName = normalizedName.slice(0, BROADCAST_NAME_MAX_LENGTH);
-    console.log('  - Normalized name:', normalizedName, '→ Truncated:', truncatedName);
 
     const userHash = sha256(Buffer.from(profile.userId, 'utf8'));
     const userHashBytes = userHash.slice(0, USER_HASH_LENGTH);
     const userHashHex = Buffer.from(userHashBytes).toString('hex');
-    console.log('  - User hash (6 bytes):', userHashHex, '(', userHashBytes.length, 'bytes)');
 
     const tokenBytes = this.generateRandomBytes(FOLLOW_TOKEN_LENGTH);
     const followTokenHex = Buffer.from(tokenBytes).toString('hex');
-    console.log('  - Follow token (4 bytes):', followTokenHex, '(', tokenBytes.length, 'bytes)');
 
     const fingerprint = userHashHex;
 
-    const payload = {
+    return {
       displayName: truncatedName,
       userHashHex,
       followTokenHex,
       fingerprint,
     };
-    
-    console.log('✅ [BLEBroadcast] Payload built:', JSON.stringify(payload));
-    
-    return payload;
   }
 
   private normaliseName(name: string): string {
@@ -227,6 +204,36 @@ class BLEBroadcastService {
       }
     }
     return Array.from(array);
+  }
+
+  /**
+   * Add a listener for broadcasting state changes
+   */
+  addStateListener(listener: BroadcastStateListener): void {
+    this.stateListeners.add(listener);
+    // Immediately notify of current state
+    listener(this.isBroadcasting);
+  }
+
+  /**
+   * Remove a state listener
+   */
+  removeStateListener(listener: BroadcastStateListener): void {
+    this.stateListeners.delete(listener);
+  }
+
+  /**
+   * Get current broadcasting state
+   */
+  isAdvertising(): boolean {
+    return this.isBroadcasting;
+  }
+
+  /**
+   * Notify all listeners of state change
+   */
+  private notifyStateListeners(): void {
+    this.stateListeners.forEach(listener => listener(this.isBroadcasting));
   }
 }
 

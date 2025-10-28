@@ -21,6 +21,7 @@ import BLEConnectionHandler from '../services/bluetooth/BLEConnectionHandler';
 import IdentityService from '../services/IdentityService';
 import {addBluetoothListener} from '@localcommunity/rn-bluetooth';
 import {initLogger} from '../utils/logger';
+import {imageToBase64} from '../utils/imageUtils';
 import {Buffer} from 'buffer';
 
 interface RSVPState {
@@ -35,10 +36,24 @@ const HomeScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [rsvpState, setRsvpState] = useState<RSVPState>({});
+  const [isAdvertising, setIsAdvertising] = useState(false);
 
   // Initialize logger with user display name
   useEffect(() => {
     initLogger();
+  }, []);
+
+  // Subscribe to advertising state changes
+  useEffect(() => {
+    const handleAdvertisingStateChange = (advertising: boolean) => {
+      setIsAdvertising(advertising);
+    };
+
+    BLEBroadcastService.addStateListener(handleAdvertisingStateChange);
+
+    return () => {
+      BLEBroadcastService.removeStateListener(handleAdvertisingStateChange);
+    };
   }, []);
 
   // Listen for Bluetooth events from native layer
@@ -101,19 +116,19 @@ const HomeScreen = () => {
         if (user && identity) {
           console.log('Starting BLE advertising for user:', user.displayName);
 
-          // Create full connection profile with proper public key
+          // Create minimal connection profile - only essential data for BLE transfer
+          // Profile photos are too large for GATT reads/writes and will be synced separately
           const fullProfile = {
             userId: user.id,
             displayName: user.displayName,
             publicKey: Buffer.from(identity.publicKey).toString('base64'),
-            profilePhoto: user.profilePhoto,
+            // profilePhoto removed - too large for BLE GATT operations
           };
 
           console.log('[HomeScreen] 📋 Profile data prepared:', {
             userId: fullProfile.userId,
             displayName: fullProfile.displayName,
             publicKeyLength: fullProfile.publicKey.length,
-            hasPhoto: !!fullProfile.profilePhoto
           });
 
           // Start advertising presence (this will set the profile data internally)
@@ -123,10 +138,6 @@ const HomeScreen = () => {
           }, fullProfile);
 
           console.log('✅ BLE advertising started successfully');
-
-          // Start listening for incoming connection requests
-          BLEConnectionHandler.start();
-          console.log('✅ BLE connection handler started');
         } else {
           console.warn('No user identity found, skipping BLE advertising');
         }
@@ -261,6 +272,18 @@ const HomeScreen = () => {
         <Text style={styles.subtitle}>
           Discover what's happening in your neighborhood
         </Text>
+        <View style={[
+          styles.advertisingBadge,
+          isAdvertising ? styles.advertisingBadgeActive : styles.advertisingBadgeInactive
+        ]}>
+          <View style={[
+            styles.statusDot,
+            isAdvertising ? styles.statusDotActive : styles.statusDotInactive
+          ]} />
+          <Text style={styles.advertisingText}>
+            {isAdvertising ? 'Discoverable' : 'Not advertising'}
+          </Text>
+        </View>
       </View>
 
       {loading ? (
@@ -306,6 +329,38 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: '#8E8E93',
+  },
+  advertisingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    marginTop: 12,
+    alignSelf: 'flex-start',
+  },
+  advertisingBadgeActive: {
+    backgroundColor: '#E8F5E9',
+  },
+  advertisingBadgeInactive: {
+    backgroundColor: '#FFF3E0',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  statusDotActive: {
+    backgroundColor: '#4CAF50',
+  },
+  statusDotInactive: {
+    backgroundColor: '#FF9800',
+  },
+  advertisingText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
   },
   listContent: {
     padding: 20,

@@ -77,6 +77,25 @@ class EventEmitter: RCTEventEmitter {
     ])
   }
 
+  /// Send a connection response received event
+  func sendConnectionResponseReceived(
+    fromDeviceId: String,
+    payloadJson: String
+  ) {
+    guard let payloadData = payloadJson.data(using: .utf8),
+          let payload = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any] else {
+      print("[EventEmitter] ❌ Failed to parse connection response JSON")
+      return
+    }
+
+    print("[EventEmitter] 📤 Sending connectionResponseReceived event from: \(fromDeviceId)")
+    send([
+      "type": "connectionResponseReceived",
+      "fromDeviceId": fromDeviceId,
+      "payload": payload
+    ])
+  }
+
   /// Send a scan stopped event
   func sendScanStopped() {
     send(["type": "scanStopped"])
@@ -90,6 +109,18 @@ class EventEmitter: RCTEventEmitter {
     ]
     if let code = code {
       payload["code"] = code
+    }
+    send(payload)
+  }
+  
+  /// Send a debug event (for development/troubleshooting)
+  func sendDebug(message: String, category: String? = nil) {
+    var payload: [String: Any] = [
+      "type": "debug",
+      "message": message
+    ]
+    if let category = category {
+      payload["category"] = category
     }
     send(payload)
   }

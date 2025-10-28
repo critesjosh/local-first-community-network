@@ -53,7 +53,15 @@ class BLEConnectionHandler {
           break;
 
         case 'error':
-          await logError('[BLEConnectionHandler] BLE error:', event.message);
+          // Only log actual errors, not debug messages (which used to be sent as errors)
+          if (event.code !== 'DEBUG') {
+            await logError('[BLEConnectionHandler] BLE error:', event.message);
+          }
+          break;
+
+        case 'debug':
+          // Debug events are now properly categorized - ignore them here
+          // They're already logged by BluetoothModule if in dev mode
           break;
 
         // Other events are handled by BLEManager
@@ -71,17 +79,29 @@ class BLEConnectionHandler {
    */
   private async handleFollowRequest(
     deviceId: string,
-    payload: FollowRequestPayload,
+    payload: any,
   ): Promise<void> {
     try {
       await log('[BLEConnectionHandler] Received connection request from:', deviceId);
+      await log('[BLEConnectionHandler] Payload:', JSON.stringify(payload).substring(0, 200));
 
-      // Convert follow-request to connection-request format
-      const connectionRequest: ConnectionRequest = {
-        type: 'connection-request',
-        requester: payload.follower,
-        timestamp: payload.timestamp,
-      };
+      // Check if payload is already in connection-request format (has requester field)
+      // or old follow-request format (has follower field)
+      let connectionRequest: ConnectionRequest;
+      
+      if (payload.requester) {
+        // Already in correct format
+        connectionRequest = payload as ConnectionRequest;
+      } else if (payload.follower) {
+        // Old format - convert it
+        connectionRequest = {
+          type: 'connection-request',
+          requester: payload.follower,
+          timestamp: payload.timestamp,
+        };
+      } else {
+        throw new Error('Invalid payload format: missing requester or follower field');
+      }
 
       // Process the connection request
       const response = await ConnectionService.handleConnectionRequest(connectionRequest);
@@ -89,29 +109,16 @@ class BLEConnectionHandler {
       if (response) {
         await log('[BLEConnectionHandler] Connection request processed, response status:', response.status);
 
-        // Send response back to requester via BLE
+        // Send response back to requester via BLE notification
+        // The requester is subscribed to handshake characteristic notifications
         try {
-          await log('[BLEConnectionHandler] Attempting to connect back to requester:', deviceId);
-
-          // Connect to the requester (they should still be connected and listening)
-          const requesterDevice = await Bluetooth.connect(deviceId, 5000);
-          await log('[BLEConnectionHandler] Connected successfully to requester');
-
-          // Write response to their handshake characteristic
-          const responseJson = JSON.stringify(response);
-          await log('[BLEConnectionHandler] Sending response JSON:', responseJson);
-          await Bluetooth.writeFollowRequest(deviceId, responseJson);
-
-          await log('[BLEConnectionHandler] Response sent successfully:', response.status);
-
-          // Disconnect
-          await Bluetooth.disconnect(deviceId);
-          await log('[BLEConnectionHandler] Disconnected from requester');
+          await log('[BLEConnectionHandler] Sending response via BLE notification:', response.status);
+          await Bluetooth.sendConnectionResponse(response);
+          await log('[BLEConnectionHandler] ✅ Response notification sent successfully');
         } catch (error) {
-          await logError('[BLEConnectionHandler] Failed to send response back - requester may have disconnected:', error);
-          await logError('[BLEConnectionHandler] This is expected if requester disconnected before response was ready');
+          await logError('[BLEConnectionHandler] ❌ Failed to send response notification:', error);
           // Not critical - the connection is stored locally
-          // The requester will need to check back later or we can implement a polling mechanism
+          // The requester will see status as pending-sent and can retry
         }
       }
     } catch (error) {
@@ -127,7 +134,8 @@ class BLEConnectionHandler {
     payload: any,
   ): Promise<void> {
     try {
-      await log('[BLEConnectionHandler] Received connection response from:', deviceId);
+      console.log('[BLEConnectionHandler] 📲 Received connection response from device:', deviceId);
+      console.log('[BLEConnectionHandler] Payload:', JSON.stringify(payload, null, 2));
 
       const connectionResponse: ConnectionResponse = {
         type: 'connection-response',
@@ -136,9 +144,12 @@ class BLEConnectionHandler {
         timestamp: payload.timestamp,
       };
 
+      console.log('[BLEConnectionHandler] Calling ConnectionService.handleConnectionResponse...');
       await ConnectionService.handleConnectionResponse(connectionResponse);
+      console.log('[BLEConnectionHandler] ✅ Connection response processed:', payload.status);
       await log('[BLEConnectionHandler] Connection response processed:', payload.status);
     } catch (error) {
+      console.error('[BLEConnectionHandler] ❌ Error handling connection response:', error);
       await logError('[BLEConnectionHandler] Error handling connection response:', error);
     }
   }

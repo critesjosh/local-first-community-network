@@ -2,14 +2,12 @@
  * Bluetooth type definitions
  */
 
-import {Device} from 'react-native-ble-plx';
-
 export interface DiscoveredDevice {
   id: string; // stable identifier for UI (broadcast hash or device id)
   deviceId: string; // underlying BLE device id used for connections
   name: string | null;
   rssi: number;
-  device: Device;
+  device: any; // No longer using react-native-ble-plx Device type
   lastSeen: Date;
   broadcastPayload?: BroadcastPayload;
 }

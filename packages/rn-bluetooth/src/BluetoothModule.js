@@ -31,6 +31,7 @@ const mockModule = {
   startAdvertising: (displayName, userHashHex, followTokenHex) => Promise.resolve(),
   updateAdvertisement: (displayName, userHashHex, followTokenHex) => Promise.resolve(),
   stopAdvertising: () => Promise.resolve(),
+  sendConnectionResponse: (responseJson) => Promise.resolve(),
   isScanning: () => Promise.resolve(false),
   isAdvertising: () => Promise.resolve(false),
   isConnected: (deviceId) => Promise.resolve(false),
@@ -58,13 +59,12 @@ export function addBluetoothListener(listener) {
     return () => {};
   }
   
-  // Wrap listener to log events
+  // Wrap listener to pass events through silently
   const wrappedListener = (event) => {
-    if (event.type === 'deviceDiscovered') {
-      console.log('📱 [BluetoothModule] deviceDiscovered event received:');
-      console.log('  - deviceId:', event.deviceId);
-      console.log('  - rssi:', event.rssi);
-      console.log('  - payload:', JSON.stringify(event.payload));
+    // All events are silently passed to listeners with no logging
+    // Only log critical errors (non-debug)
+    if (event.type === 'error' && event.code !== 'DEBUG') {
+      console.error('❌ [BluetoothModule] Error:', event.message);
     }
     listener(event);
   };
@@ -102,8 +102,35 @@ export const Bluetooth = {
    * @returns Parsed ConnectionProfile object
    */
   readProfile: async (deviceId) => {
-    const profileJson = await BluetoothModule.readProfile(deviceId);
-    return JSON.parse(profileJson);
+    console.log(`📖 [BluetoothModule] Calling native readProfile for device: ${deviceId}`);
+    console.log(`📖 [BluetoothModule] Native module available: ${!!BluetoothModule.readProfile}`);
+    
+    // Add timeout
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Profile read timeout after 10 seconds')), 10000)
+    );
+    
+    const readPromise = BluetoothModule.readProfile(deviceId);
+    
+    try {
+      const profileJson = await Promise.race([readPromise, timeoutPromise]);
+      console.log(`✅ [BluetoothModule] Native readProfile returned (length: ${profileJson?.length} chars)`);
+      console.log(`📝 [BluetoothModule] Full profile JSON: ${profileJson}`);
+      
+      // Try to parse
+      const parsed = JSON.parse(profileJson);
+      console.log(`✅ [BluetoothModule] Successfully parsed profile:`, {
+        userId: parsed.userId?.substring(0, 10) + '...',
+        displayName: parsed.displayName,
+        hasPublicKey: !!parsed.publicKey,
+        publicKeyLength: parsed.publicKey?.length,
+      });
+      return parsed;
+    } catch (error) {
+      console.error(`❌ [BluetoothModule] Native readProfile failed:`, error);
+      console.error(`❌ [BluetoothModule] Problematic JSON string (length ${profileJson?.length}): "${profileJson}"`);
+      throw error;
+    }
   },
 
   /**
@@ -138,6 +165,15 @@ export const Bluetooth = {
     BluetoothModule.updateAdvertisement(displayName, userHashHex, followTokenHex),
 
   stopAdvertising: () => BluetoothModule.stopAdvertising(),
+
+  /**
+   * Send connection response via BLE notification
+   * @param response Connection response object
+   */
+  sendConnectionResponse: async (response) => {
+    const responseJson = JSON.stringify(response);
+    return BluetoothModule.sendConnectionResponse(responseJson);
+  },
 
   // Utility methods
   isScanning: () => BluetoothModule.isScanning(),

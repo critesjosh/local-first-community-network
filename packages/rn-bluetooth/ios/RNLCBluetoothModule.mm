@@ -76,8 +76,15 @@ RCT_EXPORT_METHOD(connect:(NSString *)deviceId
     return;
   }
 
-  [[BLECentralManager shared] connectWithDeviceId:uuid timeoutMs:(int)timeoutMs];
-  resolve(nil);
+  [[BLECentralManager shared] connectWithDeviceId:uuid
+                                         timeoutMs:(int)timeoutMs
+                                        completion:^(NSError * _Nullable error) {
+    if (error) {
+      reject(@"connection_error", error.localizedDescription, error);
+    } else {
+      resolve(nil);
+    }
+  }];
 }
 
 RCT_EXPORT_METHOD(disconnect:(NSString *)deviceId
@@ -98,16 +105,22 @@ RCT_EXPORT_METHOD(readProfile:(NSString *)deviceId
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
+  NSLog(@"[RNLCBluetoothModule] 📖 readProfile called from JS for device: %@", deviceId);
+  
   NSUUID *uuid = [[NSUUID alloc] initWithUUIDString:deviceId];
   if (uuid == nil) {
+    NSLog(@"[RNLCBluetoothModule] ❌ Invalid device ID format");
     reject(@"invalid_device_id", @"Invalid device ID format", nil);
     return;
   }
 
+  NSLog(@"[RNLCBluetoothModule] ✅ UUID parsed, calling BLECentralManager");
   [[BLECentralManager shared] readProfileWithDeviceId:uuid completion:^(NSString * _Nullable result, NSError * _Nullable error) {
     if (error) {
+      NSLog(@"[RNLCBluetoothModule] ❌ Read error: %@", error.localizedDescription);
       reject(@"read_error", error.localizedDescription, error);
     } else {
+      NSLog(@"[RNLCBluetoothModule] ✅ Read success, profile length: %lu", (unsigned long)result.length);
       resolve(result);
     }
   }];
@@ -190,6 +203,15 @@ RCT_EXPORT_METHOD(stopAdvertising:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
   [[BLEPeripheralManager shared] stopAdvertising];
+  resolve(nil);
+}
+
+RCT_EXPORT_METHOD(sendConnectionResponse:(NSString *)responseJson
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
+  NSLog(@"[RNLCBluetoothModule] 📤 sendConnectionResponse called");
+  [[BLEPeripheralManager shared] sendConnectionResponse:responseJson];
   resolve(nil);
 }
 

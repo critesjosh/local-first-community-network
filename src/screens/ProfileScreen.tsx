@@ -15,6 +15,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import IdentityService from '../services/IdentityService';
 import {User} from '../types/models';
+import {pickProfileImage, takeProfilePhoto, base64ToDataUri} from '../utils/imageUtils';
 
 const ProfileScreen = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -93,47 +94,74 @@ const ProfileScreen = () => {
   };
 
   const handleAddPhoto = async () => {
+    // Show options: camera or library
+    Alert.alert(
+      'Profile Photo',
+      'Choose a photo source',
+      [
+        {
+          text: 'Take Photo',
+          onPress: handleTakePhoto,
+        },
+        {
+          text: 'Choose from Library',
+          onPress: handleChoosePhoto,
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ],
+    );
+  };
+
+  const handleTakePhoto = async () => {
     try {
-      // Request permissions
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      setIsSaving(true);
+      const result = await takeProfilePhoto();
       
-      if (!permissionResult.granted) {
-        Alert.alert(
-          'Permission Required',
-          'Please allow access to your photo library to upload a profile picture.',
-        );
-        return;
-      }
-
-      // Launch image picker
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const imageUri = result.assets[0].uri;
-        setProfilePhoto(imageUri);
+      if (result) {
+        // Store as base64 for BLE transfer
+        const base64Image = result.base64;
+        setProfilePhoto(base64Image);
         
-        // Auto-save the profile with the new photo
-        setIsSaving(true);
-        try {
-          await IdentityService.updateProfile({
-            profilePhoto: imageUri,
-          });
-          await loadUserProfile();
-        } catch (error) {
-          Alert.alert('Error', 'Failed to save profile photo');
-          console.error('Error saving profile photo:', error);
-        } finally {
-          setIsSaving(false);
-        }
+        // Save to database
+        await IdentityService.updateProfile({
+          profilePhoto: base64Image,
+        });
+        await loadUserProfile();
+        Alert.alert('Success', 'Profile photo updated');
       }
     } catch (error) {
-      console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to select image');
+      console.error('Error taking photo:', error);
+      Alert.alert('Error', error.message || 'Failed to take photo');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleChoosePhoto = async () => {
+    try {
+      setIsSaving(true);
+      const result = await pickProfileImage();
+      
+      if (result) {
+        // Store as base64 for BLE transfer
+        const base64Image = result.base64;
+        setProfilePhoto(base64Image);
+        
+        // Save to database
+        await IdentityService.updateProfile({
+          profilePhoto: base64Image,
+        });
+        await loadUserProfile();
+        Alert.alert('Success', 'Profile photo updated');
+      }
+    } catch (error) {
+      console.error('Error choosing photo:', error);
+      Alert.alert('Error', error.message || 'Failed to select photo');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -177,7 +205,7 @@ const ProfileScreen = () => {
           >
             {profilePhoto ? (
               <Image 
-                source={{uri: profilePhoto}} 
+                source={{uri: base64ToDataUri(profilePhoto)}} 
                 style={styles.avatarImage}
               />
             ) : (

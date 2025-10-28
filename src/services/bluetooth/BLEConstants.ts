@@ -11,9 +11,9 @@ export const CHARACTERISTIC_PROFILE_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e
 export const CHARACTERISTIC_HANDSHAKE_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // Write: Connection handshake
 
 // BLE Configuration
-export const RSSI_THRESHOLD = -70; // dBm - proximity threshold (1-3 meters)
+export const RSSI_THRESHOLD = -85; // dBm - proximity threshold (~10 meters for better discovery)
 export const SCAN_TIMEOUT = 30000; // 30 seconds
-export const DEVICE_EXPIRY_TIME = 10000; // 10 seconds - remove devices not seen recently
+export const DEVICE_EXPIRY_TIME = 15000; // 15 seconds - remove devices not seen recently
 
 // Advertising configuration
 export const ADVERTISE_TX_POWER_LEVEL = 'Medium'; // Options: Low, Medium, High, Ultra
