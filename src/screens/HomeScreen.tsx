@@ -22,6 +22,7 @@ import IdentityService from '../services/IdentityService';
 import {addBluetoothListener} from '@localcommunity/rn-bluetooth';
 import {initLogger} from '../utils/logger';
 import ThreadService from '../services/ThreadService';
+import PostService from '../services/PostService';
 import {MainTabScreenProps} from '../types/navigation';
 
 interface RSVPState {
@@ -250,6 +251,21 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
     }
   };
 
+  const handleDeletePost = async (eventId: string) => {
+    try {
+      console.log('[HomeScreen] Deleting post:', eventId);
+      await PostService.deletePost(eventId);
+
+      // Remove from local state
+      setEvents(prevEvents => prevEvents.filter(e => e.id !== eventId));
+
+      console.log('[HomeScreen] Post deleted successfully');
+    } catch (error) {
+      console.error('[HomeScreen] Error deleting post:', error);
+      Alert.alert('Error', 'Failed to delete post. Please try again.');
+    }
+  };
+
   // Load thread reply counts
   useEffect(() => {
     const loadReplyCounts = async () => {
@@ -306,6 +322,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
 
   const renderEvent = ({item}: {item: Event}) => {
     const authorInfo = getAuthorInfo(item.authorId);
+    const isOwnPost = currentUser && currentUser.id === item.authorId;
     return (
       <EventCard
         event={item}
@@ -316,6 +333,8 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
         attendeeCount={rsvpState[item.id]?.count}
         onViewReplies={handleViewReplies}
         replyCount={threadReplyCounts[item.id]}
+        onDelete={handleDeletePost}
+        isOwnPost={isOwnPost}
       />
     );
   };

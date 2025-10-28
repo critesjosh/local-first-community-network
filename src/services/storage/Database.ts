@@ -67,7 +67,8 @@ class Database {
           encrypted_content TEXT,
           content_iv TEXT,
           wrapped_keys TEXT,
-          encrypted_for TEXT
+          encrypted_for TEXT,
+          deleted_at INTEGER
         );
 
         CREATE TABLE IF NOT EXISTS messages (
@@ -140,6 +141,14 @@ class Database {
       // Note: SQLite doesn't support DROP COLUMN easily, so we just ignore if it exists
       // New installs won't have the column, existing ones will have unused column (harmless)
       console.log('[Database] Note: wrapped_thread_keys column (if exists) is no longer used - event keys are reused for replies');
+
+      // Migration 5: Add deleted_at column to events table for soft delete
+      await this.db.execAsync(`
+        ALTER TABLE events ADD COLUMN deleted_at INTEGER;
+      `).catch(() => {
+        // Column already exists, ignore error
+        console.log('[Database] deleted_at column already exists');
+      });
 
       console.log('[Database] Migrations completed successfully');
     } catch (error) {
@@ -499,13 +508,23 @@ class Database {
   }
 
   /**
-   * Delete event
+   * Delete event (hard delete - use sparingly)
    */
   async deleteEvent(eventId: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
     const query = 'DELETE FROM events WHERE id = ?';
     await this.db.runAsync(query, [eventId]);
+  }
+
+  /**
+   * Soft delete event (mark as deleted, preserve for threads)
+   */
+  async softDeleteEvent(eventId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'UPDATE events SET deleted_at = ? WHERE id = ?';
+    await this.db.runAsync(query, [Date.now(), eventId]);
   }
 
   /**
@@ -517,8 +536,8 @@ class Database {
     const query = `
       INSERT OR REPLACE INTO events (
         id, author_id, title, description, datetime, location,
-        photo, created_at, updated_at, encrypted_content, content_iv, wrapped_keys
-      ) VALUES (?, ?, NULL, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?)
+        photo, created_at, updated_at, encrypted_content, content_iv, wrapped_keys, deleted_at
+      ) VALUES (?, ?, NULL, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?, ?)
     `;
 
     await this.db.runAsync(query, [
@@ -530,6 +549,7 @@ class Database {
       encryptedEvent.encryptedContent,
       encryptedEvent.iv,
       JSON.stringify(encryptedEvent.wrappedKeys),
+      encryptedEvent.deletedAt || null,
     ]);
   }
 
@@ -544,7 +564,7 @@ class Database {
 
     const query = `
       SELECT * FROM events
-      WHERE encrypted_content IS NOT NULL
+      WHERE encrypted_content IS NOT NULL AND deleted_at IS NULL
       ORDER BY datetime DESC
       LIMIT ? OFFSET ?
     `;
@@ -557,6 +577,7 @@ class Database {
       encryptedContent: row.encrypted_content,
       iv: row.content_iv,
       wrappedKeys: JSON.parse(row.wrapped_keys || '{}'),
+      deletedAt: row.deleted_at || undefined,
     }));
   }
 
@@ -580,6 +601,7 @@ class Database {
       encryptedContent: row.encrypted_content,
       iv: row.content_iv,
       wrappedKeys: JSON.parse(row.wrapped_keys || '{}'),
+      deletedAt: row.deleted_at || undefined,
     };
   }
 
