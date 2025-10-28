@@ -38,7 +38,7 @@ async function setupDatabase() {
         encrypted_content TEXT NOT NULL,
         iv VARCHAR(100) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (thread_id) REFERENCES posts(id) ON DELETE CASCADE
+        FOREIGN KEY (thread_id) REFERENCES posts(id)
       );
     `);
 
