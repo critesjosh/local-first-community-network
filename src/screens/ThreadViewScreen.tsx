@@ -109,7 +109,11 @@ const ThreadViewScreen: React.FC<Props> = ({route, navigation}) => {
             <Text style={styles.originalPostLabel}>Original Post</Text>
             {postAuthor && <Text style={styles.originalPostAuthor}>by {postAuthor}</Text>}
           </View>
-          {postContent && <Text style={styles.originalPostContent}>{postContent}</Text>}
+          {postContent ? (
+            <Text style={styles.originalPostContent}>{postContent}</Text>
+          ) : (
+            <Text style={styles.deletedPostContent}>[Post deleted by author]</Text>
+          )}
         </View>
 
         {/* Replies Section */}
@@ -210,6 +214,12 @@ const styles = StyleSheet.create({
   originalPostContent: {
     fontSize: 16,
     color: '#000',
+    lineHeight: 22,
+  },
+  deletedPostContent: {
+    fontSize: 16,
+    color: '#8E8E93',
+    fontStyle: 'italic',
     lineHeight: 22,
   },
   repliesSection: {

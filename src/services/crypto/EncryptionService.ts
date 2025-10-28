@@ -101,6 +101,7 @@ export interface EncryptedEvent {
       keyWrapIV: string; // base64 - IV for key wrapping
     };
   };
+  deletedAt?: number; // timestamp - present if post was soft-deleted
 }
 
 /**

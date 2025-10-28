@@ -22,6 +22,7 @@ async function setupDatabase() {
         encrypted_content TEXT NOT NULL,
         iv VARCHAR(100) NOT NULL,
         wrapped_keys JSONB NOT NULL,
+        deleted_at TIMESTAMP DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
