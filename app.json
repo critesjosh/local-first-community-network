@@ -77,9 +77,7 @@
       ],
       "./app.plugin.js"
     ],
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.1",
     "updates": {
       "url": "https://u.expo.dev/ccbafd9b-37cb-422b-a8a3-cb3a2f3d781e",
       "requestHeaders": {

@@ -49,11 +49,14 @@ RCT_EXPORT_METHOD(requestPermissions:(RCTPromiseResolveBlock)resolve
 RCT_EXPORT_METHOD(startScanning:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
+  NSLog(@"[RNLCBluetoothModule] startScanning called in Objective-C bridge");
   NSError *error = nil;
   [[BLECentralManager shared] startScanningAndReturnError:&error];
   if (error) {
+    NSLog(@"[RNLCBluetoothModule] startScanning failed: %@", error.localizedDescription);
     reject(@"scan_error", error.localizedDescription, error);
   } else {
+    NSLog(@"[RNLCBluetoothModule] startScanning completed successfully");
     resolve(nil);
   }
 }

@@ -32,6 +32,12 @@ class BLEPeripheralManager(
         private val PROFILE_CHAR_UUID = UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e")
         private val HANDSHAKE_CHAR_UUID = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e")
 
+        // ⚠️ PRODUCTION WARNING: Company ID 0x1337 is TEST ONLY
+        // Must obtain official Company Identifier from Bluetooth SIG before production release
+        // See: docs/BLE_PRODUCTION_READINESS.md
+        //
+        // Note: Android automatically handles Company ID in little-endian format (0x37, 0x13)
+        // when adding manufacturer data. The app payload does NOT include the Company ID.
         private const val MANUFACTURER_ID = 0x1337
         private const val BROADCAST_NAME_MAX_LENGTH = 12
         private const val USER_HASH_LENGTH = 6
@@ -63,7 +69,8 @@ class BLEPeripheralManager(
     fun setProfileData(profileJson: String, promise: Promise) {
         try {
             profileData = profileJson.toByteArray(Charsets.UTF_8)
-            Log.d("BLEPeripheralManager", "[" + System.currentTimeMillis() + "]  Profile data set")
+            Log.d("BLEPeripheralManager", "[" + System.currentTimeMillis() + "]  ✅ Profile data set: ${profileData!!.size} bytes")
+            Log.d("BLEPeripheralManager", "[" + System.currentTimeMillis() + "]  Profile JSON: ${profileJson.take(100)}...")
             promise.resolve(null)
         } catch (e: Exception) {
             promise.reject("profile_error", "Failed to set profile data: ${e.message}", e)
@@ -108,31 +115,33 @@ class BLEPeripheralManager(
             setupGattServer()
         }
 
-        // Build advertisement data
+        // Build manufacturer data payload
+        // NOTE: Company ID (0x1337) is added automatically by Android in little-endian format
+        // The manufacturerData array below does NOT include the Company ID - just the payload
         val manufacturerData = buildManufacturerData(displayName, userHashHex, followTokenHex)
         val hexData = manufacturerData.joinToString("") { "%02x".format(it) }
         Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] Built manufacturer data: ${manufacturerData.size} bytes, ID=$MANUFACTURER_ID")
         Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] Data hex: $hexData")
+        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] Company ID 0x1337 will be prepended as [0x37, 0x13] (little-endian) by Android")
 
-        // Main advertisement: ONLY Service UUID (minimal, stays well under 31-byte limit)
-        // This is what iOS filters on - it MUST be present for iOS to discover us
+        // Main advertisement: ONLY Service UUID (minimal, guaranteed to fit in 31 bytes)
         val advertiseData = AdvertiseData.Builder()
-            .setIncludeDeviceName(false)  // No name - keeps packet small
+            .setIncludeDeviceName(false)
             .setIncludeTxPowerLevel(false)
-            .addServiceUuid(ParcelUuid(SERVICE_UUID))  // CRITICAL: Service UUID for iOS filtering
+            .addServiceUuid(ParcelUuid(SERVICE_UUID))
             .build()
         
-        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] Advertising with:")
-        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}]   - Main advertisement: Service UUID ONLY (${SERVICE_UUID})")
-        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}]   - Scan response: ${manufacturerData.size} bytes manufacturer data")
-        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}]   - iOS will parse manufacturer data for device info")
-        
-        // Scan response: Manufacturer data for both iOS and Android to parse
-        // iOS has a parseManufacturerData() function that extracts displayName, userHash, followToken
+        // Scan response: Manufacturer data with device info
+        // This is sent only when iOS/Android requests it (separate from main advertisement)
         val scanResponse = AdvertiseData.Builder()
             .setIncludeDeviceName(false)
             .addManufacturerData(MANUFACTURER_ID, manufacturerData)
             .build()
+        
+        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] 📡 Advertising configuration:")
+        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}]   Main packet: Service UUID only")
+        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}]   Scan response: ${manufacturerData.size} bytes manufacturer data")
+        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}]   Total: ${16 + manufacturerData.size} bytes (main + scan response)")
 
         val advertiseSettings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)  // More frequent for better iOS discovery
@@ -142,7 +151,7 @@ class BLEPeripheralManager(
             .build()
 
         try {
-            Log.d("BLEPeripheralManager", "[" + System.currentTimeMillis() + "]  Calling bluetoothLeAdvertiser.startAdvertising() with scan response...")
+            Log.d("BLEPeripheralManager", "[" + System.currentTimeMillis() + "]  🚀 Starting BLE advertising with scan response")
             bluetoothLeAdvertiser.startAdvertising(advertiseSettings, advertiseData, scanResponse, advertiseCallback)
             // Note: isAdvertising will be set to true in onStartSuccess callback
             Log.d("BLEPeripheralManager", "[" + System.currentTimeMillis() + "]  startAdvertising() called, waiting for callback")
@@ -270,7 +279,9 @@ class BLEPeripheralManager(
             offset: Int,
             characteristic: BluetoothGattCharacteristic
         ) {
+            Log.d("BLEPeripheralManager", "[" + System.currentTimeMillis() + "]  📖 Read request from ${device.address} for char ${characteristic.uuid}")
             if (characteristic.uuid == PROFILE_CHAR_UUID) {
+                Log.d("BLEPeripheralManager", "[" + System.currentTimeMillis() + "]  📖 Profile read request, profileData is ${if (profileData == null) "NULL" else "${profileData!!.size} bytes"}")
                 if (profileData != null) {
                     val data = profileData!!
                     if (offset > data.size) {
@@ -363,6 +374,42 @@ class BLEPeripheralManager(
 
     // MARK: - Helper Methods
 
+    /**
+     * Build manufacturer data payload for BLE advertisement
+     *
+     * **Company ID Handling:**
+     * This function returns ONLY the payload data. The Company ID (0x1337) is automatically
+     * prepended by Android's addManufacturerData() in little-endian format (0x37, 0x13).
+     *
+     * **Binary Structure:**
+     * ```
+     * [version: 1 byte]
+     * [nameLength: 1 byte]
+     * [displayName: variable, max 12 bytes UTF-8]
+     * [userHash: 6 bytes]
+     * [followToken: 4 bytes]
+     * ```
+     *
+     * **Full BLE Packet (Android adds Company ID automatically):**
+     * ```
+     * [0x37, 0x13] <- Company ID (little-endian, added by Android)
+     * [0x01]       <- version
+     * [0x05]       <- nameLength (example: 5)
+     * ['A','l','i','c','e'] <- displayName (example: "Alice")
+     * [0xa1,0xb2,0xc3,0xd4,0xe5,0xf6] <- userHash (6 bytes)
+     * [0x12,0x34,0x56,0x78] <- followToken (4 bytes)
+     * ```
+     *
+     * **Cross-Platform Compatibility:**
+     * iOS and Android both parse this format when scanning. See:
+     * - iOS: BLECentralManager.parseManufacturerData() (receives data WITHOUT Company ID prefix)
+     * - Android: BLECentralManager.parseManufacturerData() (receives data WITHOUT Company ID prefix)
+     *
+     * @param displayName User's display name (will be truncated to 12 chars)
+     * @param userHashHex First 6 bytes of SHA-256(userId), hex encoded (12 chars)
+     * @param followTokenHex Random 4-byte token, hex encoded (8 chars)
+     * @return Byte array of manufacturer data payload (WITHOUT Company ID)
+     */
     private fun buildManufacturerData(
         displayName: String,
         userHashHex: String,
@@ -379,7 +426,8 @@ class BLEPeripheralManager(
         val userHashBytes = hexStringToBytes(userHashHex).take(USER_HASH_LENGTH).toByteArray()
         val followTokenBytes = hexStringToBytes(followTokenHex).take(FOLLOW_TOKEN_LENGTH).toByteArray()
 
-        // Build manufacturer data: [version, nameLength, name..., userHash..., followToken...]
+        // Build manufacturer data payload: [version, nameLength, name..., userHash..., followToken...]
+        // Company ID is NOT included here - Android adds it automatically
         return byteArrayOf(version, nameLength) +
                 nameBytes +
                 userHashBytes +

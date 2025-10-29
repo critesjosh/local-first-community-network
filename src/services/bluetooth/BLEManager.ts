@@ -140,8 +140,7 @@ class BLEManagerService {
 
     // Filter by RSSI threshold
     if (rssi < RSSI_THRESHOLD) {
-      // Silently filter weak signals
-      return;
+      return; // Silently filter weak signals
     }
 
     // Check if this is our own broadcast

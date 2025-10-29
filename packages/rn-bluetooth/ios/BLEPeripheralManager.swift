@@ -14,6 +14,9 @@ import CoreBluetooth
   private let PROFILE_CHAR_UUID = CBUUID(string: "6e400002-b5a3-f393-e0a9-e50e24dcca9e")
   private let HANDSHAKE_CHAR_UUID = CBUUID(string: "6e400003-b5a3-f393-e0a9-e50e24dcca9e")
 
+  // ⚠️ PRODUCTION WARNING: Company ID 0x1337 is TEST ONLY
+  // Must obtain official Company Identifier from Bluetooth SIG before production release
+  // See: docs/BLE_PRODUCTION_READINESS.md
   private let MANUFACTURER_ID: UInt16 = 0x1337
   private let BROADCAST_NAME_MAX_LENGTH = 12
   private let USER_HASH_LENGTH = 6
@@ -241,6 +244,23 @@ import CoreBluetooth
 
   // MARK: - Advertisement Data Builder
 
+  /// Build iOS-compatible advertisement data
+  ///
+  /// **iOS Limitation:** iOS does NOT allow apps to set Manufacturer Specific Data
+  /// or Service Data in advertisements. Only Service UUIDs and Local Name are allowed.
+  ///
+  /// **Solution:** Encode discovery data in Local Name using custom format:
+  /// Format: "LCNS:<displayName>:<userHashHex>:<followTokenHex>"
+  /// Example: "LCNS:Alice:a1b2c3d4e5f6:12345678"
+  ///
+  /// **Cross-Platform:** Android devices parse this Local Name format when scanning
+  /// iOS devices. See BLECentralManager.parseLocalName() for parsing logic.
+  ///
+  /// - Parameters:
+  ///   - displayName: User's display name (truncated to 12 chars)
+  ///   - userHashHex: First 6 bytes of SHA-256(userId), hex encoded (12 chars)
+  ///   - followTokenHex: Random 4-byte token, hex encoded (8 chars)
+  /// - Returns: Advertisement data dictionary for CBPeripheralManager
   private func buildAdvertisementData(
     displayName: String,
     userHashHex: String,
@@ -250,12 +270,14 @@ import CoreBluetooth
     var advertisementData: [String: Any] = [:]
 
     // Add service UUID - THIS IS CRITICAL FOR DISCOVERY
+    // Both iOS and Android devices filter scans by this UUID
     advertisementData[CBAdvertisementDataServiceUUIDsKey] = [SERVICE_UUID]
     print("  - Service UUID: \(SERVICE_UUID.uuidString)")
     print("  - ⚠️  IMPORTANT: This service UUID must match what scanners are looking for!")
 
     // Encode data in local name (iOS doesn't allow custom manufacturer data)
     // Format: "LCNS:<displayName>:<userHash>:<followToken>"
+    // LCNS = Local Community Network Service (custom prefix)
     let normalizedName = normalizeName(displayName)
     let encodedName = "LCNS:\(normalizedName):\(userHashHex):\(followTokenHex)"
     advertisementData[CBAdvertisementDataLocalNameKey] = encodedName
@@ -268,12 +290,39 @@ import CoreBluetooth
     return advertisementData
   }
 
+  /// ⚠️ UNUSED: Build manufacturer data (iOS CANNOT use this for advertising)
+  ///
+  /// **Why This Exists:**
+  /// This function is kept as a REFERENCE for the Android manufacturer data format.
+  /// It documents the binary structure that iOS must PARSE when scanning Android devices.
+  ///
+  /// **iOS Limitation:**
+  /// iOS applications CANNOT set Manufacturer Specific Data in advertisements.
+  /// This is an Apple platform restriction, not a CoreBluetooth limitation.
+  ///
+  /// **What iOS Does Instead:**
+  /// iOS uses `buildAdvertisementData()` which encodes data in the Local Name field.
+  ///
+  /// **Manufacturer Data Format (Android uses this):**
+  /// ```
+  /// [Company ID: 2 bytes, little-endian - handled by platform]
+  /// [version: 1 byte]
+  /// [nameLength: 1 byte]
+  /// [displayName: variable, max 12 bytes UTF-8]
+  /// [userHash: 6 bytes]
+  /// [followToken: 4 bytes]
+  /// ```
+  ///
+  /// See: BLECentralManager.parseManufacturerData() for iOS parsing of Android advertisements
+  /// See: packages/rn-bluetooth/android/.../BLEPeripheralManager.kt for actual Android usage
+  ///
+  /// - Returns: Manufacturer data payload (NOT used in iOS advertising)
   private func buildManufacturerData(
     displayName: String,
     userHashHex: String,
     followTokenHex: String
   ) -> Data {
-    print("[BLEPeripheralManager] 🏗️ Building manufacturer data:")
+    print("[BLEPeripheralManager] 🏗️ Building manufacturer data (REFERENCE ONLY - NOT USED FOR ADVERTISING):")
     print("  - displayName: \(displayName)")
     print("  - userHashHex: \(userHashHex)")
     print("  - followTokenHex: \(followTokenHex)")
@@ -281,6 +330,8 @@ import CoreBluetooth
     var data = Data()
 
     // Manufacturer ID (2 bytes, little-endian)
+    // NOTE: In actual Android advertising, the platform handles this automatically
+    // This is only here for documentation of the full format
     var manufacturerId = MANUFACTURER_ID
     data.append(Data(bytes: &manufacturerId, count: 2))
 

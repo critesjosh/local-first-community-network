@@ -32,6 +32,12 @@ class BLECentralManager(
         private val PROFILE_CHAR_UUID = UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e")
         private val HANDSHAKE_CHAR_UUID = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e")
 
+        // ⚠️ PRODUCTION WARNING: Company ID 0x1337 is TEST ONLY
+        // Must obtain official Company Identifier from Bluetooth SIG before production release
+        // See: docs/BLE_PRODUCTION_READINESS.md
+        //
+        // Note: When parsing, getManufacturerSpecificData() returns data WITHOUT the Company ID prefix
+        // The Company ID is used as a filter key, and the returned data is just the payload
         private const val MANUFACTURER_ID = 0x1337
         private const val RSSI_THRESHOLD = -70
         private const val USER_HASH_LENGTH = 6
@@ -478,6 +484,31 @@ class BLECentralManager(
         return "$deviceId#${charUuid}"
     }
 
+    /**
+     * Parse Android manufacturer data format (used by Android devices when advertising)
+     *
+     * **Company ID Handling:**
+     * The data parameter does NOT include the 2-byte Company ID.
+     * Android's getManufacturerSpecificData(MANUFACTURER_ID) returns only the payload.
+     * The Company ID (0x1337) is used as a lookup key, not included in the returned data.
+     *
+     * **Binary Structure:**
+     * ```
+     * Offset  Size  Field          Description
+     * ──────────────────────────────────────────────
+     * 0       1     version        Protocol version (currently 1)
+     * 1       1     nameLength     Length of display name in bytes
+     * 2       N     displayName    UTF-8 encoded name (max 12 bytes)
+     * 2+N     6     userHash       First 6 bytes of SHA-256(userId)
+     * 8+N     4     followToken    Random 4-byte token
+     * ```
+     *
+     * **Cross-Platform:**
+     * Both iOS and Android use this function to parse Android advertisements.
+     *
+     * @param data Manufacturer data payload (WITHOUT Company ID prefix)
+     * @return WritableMap with parsed fields for React Native
+     */
     private fun parseManufacturerData(data: ByteArray): com.facebook.react.bridge.WritableMap {
         val result = Arguments.createMap()
 
@@ -541,9 +572,21 @@ class BLECentralManager(
     }
 
     /**
-     * Parse iOS-style local name format
-     * Format: "LCNS:displayName:userHashHex:followTokenHex"
-     * Example: "LCNS:JohnDoe:a1b2c3d4e5f6:12345678"
+     * Parse iOS local name format (used by iOS devices when advertising)
+     *
+     * **Format:** "LCNS:<displayName>:<userHashHex>:<followTokenHex>"
+     * **Example:** "LCNS:Alice:a1b2c3d4e5f6:12345678"
+     *
+     * **Why Local Name?**
+     * iOS cannot set Manufacturer Specific Data in advertisements (Apple restriction).
+     * Instead, iOS encodes discovery data in the Local Name field using this custom format.
+     *
+     * **Cross-Platform:**
+     * Both iOS and Android use this function to parse iOS advertisements.
+     * LCNS = Local Community Network Service (custom prefix to identify our format)
+     *
+     * @param localName The device's local name from advertisement
+     * @return WritableMap with parsed fields for React Native
      */
     private fun parseLocalName(localName: String): com.facebook.react.bridge.WritableMap {
         val result = Arguments.createMap()

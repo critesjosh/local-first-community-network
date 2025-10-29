@@ -15,6 +15,10 @@ import CoreBluetooth
   private let HANDSHAKE_CHAR_UUID = CBUUID(string: "6e400003-b5a3-f393-e0a9-e50e24dcca9e")
 
   private let RSSI_THRESHOLD: Int = -85  // More permissive for better discovery (~10 meters)
+  
+  // ⚠️ PRODUCTION WARNING: Company ID 0x1337 is TEST ONLY
+  // Must obtain official Company Identifier from Bluetooth SIG before production release
+  // See: docs/BLE_PRODUCTION_READINESS.md
   private let MANUFACTURER_ID: UInt16 = 0x1337
   private let USER_HASH_LENGTH = 6
   private let FOLLOW_TOKEN_LENGTH = 4
@@ -123,8 +127,11 @@ import CoreBluetooth
   // MARK: - Scanning
 
   @objc public func startScanning() throws {
-    print("[BLECentralManager] ⚡️ startScanning() called from Objective-C bridge")
-    print("[BLECentralManager] startScanning called - state: \(centralManager.state.rawValue)")
+    NSLog("[BLECentralManager] ⚡️ startScanning() called from Objective-C bridge")
+    NSLog("[BLECentralManager] startScanning called - state: %d", Int(centralManager.state.rawValue))
+    
+    // DIAGNOSTIC: Log to React Native console too
+    EventEmitter.shared?.sendDebug(message: "🔍 iOS startScanning called - Bluetooth state: \(centralManager.state.rawValue)", category: "scan")
     
     // Provide detailed error messages based on state
     guard centralManager.state == .poweredOn else {
@@ -144,7 +151,8 @@ import CoreBluetooth
         errorMessage = "Bluetooth is not ready (state: \(centralManager.state.rawValue))"
       }
       
-      print("[BLECentralManager] ❌ Cannot scan: \(errorMessage)")
+      NSLog("[BLECentralManager] ❌ Cannot scan: %@", errorMessage)
+      EventEmitter.shared?.sendDebug(message: "❌ Cannot scan: \(errorMessage)", category: "scan")
       throw NSError(
         domain: "com.rnbluetooth",
         code: 1,
@@ -153,26 +161,29 @@ import CoreBluetooth
     }
 
     if isScanning {
-      print("[BLECentralManager] Already scanning, skipping")
+      NSLog("[BLECentralManager] Already scanning, skipping")
+      EventEmitter.shared?.sendDebug(message: "⚠️ Already scanning, skipping duplicate call", category: "scan")
       return
     }
 
-    print("[BLECentralManager] ✅ Starting BLE scan for service: \(SERVICE_UUID)")
-    print("[BLECentralManager]    Service UUID string: \(SERVICE_UUID.uuidString)")
-    print("[BLECentralManager]    RSSI threshold: \(RSSI_THRESHOLD) dBm")
-    print("[BLECentralManager]    Allow duplicates: true")
+    NSLog("[BLECentralManager] ✅ Starting BLE scan (NO filter, like Android)")
+    NSLog("[BLECentralManager]    RSSI threshold: %d dBm", Int(RSSI_THRESHOLD))
+    NSLog("[BLECentralManager]    Allow duplicates: true")
+    NSLog("[BLECentralManager]    Will filter by Manufacturer ID: 0x%04X in callback", Int(MANUFACTURER_ID))
+    EventEmitter.shared?.sendDebug(message: "✅ Starting scan WITHOUT filter (Android-style)", category: "scan")
     isScanning = true
     let options: [String: Any] = [
       CBCentralManagerScanOptionAllowDuplicatesKey: true
     ]
-    // Scan specifically for our service UUID - this is required for reliable discovery
-    // iOS requires service-based scanning to work properly
+    // Scan WITHOUT service UUID filter (like Android does)
+    // We'll filter by Manufacturer ID in the didDiscover callback instead
     centralManager.scanForPeripherals(
-      withServices: [SERVICE_UUID],  // MUST match Android's advertised Service UUID
+      withServices: nil,  // NO filter - discover all devices
       options: options
     )
-    print("[BLECentralManager] 🔍 Scan started successfully")
-    print("[BLECentralManager] 👂 Now listening for peripherals advertising service: \(SERVICE_UUID.uuidString)")
+    NSLog("[BLECentralManager] 🔍 Scan started successfully (no OS-level filter)")
+    NSLog("[BLECentralManager] 👂 Will filter by manufacturer data in callback")
+    EventEmitter.shared?.sendDebug(message: "👂 Listening for ALL devices, filtering by MFG data...", category: "scan")
   }
 
 @objc public func stopScanning() {
@@ -486,6 +497,19 @@ import CoreBluetooth
     return "\(deviceId.uuidString)#\(serviceUUID.uuidString)#\(charUUID.uuidString)"
   }
 
+  /// Parse iOS Local Name format (used by iOS devices when advertising)
+  ///
+  /// **Format:** "LCNS:<displayName>:<userHashHex>:<followTokenHex>"
+  /// **Example:** "LCNS:Alice:a1b2c3d4e5f6:12345678"
+  ///
+  /// **Cross-Platform:** Android devices use this function to parse iOS advertisements.
+  /// iOS devices use this function to parse other iOS advertisements.
+  ///
+  /// **Why Local Name?** iOS cannot set Manufacturer Specific Data in advertisements,
+  /// so we encode discovery data in the Local Name field using a custom format.
+  ///
+  /// - Parameter localName: The CBAdvertisementDataLocalNameKey value
+  /// - Returns: Dictionary with parsed fields, or nil if format is invalid
   private func parseLocalName(_ localName: String) -> [String: Any]? {
     // Expected format: "LCNS:<displayName>:<userHash>:<followToken>"
     print("[BLECentralManager] Parsing local name: \(localName)")
@@ -517,6 +541,33 @@ import CoreBluetooth
     ]
   }
   
+  /// Parse Android Manufacturer Data format (used by Android devices when advertising)
+  ///
+  /// **Format:** [version][nameLength][name...][userHash][followToken]
+  /// **Example bytes:** [0x01, 0x05, 'A', 'l', 'i', 'c', 'e', 0xa1, 0xb2, ...]
+  ///
+  /// **Company ID Handling:** The data parameter does NOT include the 2-byte Company ID.
+  /// iOS CoreBluetooth provides it separately in the advertisement data dictionary key.
+  /// The Company ID (0x1337) is used to filter, and this data is just the payload.
+  ///
+  /// **Endianness:** Company ID is little-endian in the BLE packet (0x37, 0x13),
+  /// but iOS has already extracted it for us. This data starts with version byte.
+  ///
+  /// **Cross-Platform:** iOS and Android both use this function to parse Android advertisements.
+  ///
+  /// **Binary Structure:**
+  /// ```
+  /// Offset  Size  Field          Description
+  /// ──────────────────────────────────────────────
+  /// 0       1     version        Protocol version (currently 1)
+  /// 1       1     nameLength     Length of display name in bytes
+  /// 2       N     displayName    UTF-8 encoded name (max 12 bytes)
+  /// 2+N     6     userHash       First 6 bytes of SHA-256(userId)
+  /// 8+N     4     followToken    Random 4-byte token
+  /// ```
+  ///
+  /// - Parameter data: The Manufacturer Specific Data (WITHOUT Company ID prefix)
+  /// - Returns: Dictionary with parsed fields, or nil if format is invalid
   private func parseManufacturerData(_ data: Data) -> [String: Any]? {
     // Expected Android format: [version (1), nameLength (1), name..., userHash (6), followToken (4)]
     // Note: Manufacturer ID is NOT in the data - iOS strips it and puts it in a separate dictionary key
@@ -615,42 +666,98 @@ extension BLECentralManager: CBCentralManagerDelegate {
     rssi RSSI: NSNumber
   ) {
     // Log ALL discovered peripherals for debugging
+    // ANDROID-STYLE FILTERING: Check if device has our data BEFORE logging
+    // This matches how Android's BLECentralManager filters in the callback
+    var hasOurData = false
+    var filterReason = "unknown"
+    
+    // Check 1: Does it have our Service UUID?
+    if let serviceUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] {
+      if serviceUUIDs.contains(SERVICE_UUID) {
+        hasOurData = true
+        filterReason = "has our Service UUID"
+      }
+    }
+    
+    // Check 2: Does it have our Manufacturer ID? (Android devices)
+    if !hasOurData {
+      if let mfgData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data, mfgData.count >= 2 {
+        // First 2 bytes are Company ID in little-endian
+        let companyId = UInt16(mfgData[0]) | (UInt16(mfgData[1]) << 8)
+        if companyId == MANUFACTURER_ID {
+          hasOurData = true
+          filterReason = "has our Manufacturer ID (0x\(String(format: "%04X", MANUFACTURER_ID)))"
+        }
+      }
+    }
+    
+    // Check 3: Does it have "LCNS:" in local name? (iOS devices)
+    if !hasOurData {
+      if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String {
+        if localName.starts(with: "LCNS:") {
+          hasOurData = true
+          filterReason = "has LCNS in local name"
+        }
+      }
+    }
+    
+    // FILTER: Ignore devices that don't have our data
+    if !hasOurData {
+      // Silently ignore - this is normal (most BLE devices aren't ours)
+      return
+    }
+    
+    // MATCHED! This device has our data, process it
+    NSLog("[BLECentralManager] 🎯 MATCHED device: %@ (reason: %@)", peripheral.identifier.uuidString, filterReason)
     print("[BLECentralManager] 📱 Discovered peripheral: \(peripheral.identifier)")
     print("[BLECentralManager]    Name: \(peripheral.name ?? "nil")")
     print("[BLECentralManager]    RSSI: \(RSSI) dBm")
+    print("[BLECentralManager]    Filter reason: \(filterReason)")
     
-    // Log all advertisement data keys to see what we're receiving
-    print("[BLECentralManager]    Advertisement data keys: \(advertisementData.keys.joined(separator: ", "))")
-    
-    // DIAGNOSTIC: Send to JavaScript console too
-    let deviceSummary = "📱 iOS DISCOVERED: id=\(peripheral.identifier.uuidString.prefix(8)), rssi=\(RSSI)"
+    // DIAGNOSTIC: Send to JavaScript console too - THIS WILL SHOW IN YOUR APP!
+    let deviceSummary = "📱 iOS DISCOVERED: id=\(peripheral.identifier.uuidString.prefix(8)), name=\(peripheral.name ?? "nil"), rssi=\(RSSI), reason=\(filterReason)"
+    print("[BLECentralManager] 🚨 SENDING TO JS CONSOLE: \(deviceSummary)")
     EventEmitter.shared?.sendDebug(message: deviceSummary, category: "discovery")
     
     // DIAGNOSTIC: Check for manufacturer data
-    var hasMfgData = false
     if let mfgData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data {
       let hexString = mfgData.map { String(format: "%02x", $0) }.joined()
       print("[BLECentralManager]    🔑 HAS MANUFACTURER DATA: \(mfgData.count) bytes = \(hexString)")
       EventEmitter.shared?.sendDebug(message: "  ✅ Has manufacturer data: \(mfgData.count) bytes", category: "discovery")
-      hasMfgData = true
     } else {
       print("[BLECentralManager]    ⚠️  NO manufacturer data")
       EventEmitter.shared?.sendDebug(message: "  ⚠️  No manufacturer data", category: "discovery")
     }
     
     // DIAGNOSTIC: Check for local name
-    var hasLocalName = false
     if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String {
       print("[BLECentralManager]    🔑 HAS LOCAL NAME: \(localName)")
       EventEmitter.shared?.sendDebug(message: "  ✅ Has local name: \(localName)", category: "discovery")
-      hasLocalName = true
     } else {
       print("[BLECentralManager]    ⚠️  NO local name")
       EventEmitter.shared?.sendDebug(message: "  ⚠️  No local name", category: "discovery")
     }
     
+    // DIAGNOSTIC: Check for service UUIDs - THIS IS CRITICAL!
+    if let serviceUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] {
+      let uuidStrings = serviceUUIDs.map { $0.uuidString }.joined(separator: ", ")
+      NSLog("[BLECentralManager]    📡 Service UUIDs: %@", uuidStrings)
+      print("[BLECentralManager]    📡 Service UUIDs: \(uuidStrings)")
+      EventEmitter.shared?.sendDebug(message: "  📡 Service UUIDs: \(uuidStrings)", category: "discovery")
+      
+      // Check if our service UUID is present
+      let hasOurUUID = serviceUUIDs.contains(SERVICE_UUID)
+      if hasOurUUID {
+        NSLog("[BLECentralManager]    ✅ HAS OUR SERVICE UUID!")
+        EventEmitter.shared?.sendDebug(message: "  ✅ HAS OUR SERVICE UUID!", category: "discovery")
+      }
+    } else {
+      NSLog("[BLECentralManager]    ⚠️  NO service UUIDs in advertisement")
+      print("[BLECentralManager]    ⚠️  NO service UUIDs in advertisement")
+      EventEmitter.shared?.sendDebug(message: "  ⚠️  NO service UUIDs", category: "discovery")
+    }
+    
     // Check if it has our service UUID
-    var hasOurUUID = false
     if let serviceUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] {
       let uuidStrings = serviceUUIDs.map { $0.uuidString }
       print("[BLECentralManager]    Service UUIDs: \(uuidStrings.joined(separator: ", "))")
@@ -658,7 +765,6 @@ extension BLECentralManager: CBCentralManagerDelegate {
       if serviceUUIDs.contains(SERVICE_UUID) {
         print("[BLECentralManager]    ✅ HAS OUR SERVICE UUID!")
         EventEmitter.shared?.sendDebug(message: "  ✅ HAS OUR SERVICE UUID!", category: "discovery")
-        hasOurUUID = true
       } else {
         print("[BLECentralManager]    ⚠️  Does not have our service UUID")
         EventEmitter.shared?.sendDebug(message: "  ⚠️  Does not have our service UUID", category: "discovery")
@@ -668,10 +774,10 @@ extension BLECentralManager: CBCentralManagerDelegate {
       EventEmitter.shared?.sendDebug(message: "  ⚠️  No service UUIDs advertised", category: "discovery")
     }
     
-    // Filter by RSSI threshold
+    // TEMPORARILY DISABLED: Filter by RSSI threshold for testing
     if RSSI.intValue < RSSI_THRESHOLD {
-      print("[BLECentralManager]    ⛔️ Filtered out: RSSI too weak (\(RSSI) < \(RSSI_THRESHOLD))")
-      return
+      print("[BLECentralManager]    ⚠️  RSSI below threshold but allowing for testing (\(RSSI) < \(RSSI_THRESHOLD))")
+      // TESTING: Don't return, allow discovery anyway
     }
 
     print("[BLECentralManager] ✅ Device passed RSSI threshold, processing...")
@@ -695,12 +801,19 @@ extension BLECentralManager: CBCentralManagerDelegate {
     // If no local name, try Android format (manufacturer data)
     if payload == nil {
       if let manufacturerData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data {
-        print("[BLECentralManager] Found manufacturer data: \(manufacturerData.count) bytes")
+        let hexString = manufacturerData.map { String(format: "%02x", $0) }.joined()
+        NSLog("[BLECentralManager] Found manufacturer data: %d bytes = %@", manufacturerData.count, hexString)
+        print("[BLECentralManager] Found manufacturer data: \(manufacturerData.count) bytes = \(hexString)")
         payload = parseManufacturerData(manufacturerData)
         if let displayName = payload?["displayName"] as? String {
+          NSLog("[BLECentralManager] ✅ Parsed device name from manufacturer data: %@", displayName)
           print("[BLECentralManager] ✅ Parsed device name from manufacturer data: \(displayName)")
+        } else {
+          NSLog("[BLECentralManager] ❌ Failed to parse manufacturer data!")
+          print("[BLECentralManager] ❌ Failed to parse manufacturer data!")
         }
       } else {
+        NSLog("[BLECentralManager] ⚠️ No local name or manufacturer data in advertisement")
         print("[BLECentralManager] ⚠️ No local name or manufacturer data in advertisement")
       }
     }

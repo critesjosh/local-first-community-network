@@ -91,7 +91,9 @@ export const Bluetooth = {
   requestPermissions: () => BluetoothModule.requestPermissions(),
 
   // Central role methods
-  startScanning: () => BluetoothModule.startScanning(),
+  startScanning: () => {
+    return BluetoothModule.startScanning();
+  },
   stopScanning: () => BluetoothModule.stopScanning(),
   connect: (deviceId, timeoutMs = 10000) => BluetoothModule.connect(deviceId, timeoutMs),
   disconnect: (deviceId) => BluetoothModule.disconnect(deviceId),
