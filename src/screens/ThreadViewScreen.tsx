@@ -10,7 +10,8 @@ import {
 } from 'react-native';
 import ThreadService from '../services/ThreadService';
 import ConnectionService from '../services/ConnectionService';
-import {ThreadReply, Connection} from '../types/models';
+import IdentityService from '../services/IdentityService';
+import {ThreadReply, Connection, User} from '../types/models';
 import ThreadReplyCard from '../components/threads/ThreadReplyCard';
 import ReplyComposer from '../components/threads/ReplyComposer';
 import {RootStackScreenProps} from '../types/navigation';
@@ -21,6 +22,7 @@ const ThreadViewScreen: React.FC<Props> = ({route, navigation}) => {
   const {threadId, postContent, postAuthor} = route.params;
   const [replies, setReplies] = useState<ThreadReply[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [composerVisible, setComposerVisible] = useState(false);
@@ -48,7 +50,16 @@ const ThreadViewScreen: React.FC<Props> = ({route, navigation}) => {
 
   const initialize = useCallback(async () => {
     setLoading(true);
-    await Promise.all([loadReplies(), loadConnections()]);
+    try {
+      const [, , user] = await Promise.all([
+        loadReplies(),
+        loadConnections(),
+        IdentityService.getCurrentUser(),
+      ]);
+      setCurrentUser(user);
+    } catch (error) {
+      console.error('[ThreadViewScreen] Error initializing:', error);
+    }
     setLoading(false);
   }, [loadReplies, loadConnections]);
 
@@ -76,12 +87,39 @@ const ThreadViewScreen: React.FC<Props> = ({route, navigation}) => {
     initialize();
   }, [initialize]);
 
+  // Auto-refresh: Poll for new replies every 10 seconds
+  useEffect(() => {
+    console.log('[ThreadViewScreen] Setting up auto-refresh (10s interval)');
+
+    const intervalId = setInterval(async () => {
+      console.log('[ThreadViewScreen] Auto-refreshing replies...');
+      await loadReplies();
+    }, 10000); // 10 seconds
+
+    return () => {
+      console.log('[ThreadViewScreen] Cleaning up auto-refresh');
+      clearInterval(intervalId);
+    };
+  }, [loadReplies]);
+
   const getAuthorName = (authorId: string): string => {
+    // Check if it's the current user
+    if (currentUser && currentUser.id === authorId) {
+      return currentUser.displayName;
+    }
+
+    // Look up in connections
     const connection = connections.find(c => c.userId === authorId);
     return connection?.displayName || 'Unknown';
   };
 
   const getAuthorPhoto = (authorId: string): string | undefined => {
+    // Check if it's the current user
+    if (currentUser && currentUser.id === authorId) {
+      return currentUser.profilePhoto;
+    }
+
+    // Look up in connections
     const connection = connections.find(c => c.userId === authorId);
     return connection?.profilePhoto;
   };

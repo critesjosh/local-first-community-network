@@ -107,8 +107,22 @@ This implementation plan outlines the development of a 1-month MVP for the Local
   - End-to-end encryption tested and working between physical devices
   - Alice and Bob successfully encrypt/decrypt posts using ECDH-derived shared secrets
 
+- ✅ **Threading & Replies with Auto-Refresh** (2025-10-28)
+  - Backend thread reply endpoints (POST/GET /api/threads/:threadId/replies, GET reply count)
+  - Replies encrypted with shared thread key (no per-recipient key wrapping needed)
+  - ThreadEncryptionService for encrypting/decrypting replies
+  - ThreadViewScreen with reply UI and author display
+  - Auto-refresh polling: HomeScreen (15s for posts), ThreadViewScreen (10s for replies)
+  - Post deletion with authorization (only author can delete)
+  - Soft delete preserves threads (deleted_at column)
+  - Database caching: Posts and replies from REST API cached locally for offline access
+  - Reply count fetched from backend API endpoint
+  - Rate limiting increased to 300 requests per 15 min (supports polling)
+  - Fixed reply author display (checks current user first)
+  - Fixed DELETE authentication (includes authorId in body with signature)
+
 **In Progress:**
-- Week 3: Server Backend & API Integration (REST API complete, deploy to production pending)
+- Week 3: Server Backend & API Integration (100% complete)
 - Planning Month 2 OrbitDB storage layer migration (architecture documented)
 
 **Next Up:**

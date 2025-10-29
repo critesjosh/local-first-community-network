@@ -146,7 +146,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
     };
   }, []);
 
-  const loadEvents = async () => {
+  const loadEvents = useCallback(async () => {
     try {
       // Get current user
       const user = await IdentityService.getCurrentUser();
@@ -154,12 +154,14 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
 
       // Get all encrypted events from storage provider (local for MVP, REST/OrbitDB later)
       const encryptedEvents = await PostStorageService.fetchPosts(0); // Fetch all events since epoch
+      console.log(`[HomeScreen] Fetched ${encryptedEvents.length} encrypted events`);
 
       // Get all connections for decryption
       const fetchedConnections = await ConnectionService.getConnections();
       setConnections(fetchedConnections);
 
       if (fetchedConnections.length === 0) {
+        console.log('[HomeScreen] No connections, clearing events');
         setEvents([]);
         return;
       }
@@ -181,6 +183,8 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
         }
       }
 
+      console.log(`[HomeScreen] Decrypted ${decryptedEvents.length} events`);
+
       // Sort by createdAt (newest first)
       decryptedEvents.sort((a, b) => {
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -193,7 +197,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []); // Empty deps - function doesn't depend on any props/state
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -254,39 +258,65 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
   const handleDeletePost = async (eventId: string) => {
     try {
       console.log('[HomeScreen] Deleting post:', eventId);
-      await PostService.deletePost(eventId);
 
-      // Remove from local state
-      setEvents(prevEvents => prevEvents.filter(e => e.id !== eventId));
+      // Optimistically update UI first
+      setEvents(prevEvents => {
+        const filtered = prevEvents.filter(e => e.id !== eventId);
+        console.log(`[HomeScreen] Filtered events: ${prevEvents.length} -> ${filtered.length}`);
+        return filtered;
+      });
+
+      // Then delete from server/database
+      await PostService.deletePost(eventId);
 
       console.log('[HomeScreen] Post deleted successfully');
     } catch (error) {
       console.error('[HomeScreen] Error deleting post:', error);
       Alert.alert('Error', 'Failed to delete post. Please try again.');
+      // Reload events on error to restore state
+      await loadEvents();
     }
   };
 
-  // Load thread reply counts
+  // Load thread reply counts for all events (every event can have replies)
   useEffect(() => {
     const loadReplyCounts = async () => {
+      console.log(`[HomeScreen] Loading reply counts for ${events.length} events`);
       const counts: {[threadId: string]: number} = {};
       for (const event of events) {
-        if (event.isThread) {
-          try {
-            const count = await ThreadService.getReplyCount(event.id);
-            counts[event.id] = count;
-          } catch (error) {
-            console.error(`[HomeScreen] Error loading reply count for ${event.id}:`, error);
+        try {
+          const count = await ThreadService.getReplyCount(event.id);
+          counts[event.id] = count;
+          if (count > 0) {
+            console.log(`[HomeScreen] Event ${event.id.substring(0, 8)} has ${count} replies`);
           }
+        } catch (error) {
+          console.error(`[HomeScreen] Error loading reply count for ${event.id}:`, error);
         }
       }
       setThreadReplyCounts(counts);
+      console.log(`[HomeScreen] Reply counts loaded:`, counts);
     };
 
     if (events.length > 0) {
       loadReplyCounts();
     }
   }, [events]);
+
+  // Auto-refresh: Poll for new posts every 15 seconds
+  useEffect(() => {
+    console.log('[HomeScreen] Setting up auto-refresh (15s interval)');
+
+    const intervalId = setInterval(async () => {
+      console.log('[HomeScreen] Auto-refreshing posts...');
+      await loadEvents();
+    }, 15000); // 15 seconds
+
+    return () => {
+      console.log('[HomeScreen] Cleaning up auto-refresh');
+      clearInterval(intervalId);
+    };
+  }, [loadEvents]); // Depend on loadEvents
 
   // Load events when screen comes into focus
   useFocusEffect(

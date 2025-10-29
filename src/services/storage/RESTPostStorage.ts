@@ -16,6 +16,7 @@ import {EncryptedThreadReply} from '../../types/models';
 import IdentityService from '../IdentityService';
 import KeyManager from '../crypto/KeyManager';
 import {sha256} from '@noble/hashes/sha2.js';
+import Database from './Database';
 
 const keyManager = new KeyManager();
 
@@ -96,6 +97,7 @@ class RESTPostStorage implements PostStorageProvider {
    * Fetch encrypted events from REST API
    *
    * No authentication required for GET (events are encrypted anyway)
+   * Posts are automatically cached in local database for offline access
    */
   async fetchPosts(since: number, limit?: number): Promise<EncryptedEvent[]> {
     try {
@@ -120,8 +122,25 @@ class RESTPostStorage implements PostStorageProvider {
       }
 
       const data = await response.json();
-      console.log(`[RESTPostStorage] Fetched ${data.posts.length} posts`);
-      return data.posts as EncryptedEvent[];
+      const posts = data.posts as EncryptedEvent[];
+      console.log(`[RESTPostStorage] Fetched ${posts.length} posts`);
+
+      // Cache posts in local database for offline access and thread operations
+      for (const post of posts) {
+        try {
+          // Ensure wrappedKeys is properly formatted
+          if (!post.wrappedKeys || typeof post.wrappedKeys !== 'object') {
+            console.warn(`[RESTPostStorage] Post ${post.id} has invalid wrappedKeys, skipping cache`);
+            continue;
+          }
+          await Database.saveEncryptedEvent(post);
+        } catch (error) {
+          console.error(`[RESTPostStorage] Failed to cache post ${post.id}:`, error);
+          // Continue even if caching fails
+        }
+      }
+
+      return posts;
     } catch (error) {
       console.error('[RESTPostStorage] Error fetching posts:', error);
       throw error;
@@ -235,6 +254,7 @@ class RESTPostStorage implements PostStorageProvider {
 
   /**
    * Fetch replies for a thread from REST API
+   * Replies are automatically cached in local database for offline access
    */
   async fetchThreadReplies(threadId: string): Promise<EncryptedThreadReply[]> {
     try {
@@ -252,8 +272,20 @@ class RESTPostStorage implements PostStorageProvider {
       }
 
       const data = await response.json();
-      console.log(`[RESTPostStorage] Fetched ${data.replies.length} replies`);
-      return data.replies as EncryptedThreadReply[];
+      const replies = data.replies as EncryptedThreadReply[];
+      console.log(`[RESTPostStorage] Fetched ${replies.length} replies`);
+
+      // Cache replies in local database for offline access and reply counts
+      for (const reply of replies) {
+        try {
+          await Database.saveEncryptedThreadReply(reply);
+        } catch (error) {
+          console.error(`[RESTPostStorage] Failed to cache reply ${reply.id}:`, error);
+          // Continue even if caching fails
+        }
+      }
+
+      return replies;
     } catch (error) {
       console.error('[RESTPostStorage] Error fetching replies:', error);
       throw error;

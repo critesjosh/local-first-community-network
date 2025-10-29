@@ -152,6 +152,28 @@ class ThreadService {
    */
   async getReplyCount(eventId: string): Promise<number> {
     try {
+      // If using REST storage, fetch count from API
+      const providerType = PostStorageService.getProviderType();
+
+      if (providerType === 'rest') {
+        const config = (PostStorageService as any).config;
+        const apiUrl = config.apiUrl;
+
+        if (apiUrl) {
+          try {
+            const response = await fetch(`${apiUrl}/api/threads/${eventId}/replies/count`);
+            if (response.ok) {
+              const data = await response.json();
+              return data.count || 0;
+            }
+          } catch (error) {
+            console.error('[ThreadService] Error fetching reply count from API:', error);
+            // Fall back to local database
+          }
+        }
+      }
+
+      // Use local database (for local storage or as fallback)
       const count = await Database.getThreadReplyCount(eventId);
       return count;
     } catch (error) {

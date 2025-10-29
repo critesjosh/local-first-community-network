@@ -6,6 +6,12 @@ import {Request, Response} from 'express';
 import pool from '../config/database.js';
 import {EncryptedPost, PostRow} from '../models/Post.js';
 
+// Extend Request to include authenticated user data
+interface AuthenticatedRequest extends Request {
+  authorId?: string;
+  timestamp?: number;
+}
+
 /**
  * Create a new encrypted post
  * POST /api/posts
@@ -134,7 +140,7 @@ export const getPostById = async (req: Request, res: Response): Promise<void> =>
  * Soft delete a post (mark as deleted, keep for threads)
  * DELETE /api/posts/:id
  */
-export const deletePost = async (req: Request, res: Response): Promise<void> => {
+export const deletePost = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const {id} = req.params;
 
@@ -147,9 +153,17 @@ export const deletePost = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
+    const post = checkResult.rows[0];
+
     // Check if already deleted
-    if (checkResult.rows[0].deleted_at) {
+    if (post.deleted_at) {
       res.status(410).json({error: 'Post already deleted'});
+      return;
+    }
+
+    // Authorization: verify the authenticated user is the post author
+    if (!req.authorId || req.authorId !== post.author_id) {
+      res.status(403).json({error: 'Forbidden: You can only delete your own posts'});
       return;
     }
 
