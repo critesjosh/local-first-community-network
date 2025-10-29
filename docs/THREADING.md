@@ -1,7 +1,7 @@
 # Threading Feature Documentation
 
-**Status:** ✅ Implemented (Refactored)
-**Version:** 2.1 (Event Key Reuse)
+**Status:** ✅ Implemented (Refactored + Post Deletion)
+**Version:** 2.1 (Event Key Reuse + Soft Delete)
 **Last Updated:** October 2025
 
 ## Overview
@@ -191,6 +191,136 @@ const replies = await ThreadService.getReplies(eventId);
 
 // Get reply count for displaying in UI
 const count = await ThreadService.getReplyCount(eventId);
+```
+
+---
+
+## Post Deletion
+
+### Soft Delete Model
+
+Posts can be deleted by their authors while preserving thread integrity. We use a **soft delete** pattern:
+
+- Posts are marked as deleted rather than removed from the database
+- Thread replies remain visible and functional
+- Deleted posts show as `[Post deleted by author]` in thread views
+
+### Implementation
+
+#### Backend Components
+
+**Database Schema:**
+```sql
+-- Posts table with soft delete support
+ALTER TABLE posts ADD COLUMN deleted_at TIMESTAMP DEFAULT NULL;
+
+-- Thread replies preserved (no CASCADE delete)
+CREATE TABLE thread_replies (
+  ...
+  FOREIGN KEY (thread_id) REFERENCES posts(id)  -- No CASCADE
+);
+```
+
+**API Endpoint:**
+```typescript
+DELETE /api/posts/:id
+// Requires Ed25519 signature authentication
+// Sets deleted_at = NOW() instead of removing row
+```
+
+**Controllers (backend/src/controllers/postController.ts):**
+```typescript
+export const deletePost = async (req: Request, res: Response) => {
+  // Verify post exists and not already deleted
+  // Soft delete: UPDATE posts SET deleted_at = NOW()
+  // Returns success with message about preserved replies
+}
+
+export const getPosts = async (req: Request, res: Response) => {
+  // Filters deleted posts: WHERE deleted_at IS NULL
+  // Optional ?includeDeleted=true parameter
+}
+```
+
+#### Client Components
+
+**Database (src/services/storage/Database.ts):**
+```typescript
+// Migration 5: Add deleted_at column
+ALTER TABLE events ADD COLUMN deleted_at INTEGER;
+
+// Filter deleted posts in queries
+SELECT * FROM events WHERE deleted_at IS NULL;
+
+// Soft delete method
+async softDeleteEvent(eventId: string): Promise<void> {
+  UPDATE events SET deleted_at = ? WHERE id = ?
+}
+```
+
+**PostService (src/services/PostService.ts):**
+```typescript
+class PostService {
+  async deletePost(postId: string): Promise<void> {
+    // 1. Get user identity for Ed25519 signature
+    // 2. Call backend DELETE endpoint with signed request
+    // 3. Soft delete locally via Database.softDeleteEvent()
+  }
+}
+```
+
+**UI Components:**
+
+- **EventCard.tsx**: Shows delete button (🗑️) only for own posts
+- **HomeScreen.tsx**: Wires up delete handler, filters deleted posts from feed
+- **ThreadViewScreen.tsx**: Shows `[Post deleted by author]` for deleted posts
+
+### User Experience
+
+1. **Delete Button**: Trash icon appears on user's own posts
+2. **Confirmation**: Alert dialog asks for confirmation
+3. **Preservation Message**: "Replies will be preserved"
+4. **Immediate Feedback**: Post removed from feed instantly
+5. **Thread Integrity**: Replies remain visible in thread view
+
+### API Example
+
+```typescript
+// Delete a post
+await PostService.deletePost(postId);
+
+// Post is soft deleted:
+// - Backend: deleted_at timestamp set
+// - Client: removed from feed
+// - Threads: replies still accessible
+```
+
+### Security
+
+- **Authentication**: DELETE endpoint requires Ed25519 signature
+- **Authorization**: Only post author can delete (verified by signature)
+- **Signature Format**:
+  ```typescript
+  message = `${postId}:${timestamp}`
+  signature = Ed25519.sign(message, authorPrivateKey)
+  headers: {
+    'X-Signature': signatureHex,
+    'X-Timestamp': timestamp
+  }
+  ```
+
+### Data Model
+
+```typescript
+interface EncryptedEvent {
+  id: string;
+  authorId: string;
+  timestamp: number;
+  encryptedContent: string;
+  iv: string;
+  wrappedKeys: {...};
+  deletedAt?: number;  // Present if soft-deleted
+}
 ```
 
 ---
