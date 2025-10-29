@@ -40,9 +40,18 @@ npm run web              # Run in web browser
 ```bash
 npm run prebuild          # Generate native projects (android/, ios/)
 npm run prebuild:clean    # Clean and regenerate native projects
-npm run build:android     # Build Android APK locally
-npm run build:ios         # Build iOS app locally (macOS only)
-npm run build:ios:production  # Build for App Store submission
+
+# Android builds
+npm run build:android                  # Build Android APK locally
+npm run build:android:development      # Build Android development build (debug APK)
+npm run build:android:preview          # Build Android preview build (release APK)
+npm run build:android:production       # Build Android production build
+
+# iOS builds (macOS only)
+npm run build:ios                      # Build iOS app locally
+npm run build:ios:development          # Build iOS development build
+npm run build:ios:preview              # Build iOS preview build
+npm run build:ios:production           # Build for App Store submission
 ```
 
 ### Release & Updates

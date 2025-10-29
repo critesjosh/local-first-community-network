@@ -3,66 +3,31 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   Platform,
-  ScrollView,
   Image,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import * as ImagePicker from 'expo-image-picker';
+import {useFocusEffect} from '@react-navigation/native';
+import {MainTabScreenProps} from '../types/navigation';
 import IdentityService from '../services/IdentityService';
 import {User} from '../types/models';
-import {pickProfileImage, takeProfilePhoto, base64ToDataUri} from '../utils/imageUtils';
+import {base64ToDataUri} from '../utils/imageUtils';
 
-const ProfileScreen = () => {
+type Props = MainTabScreenProps<'Profile'>;
+
+const ProfileScreen = ({navigation}: Props) => {
   const [user, setUser] = useState<User | null>(null);
-  const [displayName, setDisplayName] = useState('');
   const [profilePhoto, setProfilePhoto] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    loadUserProfile();
-  }, []);
 
   const loadUserProfile = async () => {
     try {
       const currentUser = await IdentityService.getCurrentUser();
       if (currentUser) {
         setUser(currentUser);
-        setDisplayName(currentUser.displayName);
         setProfilePhoto(currentUser.profilePhoto);
-      } else {
-        // Identity exists but user profile not found in database
-        // This can happen if identity creation partially failed
-        console.warn('[ProfileScreen] User profile not found, clearing identity to restart onboarding');
-        
-        // Clear the corrupted identity
-        await IdentityService.clearIdentity();
-        
-        Alert.alert(
-          'Profile Not Found',
-          'Your profile data was not found. The app will now restart and you can create your identity again.',
-          [
-            {
-              text: 'Restart',
-              onPress: () => {
-                // The simplest way to restart: close the app
-                // User will need to manually reopen it
-                if (Platform.OS === 'ios') {
-                  // On iOS, we can't programmatically restart, so just show a message
-                  Alert.alert('Please Restart', 'Please close and reopen the app to continue.');
-                } else {
-                  // On Android, we could use BackHandler.exitApp() but it's not ideal
-                  Alert.alert('Please Restart', 'Please close and reopen the app to continue.');
-                }
-              },
-            },
-          ],
-        );
       }
     } catch (error) {
       console.error('Error loading user profile:', error);
@@ -71,105 +36,15 @@ const ProfileScreen = () => {
     }
   };
 
-  const handleSaveProfile = async () => {
-    if (!displayName.trim()) {
-      Alert.alert('Name Required', 'Please enter a display name');
-      return;
-    }
+  // Reload profile when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      loadUserProfile();
+    }, []),
+  );
 
-    setIsSaving(true);
-    try {
-      await IdentityService.updateProfile({
-        displayName: displayName.trim(),
-        profilePhoto: profilePhoto,
-      });
-      Alert.alert('Success', 'Profile updated successfully');
-      await loadUserProfile();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to update profile');
-      console.error('Error updating profile:', error);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleAddPhoto = async () => {
-    // Show options: camera or library
-    Alert.alert(
-      'Profile Photo',
-      'Choose a photo source',
-      [
-        {
-          text: 'Take Photo',
-          onPress: handleTakePhoto,
-        },
-        {
-          text: 'Choose from Library',
-          onPress: handleChoosePhoto,
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-      ],
-    );
-  };
-
-  const handleTakePhoto = async () => {
-    try {
-      setIsSaving(true);
-      const result = await takeProfilePhoto();
-      
-      if (result) {
-        // Store as base64 for BLE transfer
-        const base64Image = result.base64;
-        setProfilePhoto(base64Image);
-        
-        // Save to database
-        await IdentityService.updateProfile({
-          profilePhoto: base64Image,
-        });
-        await loadUserProfile();
-        Alert.alert('Success', 'Profile photo updated');
-      }
-    } catch (error) {
-      console.error('Error taking photo:', error);
-      Alert.alert('Error', error.message || 'Failed to take photo');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleChoosePhoto = async () => {
-    try {
-      setIsSaving(true);
-      const result = await pickProfileImage();
-      
-      if (result) {
-        // Store as base64 for BLE transfer
-        const base64Image = result.base64;
-        setProfilePhoto(base64Image);
-        
-        // Save to database
-        await IdentityService.updateProfile({
-          profilePhoto: base64Image,
-        });
-        await loadUserProfile();
-        Alert.alert('Success', 'Profile photo updated');
-      }
-    } catch (error) {
-      console.error('Error choosing photo:', error);
-      Alert.alert('Error', error.message || 'Failed to select photo');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const copyUserId = () => {
-    if (user) {
-      // In a real app, we'd use Clipboard API
-      Alert.alert('User ID', `Your ID: ${user.id.substring(0, 16)}...`);
-    }
+  const handleEditProfile = () => {
+    navigation.navigate('ProfileEdit');
   };
 
   if (isLoading) {
@@ -184,67 +59,41 @@ const ProfileScreen = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        bounces={true}
-      >
-        <View style={styles.content}>
-          <Text style={styles.title}>Profile</Text>
-          <Text style={styles.subtitle}>
-            Your identity in the neighborhood network
-          </Text>
+      <View style={styles.content}>
+        <Text style={styles.title}>Profile</Text>
+        <Text style={styles.subtitle}>
+          Your identity in the neighborhood network
+        </Text>
 
-          <View style={styles.profileCard}>
-          <TouchableOpacity 
-            style={styles.avatar}
-            onPress={handleAddPhoto}
-            disabled={isSaving}
-          >
+        <TouchableOpacity
+          style={styles.profileCard}
+          onPress={handleEditProfile}
+          activeOpacity={0.7}>
+          <View style={styles.avatar}>
             {profilePhoto ? (
-              <Image 
-                source={{uri: base64ToDataUri(profilePhoto)}} 
+              <Image
+                source={{uri: base64ToDataUri(profilePhoto)}}
                 style={styles.avatarImage}
               />
             ) : (
               <Text style={styles.avatarText}>
-                {displayName ? displayName[0].toUpperCase() : '?'}
+                {user?.displayName ? user.displayName[0].toUpperCase() : '?'}
               </Text>
             )}
-          </TouchableOpacity>
+          </View>
 
-          <Text style={styles.label}>Display Name</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="How should neighbors know you?"
-            placeholderTextColor="#8E8E93"
-            value={displayName}
-            onChangeText={setDisplayName}
-            editable={!isSaving}
-          />
+          <Text style={styles.displayName}>
+            {user?.displayName || 'Loading...'}
+          </Text>
 
-          <TouchableOpacity
-            style={styles.photoButton}
-            onPress={handleAddPhoto}
-            disabled={isSaving}>
-            <Text style={styles.photoButtonText}>
-              {profilePhoto ? 'Change Profile Photo' : 'Add Profile Photo'}
-            </Text>
-          </TouchableOpacity>
+          <Text style={styles.userId}>
+            ID: {user ? `${user.id.substring(0, 8)}...` : '...'}
+          </Text>
 
-          <TouchableOpacity
-            style={[styles.saveButton, isSaving && styles.disabledButton]}
-            onPress={handleSaveProfile}
-            disabled={isSaving}>
-            {isSaving ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <Text style={styles.saveButtonText}>Save Profile</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+          <View style={styles.chevronContainer}>
+            <Text style={styles.chevron}>›</Text>
+          </View>
+        </TouchableOpacity>
 
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>Your Identity</Text>
@@ -252,15 +101,8 @@ const ProfileScreen = () => {
             Your identity is secured with cryptographic keys generated on this
             device. No email or phone number required.
           </Text>
-          <TouchableOpacity onPress={copyUserId} style={styles.idContainer}>
-            <Text style={styles.idLabel}>User ID:</Text>
-            <Text style={styles.idText}>
-              {user ? `${user.id.substring(0, 8)}...` : 'Loading...'}
-            </Text>
-          </TouchableOpacity>
         </View>
-        </View>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 };
@@ -274,17 +116,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 60,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingTop: 60,
-    paddingBottom: 60,
   },
   content: {
+    flex: 1,
     paddingHorizontal: 20,
+    paddingTop: 60,
   },
   title: {
     fontSize: 34,
@@ -298,81 +134,65 @@ const styles = StyleSheet.create({
   },
   profileCard: {
     backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 20,
+    borderRadius: 16,
+    padding: 24,
     alignItems: 'center',
     marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
   avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: '#007AFF',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
     overflow: 'hidden',
   },
   avatarImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
   },
   avatarText: {
-    fontSize: 40,
+    fontSize: 48,
     color: 'white',
     fontWeight: 'bold',
   },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-    alignSelf: 'flex-start',
+  displayName: {
+    fontSize: 24,
+    fontWeight: 'bold',
     color: '#000',
+    marginBottom: 8,
+    textAlign: 'center',
   },
-  input: {
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    marginBottom: 16,
-    width: '100%',
+  userId: {
+    fontSize: 14,
+    color: '#8E8E93',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    marginBottom: 12,
+    textAlign: 'center',
   },
-  photoButton: {
-    borderWidth: 1,
-    borderColor: '#007AFF',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    marginBottom: 16,
+  chevronContainer: {
+    position: 'absolute',
+    right: 20,
+    top: '50%',
+    marginTop: -15,
   },
-  photoButtonText: {
-    color: '#007AFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  saveButton: {
-    backgroundColor: '#007AFF',
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    width: '100%',
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  disabledButton: {
-    opacity: 0.6,
+  chevron: {
+    fontSize: 30,
+    color: '#C7C7CC',
+    fontWeight: '300',
   },
   infoCard: {
     backgroundColor: '#E5E5EA',
     borderRadius: 12,
     padding: 16,
-    marginTop: 20,
   },
   infoTitle: {
     fontSize: 16,
@@ -384,25 +204,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#3C3C43',
     lineHeight: 20,
-    marginBottom: 12,
-  },
-  idContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#C7C7CC',
-  },
-  idLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#3C3C43',
-    marginRight: 8,
-  },
-  idText: {
-    fontSize: 14,
-    color: '#007AFF',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
 });
 

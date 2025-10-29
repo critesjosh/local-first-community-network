@@ -1,0 +1,7 @@
+/Users/johngulbronson/Developer/local-first-community-network/packages/rn-bluetooth/android/src/main/java/com/rnbluetooth/BluetoothForegroundService.kt
+/Users/johngulbronson/Developer/local-first-community-network/packages/rn-bluetooth/android/src/main/java/com/rnbluetooth/BLECentralManager.kt
+/Users/johngulbronson/Developer/local-first-community-network/packages/rn-bluetooth/android/src/main/java/com/rnbluetooth/EventEmitter.kt
+/Users/johngulbronson/Developer/local-first-community-network/packages/rn-bluetooth/android/src/main/java/com/rnbluetooth/RNLCBluetoothModule.kt
+/Users/johngulbronson/Developer/local-first-community-network/packages/rn-bluetooth/android/src/main/java/com/rnbluetooth/RNLCBluetoothPackage.kt
+/Users/johngulbronson/Developer/local-first-community-network/packages/rn-bluetooth/android/src/main/java/com/rnbluetooth/RNLCBluetoothEventEmitter.kt
+/Users/johngulbronson/Developer/local-first-community-network/packages/rn-bluetooth/android/src/main/java/com/rnbluetooth/BLEPeripheralManager.kt

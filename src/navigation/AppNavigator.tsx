@@ -12,6 +12,7 @@ import HomeScreen from '../screens/HomeScreen';
 import ConnectionsScreen from '../screens/ConnectionsScreen';
 import ConnectScreen from '../screens/ConnectScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import ProfileEditScreen from '../screens/ProfileEditScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import ConnectionScanScreen from '../screens/ConnectionScanScreen';
 import ConnectionDetailScreen from '../screens/ConnectionDetailScreen';
@@ -57,7 +58,7 @@ const MainTabs = () => {
         component={ConnectionsScreen}
         options={{
           title: 'Connections',
-          headerShown: true,
+          headerShown: false,
           tabBarIcon: ({color}) => (
             <Text style={{fontSize: 24, color}}>👥</Text>
           ),
@@ -140,6 +141,16 @@ const AppNavigator = () => {
           <Stack.Screen
             name="ConnectionDetail"
             component={ConnectionDetailScreen}
+          />
+          <Stack.Screen
+            name="ProfileEdit"
+            component={ProfileEditScreen}
+            options={{
+              presentation: 'modal',
+              headerShown: true,
+              headerTitle: 'Edit Profile',
+              headerBackTitle: 'Back',
+            }}
           />
         </Stack.Navigator>
       </NavigationContainer>

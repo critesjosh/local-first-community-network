@@ -117,12 +117,12 @@ const HomeScreen = () => {
           console.log('Starting BLE advertising for user:', user.displayName);
 
           // Create minimal connection profile - only essential data for BLE transfer
-          // Profile photos are too large for GATT reads/writes and will be synced separately
-          const fullProfile = {
+          // Profile photos are too large for GATT reads/writes (512 byte limit) and will be synced separately
+          const fullProfile: ConnectionProfile = {
             userId: user.id,
             displayName: user.displayName,
             publicKey: Buffer.from(identity.publicKey).toString('base64'),
-            // profilePhoto removed - too large for BLE GATT operations
+            // Explicitly exclude profilePhoto - it causes 512-byte GATT read limit to be exceeded
           };
 
           console.log('[HomeScreen] 📋 Profile data prepared:', {

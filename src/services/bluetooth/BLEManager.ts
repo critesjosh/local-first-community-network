@@ -155,7 +155,7 @@ class BLEManagerService {
       return;
     }
 
-    // Skip logging devices with no data (too noisy)
+    // Skip devices with no data (too noisy)
     if (!payload.displayName && !payload.userHashHex) {
       return; // Silently ignore devices without our protocol data
     }
@@ -170,9 +170,9 @@ class BLEManagerService {
     const hasNameChanged = existingDevice && existingDevice.name !== displayName;
     const hasSignificantRssiChange = existingDevice && Math.abs(existingDevice.rssi - rssi) > 20;
 
-    // Only log new devices with actual names (minimal logging)
-    if (isNewDevice && displayName) {
-      logSync(`🆕 [BLE] Found: ${displayName}`);
+    // DIAGNOSTIC: Log ALL new devices to see what's happening
+    if (isNewDevice) {
+      logSync(`🆕 [BLE] Found: ${displayName || '(no name)'} | userHash: ${payload.userHashHex || '(none)'} | followToken: ${payload.followTokenHex || '(none)'}`);
     }
 
     // Create or update discovered device

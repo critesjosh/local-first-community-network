@@ -8,7 +8,10 @@
       "distribution": "internal",
       "android": {
         "gradleCommand": ":app:assembleDebug",
-        "buildType": "apk"
+        "buildType": "apk",
+        "env": {
+          "ANDROID_HOME": "/Users/johngulbronson/Library/Android/sdk"
+        }
       },
       "ios": {
         "buildConfiguration": "Debug"
@@ -21,7 +24,10 @@
         "simulator": false
       },
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "env": {
+          "ANDROID_HOME": "/Users/johngulbronson/Library/Android/sdk"
+        }
       }
     },
     "simulator": {
@@ -38,7 +44,10 @@
         "buildConfiguration": "Release"
       },
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "env": {
+          "ANDROID_HOME": "/Users/johngulbronson/Library/Android/sdk"
+        }
       }
     }
   },

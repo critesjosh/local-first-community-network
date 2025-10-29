@@ -13,7 +13,10 @@ import com.facebook.react.uimanager.ViewManager
 class RNLCBluetoothPackage : ReactPackage {
 
     override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
-        return listOf(RNLCBluetoothModule(reactContext))
+        return listOf(
+            RNLCBluetoothModule(reactContext),
+            RNLCBluetoothEventEmitter(reactContext)
+        )
     }
 
     override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {

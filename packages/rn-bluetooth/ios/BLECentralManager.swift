@@ -51,6 +51,8 @@ import CoreBluetooth
     }
     centralManager = CBCentralManager(delegate: self, queue: nil, options: options)
     print("[BLECentralManager] 🔧 CBCentralManager created - waiting for state update...")
+    print("[BLECentralManager] 🔑 SERVICE_UUID: \(SERVICE_UUID.uuidString)")
+    print("[BLECentralManager] 🔑 This MUST match Android Service UUID for cross-platform discovery!")
   }
   
   /// Wait for Bluetooth to be powered on (async)
@@ -163,9 +165,10 @@ import CoreBluetooth
     let options: [String: Any] = [
       CBCentralManagerScanOptionAllowDuplicatesKey: true
     ]
-    // Scan specifically for our service UUID - iOS handles this more reliably
+    // Scan specifically for our service UUID - this is required for reliable discovery
+    // iOS requires service-based scanning to work properly
     centralManager.scanForPeripherals(
-      withServices: [SERVICE_UUID],
+      withServices: [SERVICE_UUID],  // MUST match Android's advertised Service UUID
       options: options
     )
     print("[BLECentralManager] 🔍 Scan started successfully")
@@ -513,6 +516,62 @@ import CoreBluetooth
       "followTokenHex": followTokenHex
     ]
   }
+  
+  private func parseManufacturerData(_ data: Data) -> [String: Any]? {
+    // Expected Android format: [version (1), nameLength (1), name..., userHash (6), followToken (4)]
+    // Note: Manufacturer ID is NOT in the data - iOS strips it and puts it in a separate dictionary key
+    print("[BLECentralManager] Parsing manufacturer data: \(data.count) bytes")
+    
+    guard data.count >= 2 else {
+      print("[BLECentralManager] ⚠️ Manufacturer data too short")
+      return nil
+    }
+    
+    var offset = 0
+    
+    // Read version
+    let version = data[offset]
+    offset += 1
+    
+    // Read name length
+    let nameLength = Int(data[offset])
+    offset += 1
+    
+    // Read name
+    guard offset + nameLength <= data.count else {
+      print("[BLECentralManager] ⚠️ Data too short for name (need \(offset + nameLength), have \(data.count))")
+      return nil
+    }
+    let nameData = data[offset..<(offset + nameLength)]
+    let displayName = String(data: nameData, encoding: .utf8) ?? ""
+    offset += nameLength
+    
+    // Read user hash (6 bytes)
+    guard offset + USER_HASH_LENGTH <= data.count else {
+      print("[BLECentralManager] ⚠️ Data too short for user hash")
+      return nil
+    }
+    let userHashData = data[offset..<(offset + USER_HASH_LENGTH)]
+    let userHashHex = userHashData.map { String(format: "%02x", $0) }.joined()
+    offset += USER_HASH_LENGTH
+    
+    // Read follow token (4 bytes)
+    guard offset + FOLLOW_TOKEN_LENGTH <= data.count else {
+      print("[BLECentralManager] ⚠️ Data too short for follow token")
+      return nil
+    }
+    let followTokenData = data[offset..<(offset + FOLLOW_TOKEN_LENGTH)]
+    let followTokenHex = followTokenData.map { String(format: "%02x", $0) }.joined()
+    
+    print("[BLECentralManager] ✅ Parsed from manufacturer data: name='\(displayName)', hash=\(userHashHex), token=\(followTokenHex)")
+    
+    return [
+      "version": Int(version),
+      "displayName": displayName.isEmpty ? NSNull() : displayName,
+      "userHashHex": userHashHex,
+      "followTokenHex": followTokenHex
+    ]
+  }
 }
 
 // MARK: - CBCentralManagerDelegate
@@ -563,17 +622,50 @@ extension BLECentralManager: CBCentralManagerDelegate {
     // Log all advertisement data keys to see what we're receiving
     print("[BLECentralManager]    Advertisement data keys: \(advertisementData.keys.joined(separator: ", "))")
     
+    // DIAGNOSTIC: Send to JavaScript console too
+    let deviceSummary = "📱 iOS DISCOVERED: id=\(peripheral.identifier.uuidString.prefix(8)), rssi=\(RSSI)"
+    EventEmitter.shared?.sendDebug(message: deviceSummary, category: "discovery")
+    
+    // DIAGNOSTIC: Check for manufacturer data
+    var hasMfgData = false
+    if let mfgData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data {
+      let hexString = mfgData.map { String(format: "%02x", $0) }.joined()
+      print("[BLECentralManager]    🔑 HAS MANUFACTURER DATA: \(mfgData.count) bytes = \(hexString)")
+      EventEmitter.shared?.sendDebug(message: "  ✅ Has manufacturer data: \(mfgData.count) bytes", category: "discovery")
+      hasMfgData = true
+    } else {
+      print("[BLECentralManager]    ⚠️  NO manufacturer data")
+      EventEmitter.shared?.sendDebug(message: "  ⚠️  No manufacturer data", category: "discovery")
+    }
+    
+    // DIAGNOSTIC: Check for local name
+    var hasLocalName = false
+    if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String {
+      print("[BLECentralManager]    🔑 HAS LOCAL NAME: \(localName)")
+      EventEmitter.shared?.sendDebug(message: "  ✅ Has local name: \(localName)", category: "discovery")
+      hasLocalName = true
+    } else {
+      print("[BLECentralManager]    ⚠️  NO local name")
+      EventEmitter.shared?.sendDebug(message: "  ⚠️  No local name", category: "discovery")
+    }
+    
     // Check if it has our service UUID
+    var hasOurUUID = false
     if let serviceUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] {
       let uuidStrings = serviceUUIDs.map { $0.uuidString }
       print("[BLECentralManager]    Service UUIDs: \(uuidStrings.joined(separator: ", "))")
+      EventEmitter.shared?.sendDebug(message: "  Service UUIDs: \(uuidStrings.joined(separator: ", "))", category: "discovery")
       if serviceUUIDs.contains(SERVICE_UUID) {
         print("[BLECentralManager]    ✅ HAS OUR SERVICE UUID!")
+        EventEmitter.shared?.sendDebug(message: "  ✅ HAS OUR SERVICE UUID!", category: "discovery")
+        hasOurUUID = true
       } else {
         print("[BLECentralManager]    ⚠️  Does not have our service UUID")
+        EventEmitter.shared?.sendDebug(message: "  ⚠️  Does not have our service UUID", category: "discovery")
       }
     } else {
       print("[BLECentralManager]    ⚠️  No service UUIDs advertised")
+      EventEmitter.shared?.sendDebug(message: "  ⚠️  No service UUIDs advertised", category: "discovery")
     }
     
     // Filter by RSSI threshold
@@ -588,16 +680,29 @@ extension BLECentralManager: CBCentralManagerDelegate {
     peripherals[peripheral.identifier] = peripheral
     peripheral.delegate = self
 
-    // Parse local name data (iOS format for data transmission)
+    // Parse data from advertisement (try both iOS and Android formats)
     var payload: [String: Any]?
+    
+    // First, try iOS format (local name)
     if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String {
       print("[BLECentralManager] Found local name: \(localName)")
       payload = parseLocalName(localName)
       if let displayName = payload?["displayName"] as? String {
-        print("[BLECentralManager] ✅ Parsed device name: \(displayName)")
+        print("[BLECentralManager] ✅ Parsed device name from local name: \(displayName)")
       }
-    } else {
-      print("[BLECentralManager] ⚠️ No local name in advertisement")
+    }
+    
+    // If no local name, try Android format (manufacturer data)
+    if payload == nil {
+      if let manufacturerData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data {
+        print("[BLECentralManager] Found manufacturer data: \(manufacturerData.count) bytes")
+        payload = parseManufacturerData(manufacturerData)
+        if let displayName = payload?["displayName"] as? String {
+          print("[BLECentralManager] ✅ Parsed device name from manufacturer data: \(displayName)")
+        }
+      } else {
+        print("[BLECentralManager] ⚠️ No local name or manufacturer data in advertisement")
+      }
     }
 
     // If no payload parsed, create empty one

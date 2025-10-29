@@ -422,6 +422,13 @@ const ConnectScreen = () => {
   return (
     <SafeAreaView style={styles.container} edges={[]}>
       <View style={styles.content}>
+        <View style={styles.headerSection}>
+          <Text style={styles.title}>Connect</Text>
+          <Text style={styles.subtitle}>
+            Discover and connect with people nearby
+          </Text>
+        </View>
+
         {renderSessionCard()}
 
         <View style={styles.devicesSection}>
@@ -470,6 +477,20 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     fontSize: 17,
+    color: '#8E8E93',
+  },
+  headerSection: {
+    paddingTop: 60,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  title: {
+    fontSize: 34,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
     color: '#8E8E93',
   },
   header: {

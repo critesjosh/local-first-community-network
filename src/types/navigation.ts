@@ -16,6 +16,7 @@ export type RootStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabParamList>;
   ConnectionScan: undefined;
   ConnectionDetail: {connectionId: string};
+  ProfileEdit: undefined;
 };
 
 /**

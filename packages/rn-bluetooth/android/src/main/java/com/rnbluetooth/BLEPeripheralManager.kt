@@ -12,6 +12,7 @@ import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
+import android.os.Build
 import android.os.ParcelUuid
 import android.util.Log
 import com.facebook.react.bridge.Promise
@@ -113,24 +114,36 @@ class BLEPeripheralManager(
         Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] Built manufacturer data: ${manufacturerData.size} bytes, ID=$MANUFACTURER_ID")
         Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] Data hex: $hexData")
 
+        // Main advertisement: ONLY Service UUID (minimal, stays well under 31-byte limit)
+        // This is what iOS filters on - it MUST be present for iOS to discover us
         val advertiseData = AdvertiseData.Builder()
-            .setIncludeDeviceName(false)
+            .setIncludeDeviceName(false)  // No name - keeps packet small
             .setIncludeTxPowerLevel(false)
-            // Note: Service UUID removed to fit within 31-byte advertisement limit
-            // Devices are identified by manufacturer ID instead
+            .addServiceUuid(ParcelUuid(SERVICE_UUID))  // CRITICAL: Service UUID for iOS filtering
+            .build()
+        
+        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}] Advertising with:")
+        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}]   - Main advertisement: Service UUID ONLY (${SERVICE_UUID})")
+        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}]   - Scan response: ${manufacturerData.size} bytes manufacturer data")
+        Log.d("BLEPeripheralManager", "[${System.currentTimeMillis()}]   - iOS will parse manufacturer data for device info")
+        
+        // Scan response: Manufacturer data for both iOS and Android to parse
+        // iOS has a parseManufacturerData() function that extracts displayName, userHash, followToken
+        val scanResponse = AdvertiseData.Builder()
+            .setIncludeDeviceName(false)
             .addManufacturerData(MANUFACTURER_ID, manufacturerData)
             .build()
 
         val advertiseSettings = AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER)
-            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
+            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)  // More frequent for better iOS discovery
+            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)  // Stronger signal for better range
             .setConnectable(true)
             .setTimeout(0) // Advertise indefinitely
             .build()
 
         try {
-            Log.d("BLEPeripheralManager", "[" + System.currentTimeMillis() + "]  Calling bluetoothLeAdvertiser.startAdvertising()...")
-            bluetoothLeAdvertiser.startAdvertising(advertiseSettings, advertiseData, advertiseCallback)
+            Log.d("BLEPeripheralManager", "[" + System.currentTimeMillis() + "]  Calling bluetoothLeAdvertiser.startAdvertising() with scan response...")
+            bluetoothLeAdvertiser.startAdvertising(advertiseSettings, advertiseData, scanResponse, advertiseCallback)
             // Note: isAdvertising will be set to true in onStartSuccess callback
             Log.d("BLEPeripheralManager", "[" + System.currentTimeMillis() + "]  startAdvertising() called, waiting for callback")
             promise.resolve(null)

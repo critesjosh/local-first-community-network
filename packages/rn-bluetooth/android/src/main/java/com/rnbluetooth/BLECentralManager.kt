@@ -171,6 +171,8 @@ class BLECentralManager(
     init {
         // Log that the callback is initialized
         android.util.Log.d("BLECentralManager", "[${System.currentTimeMillis()}] 📍 BLECentralManager initialized, scanCallback ready")
+        android.util.Log.d("BLECentralManager", "[${System.currentTimeMillis()}] 🔑 SERVICE_UUID: ${SERVICE_UUID}")
+        android.util.Log.d("BLECentralManager", "[${System.currentTimeMillis()}] 🔑 This MUST match iOS Service UUID for cross-platform discovery!")
     }
 
     private val scanCallback = object : ScanCallback() {
@@ -183,27 +185,35 @@ class BLECentralManager(
                 return
             }
 
-            // Parse manufacturer data
-            val manufacturerData = result.scanRecord?.getManufacturerSpecificData(MANUFACTURER_ID)
-            android.util.Log.d("BLECentralManager", "[$timestamp] Checking manufacturer data for ID $MANUFACTURER_ID: ${if (manufacturerData != null) "${manufacturerData.size} bytes" else "null"}")
-
-            // Skip devices without valid manufacturer data
-            if (manufacturerData == null) {
-                android.util.Log.d("BLECentralManager", "[$timestamp] ⚠️ Skipping device: no manufacturer data with ID $MANUFACTURER_ID")
-
-                // Debug: Log ALL manufacturer data present
-                val allManufacturerData = result.scanRecord?.bytes
-                if (allManufacturerData != null) {
-                    android.util.Log.d("BLECentralManager", "[$timestamp] Raw scan record: ${allManufacturerData.size} bytes")
-                }
+            // Check if device advertises our Service UUID
+            val serviceUuids = result.scanRecord?.serviceUuids
+            val hasOurService = serviceUuids?.any { it.uuid == SERVICE_UUID } == true
+            
+            if (!hasOurService) {
+                // Not our service, skip
                 return
             }
+            
+            android.util.Log.d("BLECentralManager", "[$timestamp] ✅ Found device with our Service UUID")
 
-            android.util.Log.d("BLECentralManager", "[$timestamp] ✅ Valid manufacturer data found: ${manufacturerData.size} bytes")
-            val hexData = manufacturerData.joinToString("") { "%02x".format(it) }
-            android.util.Log.d("BLECentralManager", "[$timestamp] Manufacturer data hex: $hexData")
-
-            val payload = parseManufacturerData(manufacturerData)
+            // Try to parse manufacturer data first (Android devices)
+            val manufacturerData = result.scanRecord?.getManufacturerSpecificData(MANUFACTURER_ID)
+            val payload = if (manufacturerData != null) {
+                android.util.Log.d("BLECentralManager", "[$timestamp] Parsing Android-style manufacturer data: ${manufacturerData.size} bytes")
+                val hexData = manufacturerData.joinToString("") { "%02x".format(it) }
+                android.util.Log.d("BLECentralManager", "[$timestamp] Manufacturer data hex: $hexData")
+                parseManufacturerData(manufacturerData)
+            } else {
+                // Try parsing iOS-style local name
+                val localName = result.scanRecord?.deviceName
+                android.util.Log.d("BLECentralManager", "[$timestamp] No manufacturer data, checking local name: $localName")
+                if (localName != null) {
+                    parseLocalName(localName)
+                } else {
+                    android.util.Log.d("BLECentralManager", "[$timestamp] ⚠️ Device has service UUID but no data - skipping")
+                    return
+                }
+            }
 
             android.util.Log.d("BLECentralManager", "[$timestamp] ✅ Emitting deviceDiscovered event for ${result.device.address}")
             eventEmitter.sendDeviceDiscovered(
@@ -521,6 +531,61 @@ class BLECentralManager(
             result.putString("followTokenHex", followTokenHex)
         } catch (e: Exception) {
             println("[BLECentralManager] Error parsing manufacturer data: ${e.message}")
+            result.putInt("version", 0)
+            result.putNull("displayName")
+            result.putString("userHashHex", "")
+            result.putString("followTokenHex", "")
+        }
+
+        return result
+    }
+
+    /**
+     * Parse iOS-style local name format
+     * Format: "LCNS:displayName:userHashHex:followTokenHex"
+     * Example: "LCNS:JohnDoe:a1b2c3d4e5f6:12345678"
+     */
+    private fun parseLocalName(localName: String): com.facebook.react.bridge.WritableMap {
+        val result = Arguments.createMap()
+
+        try {
+            android.util.Log.d("BLECentralManager", "[${System.currentTimeMillis()}] Parsing iOS local name: $localName")
+            
+            // Check for LCNS prefix (iOS format)
+            if (!localName.startsWith("LCNS:")) {
+                android.util.Log.d("BLECentralManager", "[${System.currentTimeMillis()}] ⚠️ Not LCNS format - expected 'LCNS:' prefix")
+                result.putInt("version", 0)
+                result.putNull("displayName")
+                result.putString("userHashHex", "")
+                result.putString("followTokenHex", "")
+                return result
+            }
+            
+            // Remove "LCNS:" prefix and split by colon
+            val dataString = localName.substring(5)  // Remove "LCNS:"
+            val parts = dataString.split(":")
+            
+            if (parts.size != 3) {
+                android.util.Log.d("BLECentralManager", "[${System.currentTimeMillis()}] ⚠️ Invalid LCNS format (expected 3 parts after prefix, got ${parts.size})")
+                result.putInt("version", 1)
+                result.putNull("displayName")
+                result.putString("userHashHex", "")
+                result.putString("followTokenHex", "")
+                return result
+            }
+
+            val displayName = parts[0]
+            val userHashHex = parts[1]
+            val followTokenHex = parts[2]
+
+            android.util.Log.d("BLECentralManager", "[${System.currentTimeMillis()}] ✅ Parsed iOS LCNS advertisement - displayName: $displayName, userHash: $userHashHex, followToken: $followTokenHex")
+
+            result.putInt("version", 1)
+            result.putString("displayName", displayName)
+            result.putString("userHashHex", userHashHex)
+            result.putString("followTokenHex", followTokenHex)
+        } catch (e: Exception) {
+            android.util.Log.d("BLECentralManager", "[${System.currentTimeMillis()}] ❌ Error parsing iOS local name: ${e.message}")
             result.putInt("version", 0)
             result.putNull("displayName")
             result.putString("userHashHex", "")

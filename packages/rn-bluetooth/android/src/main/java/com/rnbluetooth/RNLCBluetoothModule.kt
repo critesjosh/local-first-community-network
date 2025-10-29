@@ -35,7 +35,7 @@ class RNLCBluetoothModule(reactContext: ReactApplicationContext) :
     }
 
     override fun getName(): String {
-        return "RNLCBluetooth"
+        return "RNLCBluetoothModule"
     }
 
     // MARK: - Initialization

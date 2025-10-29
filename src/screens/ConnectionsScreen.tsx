@@ -282,35 +282,46 @@ const ConnectionsScreen = ({navigation}: Props) => {
         {connections.length === 0 &&
         pendingReceived.length === 0 &&
         pendingSent.length === 0 ? (
-          <View style={styles.emptyState}>
-            <View style={styles.emptyStateHint}>
-              <Text style={styles.emptyStateText}>
-                Connect with Nearby Profiles
-              </Text>
-              <Animated.View 
-                style={[
-                  styles.arrowContainer,
-                  {
-                    transform: [{
-                      translateY: arrowAnimatedValue.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0, 15], // Move down 15px
-                      })
-                    }]
-                  }
-                ]}
-              >
-                <Text style={styles.arrowDown}>↓</Text>
-              </Animated.View>
+          <>
+            <View style={styles.headerSection}>
+              <Text style={styles.title}>Connections</Text>
             </View>
-          </View>
+            <View style={styles.emptyState}>
+              <View style={styles.emptyStateHint}>
+                <Text style={styles.emptyStateText}>
+                  Connect with Nearby Profiles
+                </Text>
+                <Animated.View 
+                  style={[
+                    styles.arrowContainer,
+                    {
+                      transform: [{
+                        translateY: arrowAnimatedValue.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0, 15], // Move down 15px
+                        })
+                      }]
+                    }
+                  ]}
+                >
+                  <Text style={styles.arrowDown}>↓</Text>
+                </Animated.View>
+              </View>
+            </View>
+          </>
         ) : (
-          <>            
-            <FlatList
-              data={[]}
-              ListHeaderComponent={
-                <>
-                  {pendingReceived.length > 0 && (
+          <FlatList
+            data={[]}
+            renderItem={() => null}
+            ListHeaderComponent={
+              <>
+                <View style={styles.headerSection}>
+                  <Text style={styles.title}>Connections</Text>
+                  <Text style={styles.subtitle}>
+                    Connect with neighbors to see their updates and events
+                  </Text>
+                </View>
+                {pendingReceived.length > 0 && (
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>
                         Pending Requests ({pendingReceived.length})
@@ -344,12 +355,11 @@ const ConnectionsScreen = ({navigation}: Props) => {
                   )}
                 </>
               }
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-              }
-              contentContainerStyle={styles.connectionsList}
-            />
-          </>
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+            }
+            contentContainerStyle={styles.connectionsList}
+          />
         )}
       </View>
     </SafeAreaView>
@@ -362,9 +372,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#F2F2F7',
   },
   content: {
-    padding: 20,
-    paddingTop: 80,
     flex: 1,
+  },
+  headerSection: {
+    paddingTop: 60,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
   },
   title: {
     fontSize: 34,
@@ -374,7 +387,6 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: '#8E8E93',
-    marginBottom: 24,
   },
   emptyState: {
     flex: 1,
@@ -414,6 +426,7 @@ const styles = StyleSheet.create({
   },
   connectionsList: {
     paddingBottom: 20,
+    paddingHorizontal: 20,
   },
   section: {
     marginBottom: 24,
