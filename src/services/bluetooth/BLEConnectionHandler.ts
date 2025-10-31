@@ -113,7 +113,7 @@ class BLEConnectionHandler {
         // The requester is subscribed to handshake characteristic notifications
         try {
           await log('[BLEConnectionHandler] Sending response via BLE notification:', response.status);
-          await Bluetooth.sendConnectionResponse(response);
+          await Bluetooth.sendConnectionResponse(deviceId, response);
           await log('[BLEConnectionHandler] ✅ Response notification sent successfully');
         } catch (error) {
           await logError('[BLEConnectionHandler] ❌ Failed to send response notification:', error);

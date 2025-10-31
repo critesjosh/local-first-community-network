@@ -31,7 +31,7 @@ const mockModule = {
   startAdvertising: (displayName, userHashHex, followTokenHex) => Promise.resolve(),
   updateAdvertisement: (displayName, userHashHex, followTokenHex) => Promise.resolve(),
   stopAdvertising: () => Promise.resolve(),
-  sendConnectionResponse: (responseJson) => Promise.resolve(),
+  sendConnectionResponse: (deviceId, responseJson) => Promise.resolve(),
   isScanning: () => Promise.resolve(false),
   isAdvertising: () => Promise.resolve(false),
   isConnected: (deviceId) => Promise.resolve(false),
@@ -170,11 +170,12 @@ export const Bluetooth = {
 
   /**
    * Send connection response via BLE notification
+   * @param deviceId Device identifier (required for Android, ignored on iOS)
    * @param response Connection response object
    */
-  sendConnectionResponse: async (response) => {
+  sendConnectionResponse: async (deviceId, response) => {
     const responseJson = JSON.stringify(response);
-    return BluetoothModule.sendConnectionResponse(responseJson);
+    return BluetoothModule.sendConnectionResponse(deviceId, responseJson);
   },
 
   // Utility methods

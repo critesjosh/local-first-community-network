@@ -58,6 +58,7 @@ class BLECentralManager(
     // Pending operations
     private val pendingReads = mutableMapOf<String, Promise>()
     private val pendingWrites = mutableMapOf<String, Promise>()
+    private val pendingWriteData = mutableMapOf<String, ByteArray>()
 
     // MARK: - Scanning
 
@@ -191,19 +192,22 @@ class BLECentralManager(
                 return
             }
 
-            // Check if device advertises our Service UUID
+            // NEW STRATEGY: Filter by Manufacturer ID OR Service UUID
+            // Android devices advertise with Manufacturer ID (compact format, no Service UUID)
+            // iOS devices advertise with Service UUID + Local Name (Apple restriction)
+            val manufacturerData = result.scanRecord?.getManufacturerSpecificData(MANUFACTURER_ID)
             val serviceUuids = result.scanRecord?.serviceUuids
             val hasOurService = serviceUuids?.any { it.uuid == SERVICE_UUID } == true
+            val hasOurManufacturerData = manufacturerData != null
             
-            if (!hasOurService) {
-                // Not our service, skip
+            if (!hasOurService && !hasOurManufacturerData) {
+                // Not our device (no Service UUID and no Manufacturer ID)
                 return
             }
             
-            android.util.Log.d("BLECentralManager", "[$timestamp] ✅ Found device with our Service UUID")
+            android.util.Log.d("BLECentralManager", "[$timestamp] ✅ Found our device (Service UUID: $hasOurService, Manufacturer Data: $hasOurManufacturerData)")
 
             // Try to parse manufacturer data first (Android devices)
-            val manufacturerData = result.scanRecord?.getManufacturerSpecificData(MANUFACTURER_ID)
             val payload = if (manufacturerData != null) {
                 android.util.Log.d("BLECentralManager", "[$timestamp] Parsing Android-style manufacturer data: ${manufacturerData.size} bytes")
                 val hexData = manufacturerData.joinToString("") { "%02x".format(it) }
@@ -333,26 +337,64 @@ class BLECentralManager(
             pendingWrites[key] = promise
             gatt.discoverServices()
         } else {
-            // Already discovered, write directly
+            // Already discovered, enable notifications FIRST, then write
             val key = makeKey(deviceId, HANDSHAKE_CHAR_UUID)
             pendingWrites[key] = promise
+            pendingWriteData[key] = data  // Store data for later write after CCCD
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                // Android 13+ (API 33+)
-                gatt.writeCharacteristic(
-                    characteristic,
-                    data,
-                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                )
+            // CRITICAL: Enable notifications to receive response (step 1 of 2)
+            android.util.Log.d("BLECentralManager", "[$deviceId] 🔔 Enabling notifications for handshake characteristic")
+            gatt.setCharacteristicNotification(characteristic, true)
+
+            // CRITICAL: Write CCCD descriptor to actually enable notifications on peripheral (step 2 of 2)
+            val cccdUuid = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+            val cccd = characteristic.getDescriptor(cccdUuid)
+            if (cccd != null) {
+                android.util.Log.d("BLECentralManager", "[$deviceId] 📝 Writing CCCD descriptor to enable notifications")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    // Android 13+ (API 33+)
+                    gatt.writeDescriptor(cccd, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                } else {
+                    // Android 12 and below
+                    @Suppress("DEPRECATION")
+                    cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    @Suppress("DEPRECATION")
+                    val cccdWritten = gatt.writeDescriptor(cccd)
+                    android.util.Log.d("BLECentralManager", "[$deviceId] CCCD write initiated: $cccdWritten")
+                }
+                // Note: The actual characteristic write will be performed in onDescriptorWrite callback
+                // after CCCD write succeeds
             } else {
-                // Android 12 and below
-                @Suppress("DEPRECATION")
-                characteristic.value = data
-                @Suppress("DEPRECATION")
-                characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                @Suppress("DEPRECATION")
-                gatt.writeCharacteristic(characteristic)
+                android.util.Log.e("BLECentralManager", "[$deviceId] ❌ CCCD descriptor not found! Notifications won't work")
+                // Proceed with write anyway (will work for write-only operations)
+                performCharacteristicWrite(gatt, characteristic, data)
             }
+        }
+    }
+
+    /**
+     * Helper method to perform characteristic write with version-specific API
+     */
+    private fun performCharacteristicWrite(
+        gatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic,
+        data: ByteArray
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Android 13+ (API 33+)
+            gatt.writeCharacteristic(
+                characteristic,
+                data,
+                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            )
+        } else {
+            // Android 12 and below
+            @Suppress("DEPRECATION")
+            characteristic.value = data
+            @Suppress("DEPRECATION")
+            characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            @Suppress("DEPRECATION")
+            gatt.writeCharacteristic(characteristic)
         }
     }
 
@@ -476,6 +518,80 @@ class BLECentralManager(
                 println("[BLECentralManager] MTU changed to: $mtu")
             }
         }
+
+        override fun onDescriptorWrite(
+            gatt: BluetoothGatt,
+            descriptor: BluetoothGattDescriptor,
+            status: Int
+        ) {
+            val deviceId = gatt.device.address
+            val success = status == BluetoothGatt.GATT_SUCCESS
+            android.util.Log.d("BLECentralManager", "[$deviceId] ✅ CCCD write completed: success=$success, status=$status")
+            
+            if (!success) {
+                android.util.Log.e("BLECentralManager", "[$deviceId] ❌ Failed to enable notifications - CCCD write failed")
+                // Fail any pending write
+                val key = makeKey(deviceId, HANDSHAKE_CHAR_UUID)
+                val promise = pendingWrites.remove(key)
+                promise?.reject("cccd_write_failed", "Failed to enable notifications")
+                return
+            }
+
+            // CCCD write succeeded, now write the actual characteristic data
+            android.util.Log.d("BLECentralManager", "[$deviceId] ✅ Notifications enabled, proceeding with characteristic write")
+            val service = gatt.getService(SERVICE_UUID)
+            val characteristic = service?.getCharacteristic(HANDSHAKE_CHAR_UUID)
+            
+            if (characteristic != null) {
+                val key = makeKey(deviceId, HANDSHAKE_CHAR_UUID)
+                val data = pendingWriteData.remove(key)
+                if (data != null) {
+                    android.util.Log.d("BLECentralManager", "[$deviceId] 📝 Writing characteristic data (${data.size} bytes)")
+                    performCharacteristicWrite(gatt, characteristic, data)
+                } else {
+                    android.util.Log.w("BLECentralManager", "[$deviceId] ⚠️ No pending write data found after CCCD write")
+                }
+            } else {
+                android.util.Log.e("BLECentralManager", "[$deviceId] ❌ Characteristic not found after CCCD write")
+            }
+        }
+
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray
+        ) {
+            val deviceId = gatt.device.address
+            android.util.Log.d("BLECentralManager", "[$deviceId] 📥 Notification received!")
+            android.util.Log.d("BLECentralManager", "   Characteristic: ${characteristic.uuid}")
+            android.util.Log.d("BLECentralManager", "   Data: ${value.size} bytes")
+            
+            if (characteristic.uuid == HANDSHAKE_CHAR_UUID) {
+                val responseJson = String(value, Charsets.UTF_8)
+                android.util.Log.d("BLECentralManager", "   ✅ Connection response: ${responseJson.take(100)}...")
+                eventEmitter.sendFollowRequestReceived(deviceId, responseJson)
+            }
+        }
+
+        @Deprecated("Deprecated in API 33")
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic
+        ) {
+            // For Android 12 and below
+            val deviceId = gatt.device.address
+            @Suppress("DEPRECATION")
+            val value = characteristic.value
+            android.util.Log.d("BLECentralManager", "[$deviceId] 📥 Notification received (deprecated API)!")
+            android.util.Log.d("BLECentralManager", "   Characteristic: ${characteristic.uuid}")
+            android.util.Log.d("BLECentralManager", "   Data: ${value.size} bytes")
+            
+            if (characteristic.uuid == HANDSHAKE_CHAR_UUID) {
+                val responseJson = String(value, Charsets.UTF_8)
+                android.util.Log.d("BLECentralManager", "   ✅ Connection response: ${responseJson.take(100)}...")
+                eventEmitter.sendFollowRequestReceived(deviceId, responseJson)
+            }
+        }
     }
 
     // MARK: - Helper Methods
@@ -492,15 +608,25 @@ class BLECentralManager(
      * Android's getManufacturerSpecificData(MANUFACTURER_ID) returns only the payload.
      * The Company ID (0x1337) is used as a lookup key, not included in the returned data.
      *
-     * **Binary Structure:**
+     * **Binary Structure (Version-dependent):**
+     * Version 1:
      * ```
      * Offset  Size  Field          Description
      * ──────────────────────────────────────────────
-     * 0       1     version        Protocol version (currently 1)
+     * 0       1     version        Protocol version (1)
      * 1       1     nameLength     Length of display name in bytes
      * 2       N     displayName    UTF-8 encoded name (max 12 bytes)
      * 2+N     6     userHash       First 6 bytes of SHA-256(userId)
      * 8+N     4     followToken    Random 4-byte token
+     * ```
+     * 
+     * Version 2 (COMPACT):
+     * ```
+     * Offset  Size  Field          Description
+     * ──────────────────────────────────────────────
+     * 0       1     version        Protocol version (2)
+     * 1       6     userHash       First 6 bytes of SHA-256(userId)
+     * 7       4     followToken    Random 4-byte token
      * ```
      *
      * **Cross-Platform:**
@@ -513,7 +639,7 @@ class BLECentralManager(
         val result = Arguments.createMap()
 
         try {
-            if (data.size < 2) {
+            if (data.size < 1) {
                 return result.apply {
                     putInt("version", 0)
                     putNull("displayName")
@@ -523,43 +649,94 @@ class BLECentralManager(
             }
 
             val version = data[0].toInt()
-            val nameLength = data[1].toInt()
+            android.util.Log.d("BLECentralManager", "Parsing version $version manufacturer data")
 
-            val expectedLength = 2 + nameLength + USER_HASH_LENGTH + FOLLOW_TOKEN_LENGTH
-            if (data.size < expectedLength) {
+            if (version == 1) {
+                // VERSION 1: [version, nameLength, name..., userHash, followToken]
+                if (data.size < 2) {
+                    return result.apply {
+                        putInt("version", version)
+                        putNull("displayName")
+                        putString("userHashHex", "")
+                        putString("followTokenHex", "")
+                    }
+                }
+
+                val nameLength = data[1].toInt()
+                val expectedLength = 2 + nameLength + USER_HASH_LENGTH + FOLLOW_TOKEN_LENGTH
+                if (data.size < expectedLength) {
+                    return result.apply {
+                        putInt("version", version)
+                        putNull("displayName")
+                        putString("userHashHex", "")
+                        putString("followTokenHex", "")
+                    }
+                }
+
+                // Extract display name
+                val displayName = if (nameLength > 0) {
+                    String(data, 2, nameLength, Charsets.UTF_8)
+                } else {
+                    null
+                }
+
+                // Extract user hash
+                val hashStart = 2 + nameLength
+                val userHashBytes = data.slice(hashStart until (hashStart + USER_HASH_LENGTH))
+                val userHashHex = userHashBytes.joinToString("") { "%02x".format(it) }
+
+                // Extract follow token
+                val tokenStart = hashStart + USER_HASH_LENGTH
+                val followTokenBytes = data.slice(tokenStart until (tokenStart + FOLLOW_TOKEN_LENGTH))
+                val followTokenHex = followTokenBytes.joinToString("") { "%02x".format(it) }
+
+                result.putInt("version", version)
+                if (displayName != null) {
+                    result.putString("displayName", displayName)
+                } else {
+                    result.putNull("displayName")
+                }
+                result.putString("userHashHex", userHashHex)
+                result.putString("followTokenHex", followTokenHex)
+
+            } else if (version == 2) {
+                // VERSION 2 (COMPACT): [version, userHash, followToken]
+                val expectedLength = 1 + USER_HASH_LENGTH + FOLLOW_TOKEN_LENGTH // 11 bytes total
+                if (data.size != expectedLength) {
+                    android.util.Log.w("BLECentralManager", "Version 2 data wrong size (expected $expectedLength, got ${data.size})")
+                    return result.apply {
+                        putInt("version", version)
+                        putNull("displayName")
+                        putString("userHashHex", "")
+                        putString("followTokenHex", "")
+                    }
+                }
+
+                // Extract user hash (starts at offset 1)
+                val userHashBytes = data.slice(1 until (1 + USER_HASH_LENGTH))
+                val userHashHex = userHashBytes.joinToString("") { "%02x".format(it) }
+
+                // Extract follow token
+                val tokenStart = 1 + USER_HASH_LENGTH
+                val followTokenBytes = data.slice(tokenStart until (tokenStart + FOLLOW_TOKEN_LENGTH))
+                val followTokenHex = followTokenBytes.joinToString("") { "%02x".format(it) }
+
+                android.util.Log.d("BLECentralManager", "Version 2 (compact): no display name, hash=$userHashHex, token=$followTokenHex")
+
+                result.putInt("version", version)
+                result.putNull("displayName")  // No display name in version 2
+                result.putString("userHashHex", userHashHex)
+                result.putString("followTokenHex", followTokenHex)
+
+            } else {
+                android.util.Log.w("BLECentralManager", "Unknown manufacturer data version: $version")
                 return result.apply {
-                    putInt("version", version)
+                    putInt("version", 0)
                     putNull("displayName")
                     putString("userHashHex", "")
                     putString("followTokenHex", "")
                 }
             }
-
-            // Extract display name
-            val displayName = if (nameLength > 0) {
-                String(data, 2, nameLength, Charsets.UTF_8)
-            } else {
-                null
-            }
-
-            // Extract user hash
-            val hashStart = 2 + nameLength
-            val userHashBytes = data.slice(hashStart until (hashStart + USER_HASH_LENGTH))
-            val userHashHex = userHashBytes.joinToString("") { "%02x".format(it) }
-
-            // Extract follow token
-            val tokenStart = hashStart + USER_HASH_LENGTH
-            val followTokenBytes = data.slice(tokenStart until (tokenStart + FOLLOW_TOKEN_LENGTH))
-            val followTokenHex = followTokenBytes.joinToString("") { "%02x".format(it) }
-
-            result.putInt("version", version)
-            if (displayName != null) {
-                result.putString("displayName", displayName)
-            } else {
-                result.putNull("displayName")
-            }
-            result.putString("userHashHex", userHashHex)
-            result.putString("followTokenHex", followTokenHex)
         } catch (e: Exception) {
             println("[BLECentralManager] Error parsing manufacturer data: ${e.message}")
             result.putInt("version", 0)

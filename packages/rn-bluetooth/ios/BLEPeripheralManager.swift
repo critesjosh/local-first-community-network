@@ -45,6 +45,9 @@ import CoreBluetooth
   
   // Track if GATT service has been added
   private var serviceAdded = false
+  
+  // Queue for pending notifications when central is not ready
+  private var pendingNotifications: [(data: Data, characteristic: CBMutableCharacteristic)] = []
 
   // MARK: - Initialization
 
@@ -653,7 +656,39 @@ extension BLEPeripheralManager: CBPeripheralManagerDelegate {
     central: CBCentral,
     didSubscribeTo characteristic: CBCharacteristic
   ) {
+    print("[BLEPeripheralManager] ✅ Central subscribed to: \(characteristic.uuid)")
+    print("[BLEPeripheralManager]    Central ID: \(central.identifier)")
+    print("[BLEPeripheralManager]    Max update value length: \(central.maximumUpdateValueLength)")
     EventEmitter.shared?.sendDebug(message: "[NATIVE-PERIPH] ✅ Central subscribed to: \(characteristic.uuid)", category: "peripheral")
+  }
+  
+  // When central is ready to receive more data after updateValue returned false
+  public func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
+    print("[BLEPeripheralManager] 📡 Central ready to receive - sending \(pendingNotifications.count) queued notification(s)")
+    
+    guard !pendingNotifications.isEmpty else {
+      print("[BLEPeripheralManager] ℹ️ No pending notifications to send")
+      return
+    }
+    
+    // Try to send all queued notifications
+    while !pendingNotifications.isEmpty {
+      let (data, characteristic) = pendingNotifications.first!
+      let success = peripheralManager.updateValue(data, for: characteristic, onSubscribedCentrals: nil)
+      
+      if success {
+        print("[BLEPeripheralManager] ✅ Queued notification sent (\(data.count) bytes)")
+        pendingNotifications.removeFirst()
+      } else {
+        print("[BLEPeripheralManager] ⚠️ Still not ready, will retry on next callback")
+        print("[BLEPeripheralManager] 📝 Remaining queued: \(pendingNotifications.count)")
+        break
+      }
+    }
+    
+    if pendingNotifications.isEmpty {
+      print("[BLEPeripheralManager] ✅ All queued notifications sent successfully")
+    }
   }
   
   // When central connects (not always called, but useful for debugging)
@@ -682,8 +717,8 @@ extension BLEPeripheralManager: CBPeripheralManagerDelegate {
       return
     }
 
-    print("[BLEPeripheralManager] 📤 Sending connection response via notification")
-    print("[BLEPeripheralManager] Response: \(responseJson)")
+    print("[BLEPeripheralManager] 📤 Sending connection response via notification (\(data.count) bytes)")
+    print("[BLEPeripheralManager] Response: \(responseJson.prefix(100))...")
 
     // Update characteristic value and notify subscribed centrals
     let success = peripheralManager.updateValue(
@@ -695,8 +730,10 @@ extension BLEPeripheralManager: CBPeripheralManagerDelegate {
     if success {
       print("[BLEPeripheralManager] ✅ Response notification sent successfully")
     } else {
-      print("[BLEPeripheralManager] ⚠️ Response notification queued (central not ready)")
-      // The notification will be sent when the central is ready
+      print("[BLEPeripheralManager] ⚠️ Central TX queue full, queuing notification for retry")
+      // Queue the notification to be sent when central is ready
+      pendingNotifications.append((data, handshakeCharacteristic))
+      print("[BLEPeripheralManager] 📝 Queued notifications: \(pendingNotifications.count)")
     }
   }
 }

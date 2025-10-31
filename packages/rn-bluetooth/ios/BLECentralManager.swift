@@ -569,33 +569,62 @@ import CoreBluetooth
   /// - Parameter data: The Manufacturer Specific Data (WITHOUT Company ID prefix)
   /// - Returns: Dictionary with parsed fields, or nil if format is invalid
   private func parseManufacturerData(_ data: Data) -> [String: Any]? {
-    // Expected Android format: [version (1), nameLength (1), name..., userHash (6), followToken (4)]
-    // Note: Manufacturer ID is NOT in the data - iOS strips it and puts it in a separate dictionary key
+    // Android format (version-dependent):
+    // Version 1: [CompanyID (2), version (1), nameLength (1), name..., userHash (6), followToken (4)]
+    // Version 2: [CompanyID (2), version (1), userHash (6), followToken (4)]  <- COMPACT, no display name
+    // NOTE: iOS includes Company ID in the first 2 bytes (unlike Android which strips it)
     print("[BLECentralManager] Parsing manufacturer data: \(data.count) bytes")
     
-    guard data.count >= 2 else {
-      print("[BLECentralManager] ⚠️ Manufacturer data too short")
+    guard data.count >= 3 else {  // Need at least: Company ID (2) + version (1)
+      print("[BLECentralManager] ⚠️ Manufacturer data too short (need at least 3 bytes)")
       return nil
     }
     
-    var offset = 0
+    // Skip first 2 bytes (Company ID) - iOS includes it, but our protocol doesn't use it in parsing
+    var offset = 2
     
     // Read version
     let version = data[offset]
     offset += 1
+    print("[BLECentralManager] Version: \(version) (skipped 2-byte Company ID)")
     
-    // Read name length
-    let nameLength = Int(data[offset])
-    offset += 1
+    var displayName: String = ""
     
-    // Read name
-    guard offset + nameLength <= data.count else {
-      print("[BLECentralManager] ⚠️ Data too short for name (need \(offset + nameLength), have \(data.count))")
+    if version == 1 {
+      // VERSION 1: [version, nameLength, name..., userHash, followToken]
+      guard data.count >= 2 else {
+        print("[BLECentralManager] ⚠️ Version 1 data too short")
+        return nil
+      }
+      
+      // Read name length
+      let nameLength = Int(data[offset])
+      offset += 1
+      
+      // Read name
+      guard offset + nameLength <= data.count else {
+        print("[BLECentralManager] ⚠️ Data too short for name (need \(offset + nameLength), have \(data.count))")
+        return nil
+      }
+      let nameData = data[offset..<(offset + nameLength)]
+      displayName = String(data: nameData, encoding: .utf8) ?? ""
+      offset += nameLength
+      
+    } else if version == 2 {
+      // VERSION 2 (COMPACT): [CompanyID, version, userHash, followToken] - NO display name
+      // Expected size: 2 (Company ID) + 1 (version) + 6 (userHash) + 4 (followToken) = 13 bytes
+      guard data.count == 13 else {
+        print("[BLECentralManager] ⚠️ Version 2 data wrong size (expected 13, got \(data.count))")
+        return nil
+      }
+      // Display name is empty for version 2 (will be fetched via GATT profile read)
+      displayName = ""
+      print("[BLECentralManager] Version 2 (compact): no display name in advertisement")
+      
+    } else {
+      print("[BLECentralManager] ⚠️ Unknown version: \(version)")
       return nil
     }
-    let nameData = data[offset..<(offset + nameLength)]
-    let displayName = String(data: nameData, encoding: .utf8) ?? ""
-    offset += nameLength
     
     // Read user hash (6 bytes)
     guard offset + USER_HASH_LENGTH <= data.count else {
@@ -614,7 +643,7 @@ import CoreBluetooth
     let followTokenData = data[offset..<(offset + FOLLOW_TOKEN_LENGTH)]
     let followTokenHex = followTokenData.map { String(format: "%02x", $0) }.joined()
     
-    print("[BLECentralManager] ✅ Parsed from manufacturer data: name='\(displayName)', hash=\(userHashHex), token=\(followTokenHex)")
+    print("[BLECentralManager] ✅ Parsed from manufacturer data: version=\(version), name='\(displayName)', hash=\(userHashHex), token=\(followTokenHex)")
     
     return [
       "version": Int(version),
@@ -665,11 +694,50 @@ extension BLECentralManager: CBCentralManagerDelegate {
     advertisementData: [String: Any],
     rssi RSSI: NSNumber
   ) {
+    // DIAGNOSTIC: Log ALL devices for debugging (to JS console!)
+    let deviceId = peripheral.identifier.uuidString.prefix(8)
+    EventEmitter.shared?.sendDebug(message: "🔍 iOS DISCOVERED: \(deviceId) RSSI:\(RSSI)", category: "discovery")
+    NSLog("[BLECentralManager] 🔍 Discovered device: %@ (RSSI: %@)", peripheral.identifier.uuidString.prefix(8) as CVarArg, RSSI)
+    
     // Log ALL discovered peripherals for debugging
     // ANDROID-STYLE FILTERING: Check if device has our data BEFORE logging
     // This matches how Android's BLECentralManager filters in the callback
     var hasOurData = false
     var filterReason = "unknown"
+    
+    // DIAGNOSTIC: Check for manufacturer data FIRST - LOG EVERYTHING!
+    if let mfgData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data {
+      let hexString = mfgData.map { String(format: "%02x", $0) }.joined()
+      print("[BLECentralManager] 🔍 RAW Mfg Data from \(deviceId): \(mfgData.count) bytes = \(hexString)")
+      EventEmitter.shared?.sendDebug(message: "📦 Device \(deviceId): Mfg Data \(mfgData.count) bytes = \(hexString)", category: "discovery")
+      
+      if mfgData.count >= 2 {
+        let companyId = UInt16(mfgData[0]) | (UInt16(mfgData[1]) << 8)
+        print("[BLECentralManager] 🏭 Company ID: 0x\(String(format: "%04X", companyId)) (ours: 0x1337)")
+        EventEmitter.shared?.sendDebug(message: "  🏭 Company ID: 0x\(String(format: "%04X", companyId)) (ours: 0x1337)", category: "discovery")
+        NSLog("[BLECentralManager]   📦 Manufacturer Data: %d bytes, Company ID: 0x%04X, data: %@", mfgData.count, companyId, hexString)
+        if companyId == MANUFACTURER_ID {
+          print("[BLECentralManager] ✅✅✅ MATCHES our manufacturer ID 0x1337! This is OUR device!")
+          EventEmitter.shared?.sendDebug(message: "  ✅ MATCHES our manufacturer ID 0x1337!", category: "discovery")
+          NSLog("[BLECentralManager]   ✅ MATCHES our manufacturer ID!")
+        } else {
+          print("[BLECentralManager] ❌ Different mfg ID: 0x\(String(format: "%04X", companyId)) (ours is 0x1337)")
+          EventEmitter.shared?.sendDebug(message: "  ❌ Different mfg ID: 0x\(String(format: "%04X", companyId))", category: "discovery")
+          NSLog("[BLECentralManager]   ❌ Different manufacturer ID (ours is 0x%04X)", MANUFACTURER_ID)
+        }
+      } else {
+        print("[BLECentralManager] ⚠️  Mfg data too short: \(mfgData.count) bytes")
+        EventEmitter.shared?.sendDebug(message: "  ⚠️  Mfg data too short: \(mfgData.count) bytes", category: "discovery")
+        NSLog("[BLECentralManager]   ⚠️  Manufacturer data too short: %d bytes", mfgData.count)
+      }
+    } else {
+      // Only log "no manufacturer data" for devices we care about (with our service UUID)
+      if let serviceUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID],
+         serviceUUIDs.contains(SERVICE_UUID) {
+        print("[BLECentralManager] ⚠️  Device \(deviceId) has our Service UUID but NO manufacturer data (likely iOS)")
+        EventEmitter.shared?.sendDebug(message: "  ⚠️  Device \(deviceId): No manufacturer data (iOS device)", category: "discovery")
+      }
+    }
     
     // Check 1: Does it have our Service UUID?
     if let serviceUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] {
@@ -703,6 +771,7 @@ extension BLECentralManager: CBCentralManagerDelegate {
     
     // FILTER: Ignore devices that don't have our data
     if !hasOurData {
+      NSLog("[BLECentralManager]   ❌ FILTERED OUT (no matching data)")
       // Silently ignore - this is normal (most BLE devices aren't ours)
       return
     }
