@@ -210,13 +210,17 @@ RCT_EXPORT_METHOD(stopAdvertising:(RCTPromiseResolveBlock)resolve
 }
 
 RCT_EXPORT_METHOD(sendConnectionResponse:(NSString *)deviceId
-                  responseJson:(NSString *)responseJson
+                  withResponseJson:(NSString *)responseJson
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
-  NSLog(@"[RNLCBluetoothModule] 📤 sendConnectionResponse called (deviceId ignored on iOS)");
+  NSLog(@"[RNLCBluetoothModule] 📤 sendConnectionResponse called for device: %@", deviceId);
+  NSLog(@"[RNLCBluetoothModule] Response JSON: %@", [responseJson substringToIndex:MIN(100, responseJson.length)]);
+  
   // iOS sends to all subscribed centrals, deviceId is ignored
   [[BLEPeripheralManager shared] sendConnectionResponse:responseJson];
+  
+  NSLog(@"[RNLCBluetoothModule] ✅ Response notification sent");
   resolve(nil);
 }
 

@@ -117,10 +117,20 @@ export const Bluetooth = {
     try {
       const profileJson = await Promise.race([readPromise, timeoutPromise]);
       console.log(`✅ [BluetoothModule] Native readProfile returned (length: ${profileJson?.length} chars)`);
-      console.log(`📝 [BluetoothModule] Full profile JSON: ${profileJson}`);
+      
+      // Log truncated version to avoid flooding console with huge base64 images
+      const preview = profileJson?.length > 200 ? profileJson.substring(0, 200) + '...' : profileJson;
+      console.log(`📝 [BluetoothModule] Profile JSON preview: ${preview}`);
       
       // Try to parse
       const parsed = JSON.parse(profileJson);
+      
+      // CRITICAL: Remove profilePhoto if present (causes 512-byte truncation and parse errors)
+      if (parsed.profilePhoto) {
+        console.warn(`⚠️ [BluetoothModule] Profile contains photo (legacy device) - stripping it out`);
+        delete parsed.profilePhoto;
+      }
+      
       console.log(`✅ [BluetoothModule] Successfully parsed profile:`, {
         userId: parsed.userId?.substring(0, 10) + '...',
         displayName: parsed.displayName,
@@ -130,7 +140,13 @@ export const Bluetooth = {
       return parsed;
     } catch (error) {
       console.error(`❌ [BluetoothModule] Native readProfile failed:`, error);
-      console.error(`❌ [BluetoothModule] Problematic JSON string (length ${profileJson?.length}): "${profileJson}"`);
+      
+      // If JSON parse failed due to truncation, it's likely a profile photo issue
+      if (error.message?.includes('JSON Parse error') || error.message?.includes('Unexpected end')) {
+        console.error(`❌ [BluetoothModule] Profile appears to be truncated (likely contains profile photo)`);
+        console.error(`❌ [BluetoothModule] Both devices must exclude profilePhoto from BLE GATT data`);
+        console.error(`❌ [BluetoothModule] Received ${profileJson?.length} chars - max supported is ~512 bytes`);
+      }
       throw error;
     }
   },
@@ -174,8 +190,25 @@ export const Bluetooth = {
    * @param response Connection response object
    */
   sendConnectionResponse: async (deviceId, response) => {
-    const responseJson = JSON.stringify(response);
-    return BluetoothModule.sendConnectionResponse(deviceId, responseJson);
+    try {
+      const responseJson = JSON.stringify(response);
+      console.log('[BluetoothModule] 📤 Calling native sendConnectionResponse');
+      console.log('[BluetoothModule]   deviceId:', deviceId);
+      console.log('[BluetoothModule]   responseJson length:', responseJson.length);
+      
+      // Call native method - Promise is automatically handled by React Native
+      const result = await BluetoothModule.sendConnectionResponse(deviceId, responseJson);
+      console.log('[BluetoothModule] ✅ sendConnectionResponse completed');
+      return result;
+    } catch (error) {
+      console.error('[BluetoothModule] ❌ sendConnectionResponse failed:', error);
+      console.error('[BluetoothModule] Error details:', {
+        message: error.message,
+        code: error.code,
+        nativeStackAndroid: error.nativeStackAndroid
+      });
+      throw error;
+    }
   },
 
   // Utility methods

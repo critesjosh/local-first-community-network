@@ -458,7 +458,7 @@ class BLEManagerService {
         }
         
         console.log(`[BLEManager] 🔌 Connecting to device ${deviceId}... (attempt ${attempt + 1}/${maxRetries + 1})`);
-        await Bluetooth.connect(deviceId, 10000); // 10 second timeout
+        await Bluetooth.connect(deviceId, 8000); // 8 second timeout (reduced from 10s for faster connections)
         console.log(`[BLEManager] ✅ Connected to device ${deviceId}`);
         await log(`✅ [BLEManager] Connected to device ${deviceId}`);
         return {id: deviceId}; // Return a minimal device object

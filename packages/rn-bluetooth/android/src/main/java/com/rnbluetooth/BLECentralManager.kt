@@ -321,8 +321,12 @@ class BLECentralManager(
     }
 
     fun writeFollowRequest(deviceId: String, payloadJson: String, promise: Promise) {
+        val timestamp = System.currentTimeMillis()
+        android.util.Log.d("BLECentralManager", "[$timestamp] 📤 writeFollowRequest called for device: $deviceId")
+        
         val gatt = gattMap[deviceId]
         if (gatt == null) {
+            android.util.Log.e("BLECentralManager", "[$timestamp] ❌ Device not connected: $deviceId")
             promise.reject("not_connected", "Device not connected")
             return
         }
@@ -331,41 +335,53 @@ class BLECentralManager(
         val service = gatt.getService(SERVICE_UUID)
         val characteristic = service?.getCharacteristic(HANDSHAKE_CHAR_UUID)
 
+        android.util.Log.d("BLECentralManager", "[$timestamp] Service: ${if (service != null) "FOUND" else "NULL"}")
+        android.util.Log.d("BLECentralManager", "[$timestamp] Handshake characteristic: ${if (characteristic != null) "FOUND" else "NULL"}")
+
         if (characteristic == null) {
             // Need to discover services first
+            android.util.Log.d("BLECentralManager", "[$timestamp] ⚙️ Services not discovered yet, discovering now...")
             val key = makeKey(deviceId, HANDSHAKE_CHAR_UUID)
             pendingWrites[key] = promise
+            pendingWriteData[key] = data
             gatt.discoverServices()
         } else {
             // Already discovered, enable notifications FIRST, then write
+            android.util.Log.d("BLECentralManager", "[$timestamp] ✅ Characteristic already discovered, enabling notifications...")
             val key = makeKey(deviceId, HANDSHAKE_CHAR_UUID)
             pendingWrites[key] = promise
             pendingWriteData[key] = data  // Store data for later write after CCCD
 
             // CRITICAL: Enable notifications to receive response (step 1 of 2)
-            android.util.Log.d("BLECentralManager", "[$deviceId] 🔔 Enabling notifications for handshake characteristic")
-            gatt.setCharacteristicNotification(characteristic, true)
+            android.util.Log.d("BLECentralManager", "[$timestamp] 🔔 Step 1: Enabling local notifications for handshake characteristic")
+            val notifyEnabled = gatt.setCharacteristicNotification(characteristic, true)
+            android.util.Log.d("BLECentralManager", "[$timestamp] Local notification enabled: $notifyEnabled")
 
             // CRITICAL: Write CCCD descriptor to actually enable notifications on peripheral (step 2 of 2)
             val cccdUuid = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
             val cccd = characteristic.getDescriptor(cccdUuid)
+            android.util.Log.d("BLECentralManager", "[$timestamp] CCCD descriptor: ${if (cccd != null) "FOUND" else "NULL"}")
+            
             if (cccd != null) {
-                android.util.Log.d("BLECentralManager", "[$deviceId] 📝 Writing CCCD descriptor to enable notifications")
+                android.util.Log.d("BLECentralManager", "[$timestamp] 📝 Step 2: Writing CCCD descriptor to enable remote notifications")
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     // Android 13+ (API 33+)
-                    gatt.writeDescriptor(cccd, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                    val writeResult = gatt.writeDescriptor(cccd, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                    android.util.Log.d("BLECentralManager", "[$timestamp] CCCD write initiated (API 33+): $writeResult")
                 } else {
                     // Android 12 and below
                     @Suppress("DEPRECATION")
                     cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
                     @Suppress("DEPRECATION")
                     val cccdWritten = gatt.writeDescriptor(cccd)
-                    android.util.Log.d("BLECentralManager", "[$deviceId] CCCD write initiated: $cccdWritten")
+                    android.util.Log.d("BLECentralManager", "[$timestamp] CCCD write initiated (legacy): $cccdWritten")
                 }
+                android.util.Log.d("BLECentralManager", "[$timestamp] ⏳ Waiting for onDescriptorWrite callback before writing characteristic...")
                 // Note: The actual characteristic write will be performed in onDescriptorWrite callback
                 // after CCCD write succeeds
             } else {
-                android.util.Log.e("BLECentralManager", "[$deviceId] ❌ CCCD descriptor not found! Notifications won't work")
+                android.util.Log.e("BLECentralManager", "[$timestamp] ❌ CCCD descriptor not found! Notifications won't work")
+                android.util.Log.e("BLECentralManager", "[$timestamp] ⚠️ Proceeding with write anyway (response won't be received)")
                 // Proceed with write anyway (will work for write-only operations)
                 performCharacteristicWrite(gatt, characteristic, data)
             }
@@ -562,14 +578,17 @@ class BLECentralManager(
             value: ByteArray
         ) {
             val deviceId = gatt.device.address
-            android.util.Log.d("BLECentralManager", "[$deviceId] 📥 Notification received!")
+            android.util.Log.d("BLECentralManager", "[$deviceId] 📥 📥 📥 NOTIFICATION RECEIVED!")
             android.util.Log.d("BLECentralManager", "   Characteristic: ${characteristic.uuid}")
             android.util.Log.d("BLECentralManager", "   Data: ${value.size} bytes")
             
             if (characteristic.uuid == HANDSHAKE_CHAR_UUID) {
                 val responseJson = String(value, Charsets.UTF_8)
-                android.util.Log.d("BLECentralManager", "   ✅ Connection response: ${responseJson.take(100)}...")
+                android.util.Log.d("BLECentralManager", "   ✅ Handshake notification received!")
+                android.util.Log.d("BLECentralManager", "   Payload preview: ${responseJson.take(100)}...")
+                android.util.Log.d("BLECentralManager", "   🚀 Sending to JavaScript (EventEmitter will auto-detect request vs response)")
                 eventEmitter.sendFollowRequestReceived(deviceId, responseJson)
+                android.util.Log.d("BLECentralManager", "   ✅ Event sent to JavaScript!")
             }
         }
 
@@ -582,14 +601,17 @@ class BLECentralManager(
             val deviceId = gatt.device.address
             @Suppress("DEPRECATION")
             val value = characteristic.value
-            android.util.Log.d("BLECentralManager", "[$deviceId] 📥 Notification received (deprecated API)!")
+            android.util.Log.d("BLECentralManager", "[$deviceId] 📥 📥 📥 NOTIFICATION RECEIVED (deprecated API)!")
             android.util.Log.d("BLECentralManager", "   Characteristic: ${characteristic.uuid}")
             android.util.Log.d("BLECentralManager", "   Data: ${value.size} bytes")
             
             if (characteristic.uuid == HANDSHAKE_CHAR_UUID) {
                 val responseJson = String(value, Charsets.UTF_8)
-                android.util.Log.d("BLECentralManager", "   ✅ Connection response: ${responseJson.take(100)}...")
+                android.util.Log.d("BLECentralManager", "   ✅ Handshake notification received!")
+                android.util.Log.d("BLECentralManager", "   Payload preview: ${responseJson.take(100)}...")
+                android.util.Log.d("BLECentralManager", "   🚀 Sending to JavaScript (EventEmitter will auto-detect request vs response)")
                 eventEmitter.sendFollowRequestReceived(deviceId, responseJson)
+                android.util.Log.d("BLECentralManager", "   ✅ Event sent to JavaScript!")
             }
         }
     }

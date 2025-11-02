@@ -14,6 +14,7 @@ import IdentityService from './src/services/IdentityService';
 import BLEBroadcastService from './src/services/bluetooth/BLEBroadcastService';
 import BLEConnectionHandler from './src/services/bluetooth/BLEConnectionHandler';
 import SessionService from './src/services/SessionService';
+import PendingConnectionReconciler from './src/services/PendingConnectionReconciler';
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -21,6 +22,11 @@ function App() {
 
   useEffect(() => {
     initializeApp();
+    
+    // Cleanup on unmount
+    return () => {
+      PendingConnectionReconciler.stop();
+    };
   }, []);
 
   const initializeApp = async () => {
@@ -43,6 +49,9 @@ function App() {
         
         // Start listening for connection requests/responses
         BLEConnectionHandler.start();
+        
+        // Start periodic reconciliation of pending connections
+        PendingConnectionReconciler.start();
       }
     } catch (error) {
       console.error('App initialization error:', error);
@@ -78,12 +87,14 @@ function App() {
       if (user && identity) {
         console.log('🚀 Starting BLE broadcasting for user:', user.displayName);
         
-        // Build full profile for GATT server
+        // Build minimal profile for GATT server
+        // CRITICAL: Profile photos are too large for BLE GATT (512 byte limit)
+        // and MUST be excluded to prevent truncation errors
         const fullProfile = {
           userId: user.id,
           displayName: user.displayName,
           publicKey: Buffer.from(identity.publicKey).toString('base64'),
-          profilePhoto: user.profilePhoto,
+          // profilePhoto explicitly excluded - exceeds 512-byte BLE GATT limit
         };
         
         await BLEBroadcastService.start(

@@ -13,6 +13,11 @@ import {log, logError} from '../../utils/logger';
 
 class BLEConnectionHandler {
   private unsubscribe: (() => void) | null = null;
+  
+  // Track recently processed requests to prevent duplicates
+  // Key: userId + timestamp, Value: expiry time
+  private processedRequests: Map<string, number> = new Map();
+  private readonly REQUEST_DEDUP_WINDOW_MS = 5000; // 5 second dedup window
 
   /**
    * Start listening for BLE connection events
@@ -25,6 +30,16 @@ class BLEConnectionHandler {
 
     log('[BLEConnectionHandler] Starting connection event listener');
     this.unsubscribe = addBluetoothListener(this.handleBluetoothEvent.bind(this));
+    
+    // Clean up expired dedup entries every 10 seconds
+    setInterval(() => {
+      const now = Date.now();
+      for (const [key, expiry] of this.processedRequests.entries()) {
+        if (expiry < now) {
+          this.processedRequests.delete(key);
+        }
+      }
+    }, 10000);
   }
 
   /**
@@ -103,6 +118,22 @@ class BLEConnectionHandler {
         throw new Error('Invalid payload format: missing requester or follower field');
       }
 
+      // DEDUPLICATION: Check if we've already processed this exact request recently
+      const dedupKey = `${connectionRequest.requester.userId}:${connectionRequest.timestamp}`;
+      const now = Date.now();
+      
+      if (this.processedRequests.has(dedupKey)) {
+        const expiry = this.processedRequests.get(dedupKey)!;
+        if (expiry > now) {
+          console.log(`[BLEConnectionHandler] ⏭️ Ignoring duplicate request from ${connectionRequest.requester.displayName} (within ${this.REQUEST_DEDUP_WINDOW_MS}ms window)`);
+          return; // Skip duplicate request
+        }
+      }
+      
+      // Mark this request as processed
+      this.processedRequests.set(dedupKey, now + this.REQUEST_DEDUP_WINDOW_MS);
+      console.log(`[BLEConnectionHandler] ✅ Processing new request from ${connectionRequest.requester.displayName}`);
+
       // Process the connection request
       const response = await ConnectionService.handleConnectionRequest(connectionRequest);
 
@@ -143,6 +174,22 @@ class BLEConnectionHandler {
         responder: payload.responder,
         timestamp: payload.timestamp,
       };
+
+      // DEDUPLICATION: Check if we've already processed this exact response recently
+      const dedupKey = `${connectionResponse.responder.userId}:${connectionResponse.timestamp}`;
+      const now = Date.now();
+      
+      if (this.processedRequests.has(dedupKey)) {
+        const expiry = this.processedRequests.get(dedupKey)!;
+        if (expiry > now) {
+          console.log(`[BLEConnectionHandler] ⏭️ Ignoring duplicate response from ${connectionResponse.responder.displayName} (within ${this.REQUEST_DEDUP_WINDOW_MS}ms window)`);
+          return; // Skip duplicate response
+        }
+      }
+      
+      // Mark this response as processed
+      this.processedRequests.set(dedupKey, now + this.REQUEST_DEDUP_WINDOW_MS);
+      console.log(`[BLEConnectionHandler] ✅ Processing new response from ${connectionResponse.responder.displayName}`);
 
       console.log('[BLEConnectionHandler] Calling ConnectionService.handleConnectionResponse...');
       await ConnectionService.handleConnectionResponse(connectionResponse);

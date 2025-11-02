@@ -428,29 +428,46 @@ class Database {
    * Get connection by user ID
    */
   async getConnectionByUserId(userId: string): Promise<Connection | null> {
-    if (!this.db) throw new Error('Database not initialized');
-
-    const query = 'SELECT * FROM connections WHERE user_id = ?';
-    const row = await this.db.getFirstAsync<any>(query, [userId]);
-
-    if (!row) {
+    if (!this.db) {
+      console.error('[Database] ERROR: Database not initialized when trying to get connection by userId');
+      console.error('[Database] userId:', userId);
+      throw new Error('Database not initialized');
+    }
+    
+    if (!userId) {
+      console.error('[Database] ERROR: userId is null/undefined');
       return null;
     }
 
-    return {
-      id: row.id,
-      userId: row.user_id,
-      displayName: row.display_name,
-      profilePhoto: row.profile_photo,
-      sharedSecret: row.shared_secret
-        ? new Uint8Array(Buffer.from(row.shared_secret, 'hex'))
-        : undefined,
-      connectedAt: new Date(row.connected_at),
-      notes: row.notes,
-      status: (row.status || 'pending-sent') as 'mutual' | 'pending-sent' | 'pending-received',
-      trustLevel: row.trust_level as 'verified' | 'pending',
-    };
+    try {
+      const query = 'SELECT * FROM connections WHERE user_id = ?';
+      const row = await this.db.getFirstAsync<any>(query, [userId]);
+      
+      if (!row) {
+        return null;
+      }
+      
+      return {
+        id: row.id,
+        userId: row.user_id,
+        displayName: row.display_name,
+        profilePhoto: row.profile_photo,
+        sharedSecret: row.shared_secret
+          ? new Uint8Array(Buffer.from(row.shared_secret, 'hex'))
+          : undefined,
+        connectedAt: new Date(row.connected_at),
+        notes: row.notes,
+        status: (row.status || 'pending-sent') as 'mutual' | 'pending-sent' | 'pending-received',
+        trustLevel: row.trust_level as 'verified' | 'pending',
+      };
+    } catch (error) {
+      console.error('[Database] ERROR in getConnectionByUserId:', error);
+      console.error('[Database] userId:', userId);
+      console.error('[Database] db state:', this.db ? 'initialized' : 'NULL');
+      throw error;
+    }
   }
+
 
   /**
    * Get pending received connections (connection requests)

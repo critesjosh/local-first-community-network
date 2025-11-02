@@ -85,37 +85,42 @@ const ConnectionsScreen = ({navigation}: Props) => {
       const initializeAndSync = async () => {
         await loadConnections();
 
-        // Check for ANY pending connections (sent or received) and sync automatically
-        const allConnections = await ConnectionService.getConnections();
-        const hasPending = allConnections.some(
-          c => c.status === 'pending-sent' || c.status === 'pending-received'
-        );
-
-        if (hasPending) {
-          console.log('[ConnectionsScreen] 🔄 Found pending connections, starting bidirectional sync...');
-          const upgraded = await ConnectionService.syncPendingConnections();
-          if (upgraded > 0) {
-            console.log(`[ConnectionsScreen] ✅ Upgraded ${upgraded} connection(s) to mutual`);
-            await loadConnections(); // Refresh after sync
-          }
-        }
+        // DISABLED: Automatic sync removed - connections should only happen via explicit user action
+        // Users must manually click "Connect" to initiate or accept connections
+        // 
+        // // Check for ANY pending connections (sent or received) and sync automatically
+        // const allConnections = await ConnectionService.getConnections();
+        // const hasPending = allConnections.some(
+        //   c => c.status === 'pending-sent' || c.status === 'pending-received'
+        // );
+        //
+        // if (hasPending) {
+        //   console.log('[ConnectionsScreen] 🔄 Found pending connections, starting bidirectional sync...');
+        //   const upgraded = await ConnectionService.syncPendingConnections();
+        //   if (upgraded > 0) {
+        //     console.log(`[ConnectionsScreen] ✅ Upgraded ${upgraded} connection(s) to mutual`);
+        //     await loadConnections(); // Refresh after sync
+        //   }
+        // }
       };
 
       initializeAndSync();
 
-      // Poll for new connections and auto-sync every 3 seconds while screen is focused
+      // Poll for new connections every 3 seconds while screen is focused
       pollIntervalRef.current = setInterval(async () => {
         await loadConnections();
         
-        // Auto-sync pending connections in background
-        const allConnections = await ConnectionService.getConnections();
-        const hasPending = allConnections.some(
-          c => c.status === 'pending-sent' || c.status === 'pending-received'
-        );
-        if (hasPending) {
-          console.log('[ConnectionsScreen] 🔄 Background sync for pending connections...');
-          await ConnectionService.syncPendingConnections();
-        }
+        // DISABLED: Automatic sync removed - connections should only happen via explicit user action
+        // 
+        // // Auto-sync pending connections in background
+        // const allConnections = await ConnectionService.getConnections();
+        // const hasPending = allConnections.some(
+        //   c => c.status === 'pending-sent' || c.status === 'pending-received'
+        // );
+        // if (hasPending) {
+        //   console.log('[ConnectionsScreen] 🔄 Background sync for pending connections...');
+        //   await ConnectionService.syncPendingConnections();
+        // }
       }, 3000);
 
       // Cleanup polling when screen loses focus
@@ -132,20 +137,22 @@ const ConnectionsScreen = ({navigation}: Props) => {
     setRefreshing(true);
     await loadConnections();
 
-    // Check for ANY pending connections (sent or received) and sync
-    const allConnections = await ConnectionService.getConnections();
-    const hasPending = allConnections.some(
-      c => c.status === 'pending-sent' || c.status === 'pending-received'
-    );
-
-    if (hasPending) {
-      console.log('[ConnectionsScreen] Refresh: syncing pending connections...');
-      const upgraded = await ConnectionService.syncPendingConnections();
-      if (upgraded > 0) {
-        console.log(`[ConnectionsScreen] Refresh: upgraded ${upgraded} connection(s) to mutual`);
-        await loadConnections(); // Refresh after sync
-      }
-    }
+    // DISABLED: Automatic sync removed - connections should only happen via explicit user action
+    //
+    // // Check for ANY pending connections (sent or received) and sync
+    // const allConnections = await ConnectionService.getConnections();
+    // const hasPending = allConnections.some(
+    //   c => c.status === 'pending-sent' || c.status === 'pending-received'
+    // );
+    //
+    // if (hasPending) {
+    //   console.log('[ConnectionsScreen] Refresh: syncing pending connections...');
+    //   const upgraded = await ConnectionService.syncPendingConnections();
+    //   if (upgraded > 0) {
+    //     console.log(`[ConnectionsScreen] Refresh: upgraded ${upgraded} connection(s) to mutual`);
+    //     await loadConnections(); // Refresh after sync
+    //   }
+    // }
 
     setRefreshing(false);
   };

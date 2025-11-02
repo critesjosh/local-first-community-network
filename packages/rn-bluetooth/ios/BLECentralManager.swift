@@ -422,33 +422,40 @@ import CoreBluetooth
     // Check if services and characteristics are discovered
     if let service = peripheral.services?.first(where: { $0.uuid == SERVICE_UUID }),
        let characteristic = service.characteristics?.first(where: { $0.uuid == HANDSHAKE_CHAR_UUID }) {
-      // Already discovered, write directly
-      EventEmitter.shared?.sendDebug(message: "[NATIVE] ✅ Handshake characteristic found, writing \(data.count) bytes...", category: "central")
-      let key = makeKey(deviceId, SERVICE_UUID, HANDSHAKE_CHAR_UUID)
-      pendingWrites[key] = completion
-      peripheral.writeValue(data, for: characteristic, type: .withResponse)
-      EventEmitter.shared?.sendDebug(message: "[NATIVE] ✅ writeValue() call completed", category: "central")
-      
-      // Subscribe to notifications to receive response
-      print("[BLECentralManager] 🔔 Subscribing to handshake notifications to receive response")
+      // Already discovered, subscribe to notifications FIRST, then write
+      print("[BLECentralManager] 🔔 Step 1: Subscribing to handshake notifications BEFORE writing")
       peripheral.setNotifyValue(true, for: characteristic)
+      
+      // Small delay to ensure subscription is registered before sending request
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        EventEmitter.shared?.sendDebug(message: "[NATIVE] ✅ Handshake characteristic found, writing \(data.count) bytes...", category: "central")
+        let key = self.makeKey(deviceId, self.SERVICE_UUID, self.HANDSHAKE_CHAR_UUID)
+        self.pendingWrites[key] = completion
+        print("[BLECentralManager] ✍️ Step 2: Now writing handshake data")
+        peripheral.writeValue(data, for: characteristic, type: .withResponse)
+        EventEmitter.shared?.sendDebug(message: "[NATIVE] ✅ writeValue() call completed", category: "central")
+      }
     } else {
       // Need to discover services first
       print("[BLECentralManager] 🔍 Discovering services before writing...")
       peripheral.discoverServices([SERVICE_UUID])
       
-      // Wait a moment for discovery to complete, then retry the write
+      // Wait a moment for discovery to complete, then subscribe and write
       DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
         if let service = peripheral.services?.first(where: { $0.uuid == self.SERVICE_UUID }),
            let characteristic = service.characteristics?.first(where: { $0.uuid == self.HANDSHAKE_CHAR_UUID }) {
-          print("[BLECentralManager] ✍️ Writing to handshake characteristic (after discovery)")
-          let key = self.makeKey(deviceId, self.SERVICE_UUID, self.HANDSHAKE_CHAR_UUID)
-          self.pendingWrites[key] = completion
-          peripheral.writeValue(data, for: characteristic, type: .withResponse)
           
-          // Subscribe to notifications to receive response
-          print("[BLECentralManager] 🔔 Subscribing to handshake notifications to receive response")
+          // Subscribe to notifications FIRST
+          print("[BLECentralManager] 🔔 Step 1: Subscribing to handshake notifications (after discovery)")
           peripheral.setNotifyValue(true, for: characteristic)
+          
+          // Small delay to ensure subscription is registered
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            print("[BLECentralManager] ✍️ Step 2: Writing to handshake characteristic (after discovery)")
+            let key = self.makeKey(deviceId, self.SERVICE_UUID, self.HANDSHAKE_CHAR_UUID)
+            self.pendingWrites[key] = completion
+            peripheral.writeValue(data, for: characteristic, type: .withResponse)
+          }
         } else {
           print("[BLECentralManager] ❌ Handshake characteristic not found after discovery")
           completion(NSError(
@@ -1069,11 +1076,20 @@ extension BLECentralManager: CBPeripheralDelegate {
 
     // Handle handshake characteristic notifications
     if characteristic.uuid == HANDSHAKE_CHAR_UUID {
+      print("[BLECentralManager] 📥 HANDSHAKE NOTIFICATION RECEIVED!")
+      print("[BLECentralManager] From device: \(peripheral.identifier.uuidString)")
+      print("[BLECentralManager] Data size: \(data.count) bytes")
+      
       if let responseJson = String(data: data, encoding: .utf8) {
+        print("[BLECentralManager] 📝 Response JSON: \(responseJson.prefix(200))...")
+        print("[BLECentralManager] 🚀 Sending to JavaScript via EventEmitter")
         EventEmitter.shared?.sendConnectionResponseReceived(
           fromDeviceId: peripheral.identifier.uuidString,
           payloadJson: responseJson
         )
+        print("[BLECentralManager] ✅ Event sent to JavaScript")
+      } else {
+        print("[BLECentralManager] ❌ Failed to decode handshake notification as UTF-8")
       }
     }
 

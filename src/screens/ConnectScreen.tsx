@@ -160,10 +160,6 @@ const ConnectScreen = () => {
       if (!result) {
         // Connection failed completely
         console.error('[ConnectScreen] Connection failed - no result returned');
-        Alert.alert(
-          'Connection Failed',
-          'Could not connect to this device. Please ensure:\n\n• The device is nearby\n• Bluetooth is enabled on both devices\n• The other user has the app open',
-        );
         await loadConnections();
         return;
       }
@@ -180,43 +176,15 @@ const ConnectScreen = () => {
       // Reload connections to update UI
       await loadConnections();
 
-      // Show appropriate success message
+      // Log status (no alerts needed - UI will update automatically)
       if (connection.status === 'mutual') {
         console.log('[ConnectScreen] ✅ Connected successfully');
-        Alert.alert(
-          '🎉 Connected!',
-          `You're now connected with ${profile.displayName}`,
-        );
       } else if (connection.status === 'pending-sent') {
         console.log('[ConnectScreen] ⏳ Request sent, waiting for acceptance');
-        Alert.alert(
-          '✉️ Request Sent',
-          `Connection request sent to ${profile.displayName}. They'll see your request when nearby.`,
-        );
       }
     } catch (error) {
       console.error('[ConnectScreen] ❌ Error during connection:', error);
-      const errorMessage = error?.message || String(error);
-      
-      // Provide specific error messages
-      let userMessage = 'An unexpected error occurred. Please try again.';
-      let title = 'Connection Error';
-      
-      if (errorMessage.includes('Bluetooth') || errorMessage.includes('powered off')) {
-        title = 'Bluetooth Error';
-        userMessage = 'Bluetooth error. Please check your Bluetooth settings and try again.';
-      } else if (errorMessage.includes('timeout')) {
-        title = 'Connection Timeout';
-        userMessage = 'Connection timed out. The device may be out of range.';
-      } else if (errorMessage.includes('parse') || errorMessage.includes('JSON')) {
-        title = 'Data Transfer Error';
-        userMessage = 'Data transfer error. Please try reconnecting.';
-      } else if (errorMessage.includes('not connected')) {
-        title = 'Connection Lost';
-        userMessage = 'Lost connection to device. Please try again.';
-      }
-      
-      Alert.alert(title, userMessage);
+      // Connection error - just log it, UI will remain in previous state
       await loadConnections();
     } finally {
       // Remove connecting state

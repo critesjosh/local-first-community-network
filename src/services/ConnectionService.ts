@@ -17,6 +17,7 @@ import {Connection} from '../types/models';
 import {ConnectionProfile, ConnectionRequest, ConnectionResponse} from '../types/bluetooth';
 import {generateUUID} from '../utils/crypto';
 import {log, logError, logWarn} from '../utils/logger';
+import PendingConnectionReconciler from './PendingConnectionReconciler';
 
 class ConnectionServiceClass {
   private pendingResponses: Map<string, {
@@ -32,24 +33,29 @@ class ConnectionServiceClass {
    * Used internally to wait for connection responses
    */
   private waitForResponse(userId: string, timeoutMs: number): Promise<ConnectionResponse | null> {
+    console.log(`[ConnectionService] 🎯 Setting up response waiter for userId: ${userId} (timeout: ${timeoutMs}ms)`);
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
+        console.warn(`[ConnectionService] ⏰ Response timeout for userId: ${userId} - no response received in ${timeoutMs}ms`);
         this.pendingResponses.delete(userId);
         resolve(null); // Timeout - no response received
       }, timeoutMs);
 
       this.pendingResponses.set(userId, {
         resolve: (response) => {
+          console.log(`[ConnectionService] ⚡ Response received for userId: ${userId}, status: ${response.status}`);
           clearTimeout(timeout);
           this.pendingResponses.delete(userId);
           resolve(response);
         },
         reject: (error) => {
+          console.error(`[ConnectionService] ❌ Response error for userId: ${userId}:`, error);
           clearTimeout(timeout);
           this.pendingResponses.delete(userId);
           resolve(null);
         },
       });
+      console.log(`[ConnectionService] ✅ Response waiter registered for userId: ${userId}`);
     });
   }
 
@@ -59,7 +65,11 @@ class ConnectionServiceClass {
   private notifyResponseReceived(userId: string, response: ConnectionResponse): void {
     const handler = this.pendingResponses.get(userId);
     if (handler) {
+      console.log(`[ConnectionService] ✅ Resolving pending response for userId: ${userId}`);
       handler.resolve(response);
+    } else {
+      console.warn(`[ConnectionService] ⚠️ No pending response handler found for userId: ${userId}`);
+      console.warn(`[ConnectionService] Current pending userIds:`, Array.from(this.pendingResponses.keys()));
     }
   }
 
@@ -128,7 +138,26 @@ class ConnectionServiceClass {
       if (!theirProfile) {
         await logError('❌ [ConnectionService] Failed to read profile - profile is null');
         await BLEManager.disconnectFromDevice(deviceId);
-        throw new Error('Failed to read profile from device');
+        
+        // Check if it's a profile photo issue
+        console.error('');
+        console.error('═══════════════════════════════════════════════════════════');
+        console.error('⚠️  PROFILE READ FAILED - LIKELY PROFILE PHOTO IN GATT');
+        console.error('═══════════════════════════════════════════════════════════');
+        console.error('');
+        console.error('The other device is advertising with a profile photo included,');
+        console.error('which exceeds the 512-byte BLE GATT limit and causes truncation.');
+        console.error('');
+        console.error('SOLUTION:');
+        console.error('  1. Have the other device RESTART their app');
+        console.error('  2. Ensure HomeScreen.tsx excludes profilePhoto from fullProfile');
+        console.error('  3. Try connecting again after both devices are updated');
+        console.error('');
+        console.error('See PROFILE_PHOTO_BLE_ISSUE.md for details');
+        console.error('═══════════════════════════════════════════════════════════');
+        console.error('');
+        
+        throw new Error('Profile read failed - other device likely has profile photo in GATT (not supported). Both devices must restart with updated code.');
       }
       await log(`✅ [ConnectionService] Profile received:`, JSON.stringify(theirProfile));
       await log(`🔍 [ConnectionService] DEBUG - Profile type: ${typeof theirProfile}, userId: ${theirProfile?.userId}`);
@@ -145,23 +174,46 @@ class ConnectionServiceClass {
         await log(`✅ [ConnectionService] Profile parsed, userId: ${theirProfile.userId}`);
       }
 
+      // IMPORTANT: Strip profile photo if present (shouldn't be there, but handle legacy devices)
+      // Profile photos are too large for BLE GATT (512 byte limit) and cause parse errors
+      if (theirProfile.profilePhoto) {
+        console.log('[ConnectionService] ⚠️ Removing profile photo from received profile (too large for BLE)');
+        theirProfile = {
+          ...theirProfile,
+          profilePhoto: undefined,
+        };
+      }
+
       // Check if connection already exists FIRST (before shouldInitiate check)
       await log(`🔍 [ConnectionService] Checking for existing connection with userId: ${theirProfile.userId}`);
       const existingConnection = await Database.getConnectionByUserId(theirProfile.userId);
       await log(`🔍 [ConnectionService] Existing connection: ${existingConnection ? existingConnection.status : 'NONE'}`);
       
+      // Track if we've already upgraded to mutual (bidirectional case)
+      let alreadyUpgradedToMutual = false;
+      
       if (existingConnection) {
         await log(`🔍 [ConnectionService] Found existing connection: ${existingConnection.status} (id: ${existingConnection.id})`);
         
         // BIDIRECTIONAL CONNECTION RECONCILIATION:
-        // If connection is pending-sent or pending-received, we should try to reconcile
-        // by sending a new handshake to facilitate mutual upgrade
+        // If we're initiating and we have a pending connection (either direction),
+        // this is MUTUAL INTENT - both sides want to connect!
         if (existingConnection.status === 'pending-sent' || existingConnection.status === 'pending-received') {
-          console.log('[ConnectionService] 🔄 Attempting to reconcile pending connection');
-          console.log('[ConnectionService] Current status:', existingConnection.status);
-          console.log('[ConnectionService] Sending new handshake to facilitate bidirectional upgrade...');
-          // Continue below to send our handshake - the other device will recognize
-          // the bidirectional intent and upgrade both sides to mutual
+          console.log('[ConnectionService] 🤝 BIDIRECTIONAL CONNECTION DETECTED!');
+          console.log('[ConnectionService] We have:', existingConnection.status);
+          console.log('[ConnectionService] We are initiating connection');
+          console.log('[ConnectionService] = MUTUAL INTENT - upgrading OUR side to mutual immediately');
+          
+          // Upgrade OUR side to mutual immediately
+          await Database.updateConnectionStatus(existingConnection.id, 'mutual');
+          alreadyUpgradedToMutual = true;
+          
+          console.log('[ConnectionService] ✅ Our side upgraded to mutual');
+          console.log('[ConnectionService] 📤 Now sending handshake so OTHER side can upgrade too...');
+          
+          // IMPORTANT: Continue to send handshake so the other device can also upgrade
+          // We'll skip waiting for response since we're already mutual
+          // Fall through to handshake send below
         } else {
           // Already mutual or other state
           await BLEManager.disconnectFromDevice(deviceId);
@@ -201,11 +253,30 @@ class ConnectionServiceClass {
         throw new Error('Failed to send connection request');
       }
 
-      await log('✅ [ConnectionService] Connection request sent, waiting for response (8 seconds)...');
+      // If we already upgraded to mutual in bidirectional case, skip waiting for response
+      if (alreadyUpgradedToMutual) {
+        console.log('[ConnectionService] 🎯 Bidirectional case - skipping response wait, already mutual');
+        await BLEManager.disconnectFromDevice(deviceId);
+        
+        const updatedConnection: Connection = {
+          ...existingConnection!,
+          displayName: theirProfile.displayName,
+          profilePhoto: theirProfile.profilePhoto,
+          status: 'mutual',
+          trustLevel: 'verified',
+        };
+        
+        return {profile: theirProfile, connection: updatedConnection};
+      }
 
-      // Wait for response with 8 second timeout
-      // The responder will process our request and may send back a response
-      const responsePromise = this.waitForResponse(theirProfile.userId, 8000);
+      // IMPORTANT: Set up response waiter BEFORE sending request to avoid race condition
+      // If the other device responds quickly, we need to be ready to receive it
+      await log('✅ [ConnectionService] Setting up response listener...');
+      const responsePromise = this.waitForResponse(theirProfile.userId, 5000); // Reduced to 5 seconds
+
+      await log('✅ [ConnectionService] Connection request sent, waiting for response (5 seconds)...');
+
+      // Wait for response (waiter already set up above)
       const response = await responsePromise;
 
       // Determine connection status based on response
@@ -288,12 +359,24 @@ class ConnectionServiceClass {
       await log('Handling connection request from:', request.requester.displayName);
 
       // Check if connection already exists
-      const existingConnection = await Database.getConnectionByUserId(
-        request.requester.userId,
-      );
+      console.log('[ConnectionService] 🔍 Looking up existing connection for userId:', request.requester.userId);
+      
+      let existingConnection;
+      try {
+        existingConnection = await Database.getConnectionByUserId(
+          request.requester.userId,
+        );
+        console.log('[ConnectionService] 🔍 Database lookup result:', existingConnection ? `FOUND (status: ${existingConnection.status})` : 'NOT FOUND');
+      } catch (dbError) {
+        console.error('[ConnectionService] ❌ Database lookup failed:', dbError);
+        existingConnection = null;
+      }
+      
       if (existingConnection) {
         console.log('[ConnectionService] 🔄 Received request from user we already have a connection with');
+        console.log('[ConnectionService] Existing connection ID:', existingConnection.id);
         console.log('[ConnectionService] Existing status:', existingConnection.status);
+        console.log('[ConnectionService] Existing userId:', existingConnection.userId);
         
         // BIDIRECTIONAL CONNECTION RECONCILIATION:
         // If we have ANY connection record with them (pending-sent, pending-received, or mutual),
@@ -301,13 +384,21 @@ class ConnectionServiceClass {
         // This is a mutual connection intent - upgrade to mutual on both sides.
         if (existingConnection.status === 'pending-sent' || existingConnection.status === 'pending-received') {
           console.log('[ConnectionService] ✅ Bidirectional connection detected - upgrading to mutual');
+          console.log('[ConnectionService] Before update: status =', existingConnection.status);
           await Database.updateConnectionStatus(existingConnection.id, 'mutual');
+          console.log('[ConnectionService] After update: status should be mutual');
           await log('🤝 Bidirectional connection - upgraded to mutual:', existingConnection.id);
+          
+          // Verify the update worked
+          const updatedConnection = await Database.getConnection(existingConnection.id);
+          console.log('[ConnectionService] Verification - DB now shows status:', updatedConnection?.status);
         } else {
           console.log('[ConnectionService] Connection already mutual, sending accepted response');
         }
 
         // Return acceptance response with our profile
+        // IMPORTANT: Always return 'accepted' when we have mutual intent
+        console.log('[ConnectionService] Returning response: accepted (bidirectional mutual intent)');
         return await this.createConnectionResponse('accepted');
       }
 
@@ -331,8 +422,13 @@ class ConnectionServiceClass {
         trustLevel: 'pending',
       };
 
-      await Database.saveConnection(connection);
-      await log(`Connection ${autoAccept ? 'accepted' : 'queued'}:`, connection.id);
+      try {
+        await Database.saveConnection(connection);
+        await log(`Connection ${autoAccept ? 'accepted' : 'queued'}:`, connection.id);
+      } catch (dbError) {
+        console.error('[ConnectionService] ❌ Failed to save connection:', dbError);
+        // Continue anyway - try to send response even if save failed
+      }
 
       // Return response
       return await this.createConnectionResponse(autoAccept ? 'accepted' : 'pending');

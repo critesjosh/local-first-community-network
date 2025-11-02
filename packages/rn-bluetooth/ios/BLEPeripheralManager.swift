@@ -656,9 +656,16 @@ extension BLEPeripheralManager: CBPeripheralManagerDelegate {
     central: CBCentral,
     didSubscribeTo characteristic: CBCharacteristic
   ) {
+    print("[BLEPeripheralManager] 🔔 ===== SUBSCRIPTION EVENT =====")
     print("[BLEPeripheralManager] ✅ Central subscribed to: \(characteristic.uuid)")
     print("[BLEPeripheralManager]    Central ID: \(central.identifier)")
     print("[BLEPeripheralManager]    Max update value length: \(central.maximumUpdateValueLength)")
+    
+    if characteristic.uuid == HANDSHAKE_CHAR_UUID {
+      print("[BLEPeripheralManager] 🎯 This is the HANDSHAKE characteristic - notifications are now ENABLED")
+      print("[BLEPeripheralManager] 📱 Central can now receive connection responses")
+    }
+    
     EventEmitter.shared?.sendDebug(message: "[NATIVE-PERIPH] ✅ Central subscribed to: \(characteristic.uuid)", category: "peripheral")
   }
   
@@ -707,8 +714,10 @@ extension BLEPeripheralManager: CBPeripheralManagerDelegate {
   /// Send a connection response to subscribed centrals via notification
   @objc(sendConnectionResponse:)
   public func sendConnectionResponse(_ responseJson: String) {
+    print("[BLEPeripheralManager] 📤 ===== SENDING CONNECTION RESPONSE =====")
+    
     guard peripheralManager.state == .poweredOn else {
-      print("[BLEPeripheralManager] ❌ Cannot send response - Bluetooth not powered on")
+      print("[BLEPeripheralManager] ❌ Cannot send response - Bluetooth not powered on (state: \(peripheralManager.state.rawValue))")
       return
     }
 
@@ -717,8 +726,9 @@ extension BLEPeripheralManager: CBPeripheralManagerDelegate {
       return
     }
 
-    print("[BLEPeripheralManager] 📤 Sending connection response via notification (\(data.count) bytes)")
-    print("[BLEPeripheralManager] Response: \(responseJson.prefix(100))...")
+    print("[BLEPeripheralManager] 📝 Response data: \(data.count) bytes")
+    print("[BLEPeripheralManager] 📝 Response preview: \(responseJson.prefix(100))...")
+    print("[BLEPeripheralManager] 🎯 Target characteristic: \(handshakeCharacteristic.uuid)")
 
     // Update characteristic value and notify subscribed centrals
     let success = peripheralManager.updateValue(
@@ -728,12 +738,14 @@ extension BLEPeripheralManager: CBPeripheralManagerDelegate {
     )
 
     if success {
-      print("[BLEPeripheralManager] ✅ Response notification sent successfully")
+      print("[BLEPeripheralManager] ✅ ✅ ✅ Response notification sent successfully!")
+      print("[BLEPeripheralManager] 📡 Notification was delivered to TX queue")
     } else {
-      print("[BLEPeripheralManager] ⚠️ Central TX queue full, queuing notification for retry")
+      print("[BLEPeripheralManager] ⚠️ ⚠️ ⚠️ Central TX queue full - CANNOT send now")
+      print("[BLEPeripheralManager] 📝 Queuing notification for retry when central is ready...")
       // Queue the notification to be sent when central is ready
       pendingNotifications.append((data, handshakeCharacteristic))
-      print("[BLEPeripheralManager] 📝 Queued notifications: \(pendingNotifications.count)")
+      print("[BLEPeripheralManager] 📝 Total queued notifications: \(pendingNotifications.count)")
     }
   }
 }

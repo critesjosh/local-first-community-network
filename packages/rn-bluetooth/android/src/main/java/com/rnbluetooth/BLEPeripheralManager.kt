@@ -383,12 +383,17 @@ class BLEPeripheralManager(
             offset: Int,
             value: ByteArray
         ) {
+            val timestamp = System.currentTimeMillis()
             if (characteristic.uuid == HANDSHAKE_CHAR_UUID) {
                 val payloadJson = String(value, Charsets.UTF_8)
-                Log.d("BLEPeripheralManager", "[" + System.currentTimeMillis() + "]  Received follow request: $payloadJson")
+                Log.d("BLEPeripheralManager", "[$timestamp] 📥 Received handshake write from ${device.address}")
+                Log.d("BLEPeripheralManager", "[$timestamp] Request ID: $requestId, Prepared: $preparedWrite, Offset: $offset")
+                Log.d("BLEPeripheralManager", "[$timestamp] Payload (${value.size} bytes): ${payloadJson.take(100)}...")
 
                 // Emit event to JavaScript
+                // Note: Deduplication happens in JavaScript layer (BLEConnectionHandler)
                 eventEmitter.sendFollowRequestReceived(device.address, payloadJson)
+                Log.d("BLEPeripheralManager", "[$timestamp] ✅ Event emitted to JavaScript")
 
                 if (responseNeeded) {
                     bluetoothGattServer?.sendResponse(
@@ -398,8 +403,10 @@ class BLEPeripheralManager(
                         offset,
                         null
                     )
+                    Log.d("BLEPeripheralManager", "[$timestamp] ✅ GATT response sent")
                 }
             } else {
+                Log.d("BLEPeripheralManager", "[$timestamp] ⚠️ Write to unsupported characteristic: ${characteristic.uuid}")
                 if (responseNeeded) {
                     bluetoothGattServer?.sendResponse(
                         device,

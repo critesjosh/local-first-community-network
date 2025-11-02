@@ -54,5 +54,5 @@ export const FOLLOW_TOKEN_ROTATION_MS = 60000; // Rotate follow token every 60 s
 // ============================================
 
 // Connection timeouts
-export const CONNECTION_TIMEOUT = 10000; // 10 seconds - GATT connection timeout
+export const CONNECTION_TIMEOUT = 8000; // 8 seconds - GATT connection timeout (reduced from 10s for faster connections)
 export const MTU_SIZE = 512; // Maximum transmission unit size for GATT operations

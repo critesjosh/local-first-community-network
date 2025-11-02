@@ -44,15 +44,11 @@ const ConnectionDetailScreen = ({route, navigation}: Props) => {
           onPress: async () => {
             try {
               await ConnectionService.deleteConnection(connectionId);
-              Alert.alert('Unfollowed', 'Relationship removed successfully', [
-                {
-                  text: 'OK',
-                  onPress: () => navigation.goBack(),
-                },
-              ]);
+              // Navigate back without alert
+              navigation.goBack();
             } catch (error) {
               console.error('Error disconnecting:', error);
-              Alert.alert('Error', 'Failed to disconnect. Please try again.');
+              // Just log the error, don't show alert
             }
           },
         },
