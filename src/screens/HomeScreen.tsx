@@ -1,4 +1,4 @@
-import React, {useState, useCallback, useEffect} from 'react';
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,25 +8,25 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
-} from 'react-native';
-import {SafeAreaView} from 'react-native-safe-area-context';
-import {useFocusEffect} from '@react-navigation/native';
-import EventCard from '../components/events/EventCard';
-import {Event} from '../types/models';
-import Database from '../services/storage/Database';
-import EncryptionService from '../services/crypto/EncryptionService';
-import ConnectionService from '../services/ConnectionService';
-import BLEBroadcastService from '../services/bluetooth/BLEBroadcastService';
-import BLEConnectionHandler from '../services/bluetooth/BLEConnectionHandler';
-import IdentityService from '../services/IdentityService';
-import {addBluetoothListener} from '@localcommunity/rn-bluetooth';
-import {initLogger} from '../utils/logger';
-import {imageToBase64} from '../utils/imageUtils';
-import {Buffer} from 'buffer';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
+import EventCard from "../components/events/EventCard";
+import { Event } from "../types/models";
+import PostStorageService from "../services/storage/PostStorageService";
+import EncryptionService from "../services/crypto/EncryptionService";
+import ConnectionService from "../services/ConnectionService";
+import BLEBroadcastService from "../services/bluetooth/BLEBroadcastService";
+import BLEConnectionHandler from "../services/bluetooth/BLEConnectionHandler";
+import IdentityService from "../services/IdentityService";
+import { addBluetoothListener } from "@localcommunity/rn-bluetooth";
+import { initLogger } from "../utils/logger";
+import { Buffer } from "buffer";
+import { ConnectionProfile } from "../types/bluetooth";
 
 interface RSVPState {
   [eventId: string]: {
-    status: 'going' | 'interested' | 'not_going';
+    status: "going" | "interested" | "not_going";
     count: number;
   };
 }
@@ -37,6 +37,8 @@ const HomeScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [rsvpState, setRsvpState] = useState<RSVPState>({});
   const [isAdvertising, setIsAdvertising] = useState(false);
+  const [connections, setConnections] = useState<any[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   // Initialize logger with user display name
   useEffect(() => {
@@ -59,20 +61,21 @@ const HomeScreen = () => {
   // Listen for Bluetooth events from native layer
   useEffect(() => {
     const unsubscribe = addBluetoothListener((event) => {
-      if (event.type === 'error') {
-
+      if (event.type === "error") {
         // Check if this is a Location Services warning
-        if (event.code === 'SCAN_DEBUG' &&
-            event.message &&
-            event.message.includes('Location Services') &&
-            event.message.includes('disabled')) {
+        if (
+          event.code === "SCAN_DEBUG" &&
+          event.message &&
+          event.message.includes("Location Services") &&
+          event.message.includes("disabled")
+        ) {
           // Show alert to user
           Alert.alert(
-            'Location Services Required',
-            'BLE scanning requires Location Services to be enabled on Android. Please enable Location in your device settings to discover nearby neighbors.',
+            "Location Services Required",
+            "BLE scanning requires Location Services to be enabled on Android. Please enable Location in your device settings to discover nearby neighbors.",
             [
-              {text: 'Cancel', style: 'cancel'},
-              {text: 'Open Settings', onPress: () => Linking.openSettings()}
+              { text: "Cancel", style: "cancel" },
+              { text: "Open Settings", onPress: () => Linking.openSettings() },
             ]
           );
         }
@@ -87,62 +90,68 @@ const HomeScreen = () => {
     const startAdvertising = async () => {
       try {
         // Request Bluetooth permissions first
-        console.log('Checking Bluetooth permissions...');
-        const {Bluetooth} = await import('@localcommunity/rn-bluetooth');
+        console.log("Checking Bluetooth permissions...");
+        const { Bluetooth } = await import("@localcommunity/rn-bluetooth");
         const hasPermissions = await Bluetooth.requestPermissions();
 
         if (!hasPermissions) {
           Alert.alert(
-            'Bluetooth Permissions Needed',
-            'Please grant Bluetooth permissions to discover nearby neighbors.',
+            "Bluetooth Permissions Needed",
+            "Please grant Bluetooth permissions to discover nearby neighbors.",
             [
-              {text: 'OK', onPress: async () => {
-                // Try again after user acknowledges
-                const granted = await Bluetooth.requestPermissions();
-                if (!granted) {
-                  console.error('Bluetooth permissions denied');
-                }
-              }}
+              {
+                text: "OK",
+                onPress: async () => {
+                  // Try again after user acknowledges
+                  const granted = await Bluetooth.requestPermissions();
+                  if (!granted) {
+                    console.error("Bluetooth permissions denied");
+                  }
+                },
+              },
             ]
           );
           return;
         }
 
-        console.log('Bluetooth permissions granted');
+        console.log("Bluetooth permissions granted");
 
         const user = await IdentityService.getCurrentUser();
         const identity = IdentityService.getCurrentIdentity();
 
         if (user && identity) {
-          console.log('Starting BLE advertising for user:', user.displayName);
+          console.log("Starting BLE advertising for user:", user.displayName);
 
           // Create minimal connection profile - only essential data for BLE transfer
           // Profile photos are too large for GATT reads/writes (512 byte limit) and will be synced separately
           const fullProfile: ConnectionProfile = {
             userId: user.id,
             displayName: user.displayName,
-            publicKey: Buffer.from(identity.publicKey).toString('base64'),
+            publicKey: Buffer.from(identity.publicKey).toString("base64"),
             // Explicitly exclude profilePhoto - it causes 512-byte GATT read limit to be exceeded
           };
 
-          console.log('[HomeScreen] 📋 Profile data prepared:', {
+          console.log("[HomeScreen] 📋 Profile data prepared:", {
             userId: fullProfile.userId,
             displayName: fullProfile.displayName,
             publicKeyLength: fullProfile.publicKey.length,
           });
 
           // Start advertising presence (this will set the profile data internally)
-          await BLEBroadcastService.start({
-            userId: user.id,
-            displayName: user.displayName,
-          }, fullProfile);
+          await BLEBroadcastService.start(
+            {
+              userId: user.id,
+              displayName: user.displayName,
+            },
+            fullProfile
+          );
 
-          console.log('✅ BLE advertising started successfully');
+          console.log("✅ BLE advertising started successfully");
         } else {
-          console.warn('No user identity found, skipping BLE advertising');
+          console.warn("No user identity found, skipping BLE advertising");
         }
       } catch (error) {
-        console.error('❌ Failed to start BLE advertising:', error);
+        console.error("❌ Failed to start BLE advertising:", error);
       }
     };
 
@@ -150,8 +159,8 @@ const HomeScreen = () => {
 
     // Cleanup: stop advertising and connection handler when component unmounts
     return () => {
-      BLEBroadcastService.stop().catch(err =>
-        console.warn('Error stopping advertising:', err)
+      BLEBroadcastService.stop().catch((err) =>
+        console.warn("Error stopping advertising:", err)
       );
       BLEConnectionHandler.stop();
     };
@@ -159,13 +168,18 @@ const HomeScreen = () => {
 
   const loadEvents = async () => {
     try {
-      // Get all encrypted events from database
-      const encryptedEvents = await Database.getEncryptedEvents();
+      // Get current user
+      const user = await IdentityService.getCurrentUser();
+      setCurrentUser(user);
+
+      // Get all encrypted events from storage provider (local for MVP, REST/OrbitDB later)
+      const encryptedEvents = await PostStorageService.fetchPosts(0); // Fetch all events since epoch
 
       // Get all connections for decryption
-      const connections = await ConnectionService.getConnections();
+      const fetchedConnections = await ConnectionService.getConnections();
+      setConnections(fetchedConnections);
 
-      if (connections.length === 0) {
+      if (fetchedConnections.length === 0) {
         setEvents([]);
         return;
       }
@@ -176,26 +190,28 @@ const HomeScreen = () => {
         try {
           const decrypted = await EncryptionService.decryptEvent(
             encryptedEvent,
-            connections,
+            fetchedConnections
           );
           if (decrypted) {
             decryptedEvents.push(decrypted);
           }
         } catch (error) {
-          console.warn('Failed to decrypt event:', error);
+          console.warn("Failed to decrypt event:", error);
           // Skip events we can't decrypt
         }
       }
 
-      // Sort by datetime (newest first)
+      // Sort by createdAt (newest first)
       decryptedEvents.sort((a, b) => {
-        return new Date(b.datetime).getTime() - new Date(a.datetime).getTime();
+        return (
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
       });
 
       setEvents(decryptedEvents);
     } catch (error) {
-      console.error('Error loading events:', error);
-      Alert.alert('Error', 'Failed to load events. Please try again.');
+      console.error("Error loading events:", error);
+      Alert.alert("Error", "Failed to load events. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -209,9 +225,9 @@ const HomeScreen = () => {
 
   const handleRSVP = (
     eventId: string,
-    status: 'going' | 'interested' | 'not_going',
+    status: "going" | "interested" | "not_going"
   ) => {
-    setRsvpState(prev => {
+    setRsvpState((prev) => {
       const currentStatus = prev[eventId]?.status;
       const currentCount = prev[eventId]?.count || 0;
 
@@ -220,7 +236,7 @@ const HomeScreen = () => {
         return {
           ...prev,
           [eventId]: {
-            status: 'not_going',
+            status: "not_going",
             count: Math.max(0, currentCount - 1),
           },
         };
@@ -231,7 +247,8 @@ const HomeScreen = () => {
         ...prev,
         [eventId]: {
           status,
-          count: currentStatus === 'not_going' ? currentCount + 1 : currentCount,
+          count:
+            currentStatus === "not_going" ? currentCount + 1 : currentCount,
         },
       };
     });
@@ -243,24 +260,54 @@ const HomeScreen = () => {
   useFocusEffect(
     useCallback(() => {
       loadEvents();
-    }, []),
+    }, [])
   );
 
-  const renderEvent = ({item}: {item: Event}) => (
-    <EventCard
-      event={item}
-      onRSVP={handleRSVP}
-      currentUserRSVP={rsvpState[item.id]?.status}
-      attendeeCount={rsvpState[item.id]?.count}
-    />
-  );
+  const getAuthorInfo = (authorId: string) => {
+    // Check if it's the current user
+    if (currentUser && currentUser.id === authorId) {
+      return {
+        displayName: currentUser.displayName,
+        profilePhoto: currentUser.profilePhoto,
+      };
+    }
+
+    // Look up in connections
+    const connection = connections.find((c) => c.userId === authorId);
+    if (connection) {
+      return {
+        displayName: connection.displayName,
+        profilePhoto: connection.profilePhoto,
+      };
+    }
+
+    // Fallback
+    return {
+      displayName: "Unknown",
+      profilePhoto: undefined,
+    };
+  };
+
+  const renderEvent = ({ item }: { item: Event }) => {
+    const authorInfo = getAuthorInfo(item.authorId);
+    return (
+      <EventCard
+        event={item}
+        authorName={authorInfo.displayName}
+        authorPhoto={authorInfo.profilePhoto}
+        onRSVP={handleRSVP}
+        currentUserRSVP={rsvpState[item.id]?.status}
+        attendeeCount={rsvpState[item.id]?.count}
+      />
+    );
+  };
 
   const renderEmpty = () => (
     <View style={styles.placeholder}>
       <Text style={styles.placeholderText}>
         {loading
-          ? 'Loading events...'
-          : 'No events yet. Connect with neighbors and create an event to get started!'}
+          ? "Loading events..."
+          : "No events yet. Connect with neighbors and create an event to get started!"}
       </Text>
     </View>
   );
@@ -272,16 +319,22 @@ const HomeScreen = () => {
         <Text style={styles.subtitle}>
           Discover what's happening in your neighborhood
         </Text>
-        <View style={[
-          styles.advertisingBadge,
-          isAdvertising ? styles.advertisingBadgeActive : styles.advertisingBadgeInactive
-        ]}>
-          <View style={[
-            styles.statusDot,
-            isAdvertising ? styles.statusDotActive : styles.statusDotInactive
-          ]} />
+        <View
+          style={[
+            styles.advertisingBadge,
+            isAdvertising
+              ? styles.advertisingBadgeActive
+              : styles.advertisingBadgeInactive,
+          ]}
+        >
+          <View
+            style={[
+              styles.statusDot,
+              isAdvertising ? styles.statusDotActive : styles.statusDotInactive,
+            ]}
+          />
           <Text style={styles.advertisingText}>
-            {isAdvertising ? 'Discoverable' : 'Not advertising'}
+            {isAdvertising ? "Discoverable" : "Not advertising"}
           </Text>
         </View>
       </View>
@@ -294,7 +347,7 @@ const HomeScreen = () => {
         <FlatList
           data={events}
           renderItem={renderEvent}
-          keyExtractor={item => item.id}
+          keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={renderEmpty}
           refreshControl={
@@ -313,37 +366,37 @@ const HomeScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: "#F2F2F7",
   },
   header: {
     paddingHorizontal: 20,
     paddingTop: 60,
     paddingBottom: 16,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: "#F2F2F7",
   },
   title: {
     fontSize: 34,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#8E8E93',
+    color: "#8E8E93",
   },
   advertisingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
     marginTop: 12,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
   },
   advertisingBadgeActive: {
-    backgroundColor: '#E8F5E9',
+    backgroundColor: "#E8F5E9",
   },
   advertisingBadgeInactive: {
-    backgroundColor: '#FFF3E0',
+    backgroundColor: "#FFF3E0",
   },
   statusDot: {
     width: 8,
@@ -352,34 +405,34 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   statusDotActive: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: "#4CAF50",
   },
   statusDotInactive: {
-    backgroundColor: '#FF9800',
+    backgroundColor: "#FF9800",
   },
   advertisingText: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: "600",
+    color: "#333",
   },
   listContent: {
     padding: 20,
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   placeholder: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 12,
     padding: 40,
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 20,
   },
   placeholderText: {
-    color: '#8E8E93',
-    textAlign: 'center',
+    color: "#8E8E93",
+    textAlign: "center",
     fontSize: 16,
     lineHeight: 22,
   },

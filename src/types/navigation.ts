@@ -28,6 +28,7 @@ export type MainTabParamList = {
   Connect: undefined;
   Profile: undefined;
   Settings: undefined;
+  CreateEvent: undefined;
 };
 
 /**
