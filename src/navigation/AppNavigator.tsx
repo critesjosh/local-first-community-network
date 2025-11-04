@@ -68,8 +68,8 @@ const MainTabs = () => {
         name="Connect"
         component={ConnectScreen}
         options={{
-          title: 'Connect',
-          headerShown: true,
+          // title: 'Connect',
+          headerShown: false,
           tabBarIcon: ({color}) => (
             <Text style={{fontSize: 24, color}}>🪩</Text>
           ),

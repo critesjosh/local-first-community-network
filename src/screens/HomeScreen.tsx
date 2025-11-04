@@ -317,14 +317,14 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 68,
-    paddingBottom: 12,
+    paddingTop: 60,
+    paddingBottom: 16,
     backgroundColor: '#F2F2F7',
   },
   title: {
     fontSize: 34,
     fontWeight: 'bold',
-    marginBottom: 4,
+    marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,

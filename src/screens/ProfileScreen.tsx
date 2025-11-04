@@ -60,10 +60,12 @@ const ProfileScreen = ({navigation}: Props) => {
   return (
     <SafeAreaView style={styles.container} edges={[]}>
       <View style={styles.content}>
-        <Text style={styles.title}>Profile</Text>
-        <Text style={styles.subtitle}>
-          Your identity in the neighborhood network
-        </Text>
+        <View style={styles.headerSection}>
+          <Text style={styles.title}>Profile</Text>
+          <Text style={styles.subtitle}>
+            Your identity in the neighborhood network
+          </Text>
+        </View>
 
         <TouchableOpacity
           style={styles.profileCard}
@@ -120,7 +122,10 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 20,
+  },
+  headerSection: {
     paddingTop: 60,
+    paddingBottom: 16,
   },
   title: {
     fontSize: 34,
@@ -130,7 +135,6 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: '#8E8E93',
-    marginBottom: 24,
   },
   profileCard: {
     backgroundColor: 'white',

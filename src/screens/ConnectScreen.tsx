@@ -66,14 +66,14 @@ const ConnectScreen = () => {
           console.error('[ConnectScreen] Scan error:', scanError);
           Alert.alert(
             'Scanning Error',
-            'Could not start scanning. Please ensure:\n\n1. Bluetooth is turned ON\n2. App has Location permission\n\nError: ' + scanError.message,
+            'Could not start scanning. Please ensure:\n\n1. Bluetooth is turned ON\n2. App has Location permission\n\nError: ' + (scanError as any).message,
           );
         }
       } catch (error) {
         console.error('[ConnectScreen] Initialization error:', error);
         Alert.alert(
           'Initialization Error', 
-          'Failed to initialize:\n\n' + error.message + '\n\nPlease check Bluetooth and permissions.'
+          'Failed to initialize:\n\n' + (error as Error).message + '\n\nPlease check Bluetooth and permissions.'
         );
       }
     };
@@ -397,16 +397,16 @@ const ConnectScreen = () => {
           </Text>
         </View>
 
-        {renderSessionCard()}
+        {/* {renderSessionCard()} */}
 
-        <View style={styles.devicesSection}>
+        {/* <View style={styles.devicesSection}>
           <Text style={styles.sectionTitle}>
             Nearby ({devices.length})
           </Text>
           <Text style={styles.sectionSubtitle}>
             Scanning automatically for people around you
           </Text>
-        </View>
+        </View> */}
 
         {devices.length > 0 ? (
           <FlatList
@@ -448,8 +448,8 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
   },
   headerSection: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingHorizontal: 0,
     paddingBottom: 16,
   },
   title: {

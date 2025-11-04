@@ -221,10 +221,12 @@ const CreateEventScreen = ({navigation}: Props) => {
         bounces={true}
       >
         <View style={styles.content}>
-          <Text style={styles.title}>Create Event</Text>
-          <Text style={styles.subtitle}>
-            Share what's happening in your neighborhood
-          </Text>
+          <View style={styles.headerSection}>
+            <Text style={styles.title}>Create Event</Text>
+            <Text style={styles.subtitle}>
+              Share what's happening in your neighborhood
+            </Text>
+          </View>
 
           <View style={styles.form}>
             <Text style={styles.label}>
@@ -352,11 +354,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingTop: 60,
     paddingBottom: 60,
   },
   content: {
-    padding: 20,
+    paddingHorizontal: 20,
+  },
+  headerSection: {
+    paddingTop: 60,
+    paddingBottom: 16,
   },
   title: {
     fontSize: 34,
@@ -366,7 +371,6 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: '#8E8E93',
-    marginBottom: 24,
   },
   form: {
     backgroundColor: 'white',

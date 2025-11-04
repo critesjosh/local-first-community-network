@@ -383,7 +383,7 @@ const styles = StyleSheet.create({
   },
   headerSection: {
     paddingTop: 60,
-    paddingHorizontal: 20,
+    paddingHorizontal: 0,
     paddingBottom: 16,
   },
   title: {
