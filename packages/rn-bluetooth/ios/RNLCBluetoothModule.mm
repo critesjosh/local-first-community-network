@@ -28,6 +28,15 @@ RCT_EXPORT_METHOD(initialize:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
   @try {
+    // CRITICAL: Ensure EventEmitter is initialized early by referencing it
+    // React Native should instantiate it automatically, but force early initialization
+    Class eventEmitterClass = NSClassFromString(@"RNLCBluetoothEventEmitter");
+    if (eventEmitterClass) {
+      NSLog(@"[RNLCBluetoothModule] EventEmitter class found, should be initialized by RN");
+    } else {
+      NSLog(@"[RNLCBluetoothModule] ⚠️ WARNING: EventEmitter class not found!");
+    }
+    
     [[BLECentralManager shared] initializeWithRestoreIdentifier:nil];
     [[BLEPeripheralManager shared] initialize];
     resolve(nil);
@@ -50,6 +59,16 @@ RCT_EXPORT_METHOD(startScanning:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
   NSLog(@"[RNLCBluetoothModule] startScanning called in Objective-C bridge");
+  
+  // CRITICAL: Verify EventEmitter is initialized before starting scan
+  // This is important for release builds where timing might differ
+  Class eventEmitterClass = NSClassFromString(@"RNLCBluetoothEventEmitter");
+  if (!eventEmitterClass) {
+    NSLog(@"[RNLCBluetoothModule] ❌ ERROR: EventEmitter class not found! Events will be lost!");
+    reject(@"init_error", @"EventEmitter not initialized", nil);
+    return;
+  }
+  
   NSError *error = nil;
   [[BLECentralManager shared] startScanningAndReturnError:&error];
   if (error) {

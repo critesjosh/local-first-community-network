@@ -36,9 +36,35 @@ class IdentityService {
 
   /**
    * Check if user has created identity
+   * Verifies both that keys exist AND a user profile exists in the database
    */
   async hasIdentity(): Promise<boolean> {
-    return await SecureStorage.hasKeys();
+    // First check if keys exist
+    const hasKeys = await SecureStorage.hasKeys();
+    if (!hasKeys) {
+      console.log('[IdentityService] hasIdentity: No keys in SecureStorage');
+      return false;
+    }
+
+    // Load identity if not already loaded
+    if (!this.identity) {
+      console.log('[IdentityService] hasIdentity: Loading identity from keys...');
+      await this.loadIdentity();
+    }
+
+    // Check if user profile exists in database
+    if (this.identity) {
+      const user = await this.getCurrentUser();
+      if (!user) {
+        console.log('[IdentityService] hasIdentity: Keys exist but no user profile found in database');
+        return false;
+      }
+      console.log('[IdentityService] hasIdentity: Identity and user profile both exist');
+      return true;
+    }
+
+    console.log('[IdentityService] hasIdentity: Keys exist but failed to load identity');
+    return false;
   }
 
   /**

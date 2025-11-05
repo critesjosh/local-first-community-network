@@ -41,7 +41,8 @@ const mockModule = {
 const BluetoothModule = RNLCBluetoothModule || mockModule;
 
 // Event emitter for Bluetooth events - use the dedicated EventEmitter module
-const eventEmitter = new NativeEventEmitter(RNLCBluetoothEventEmitter);
+// Only create NativeEventEmitter if the native module exists to prevent crash
+const eventEmitter = RNLCBluetoothEventEmitter ? new NativeEventEmitter(RNLCBluetoothEventEmitter) : null;
 const EVENT_NAME = 'RNLCBluetoothEvent';
 
 console.log('🔌 Bluetooth Module Setup:');
@@ -54,7 +55,7 @@ console.log('  - RNLCBluetoothEventEmitter:', RNLCBluetoothEventEmitter ? 'Found
  * @returns Unsubscribe function
  */
 export function addBluetoothListener(listener) {
-  if (!RNLCBluetoothEventEmitter) {
+  if (!RNLCBluetoothEventEmitter || !eventEmitter) {
     console.warn('RNLCBluetoothEventEmitter not available. Event listener will not work.');
     return () => {};
   }

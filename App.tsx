@@ -80,6 +80,11 @@ function App() {
         return;
       }
 
+      // Skip update checks if Updates is not available
+      if (!Updates.isEnabled) {
+        return;
+      }
+
       const update = await Updates.checkForUpdateAsync();
       if (update.isAvailable) {
         console.log('Update available, downloading...');
@@ -87,8 +92,14 @@ function App() {
         console.log('Update downloaded, reloading app...');
         await Updates.reloadAsync();
       }
-    } catch (error) {
-      console.error('Error checking for updates:', error);
+    } catch (error: any) {
+      // Gracefully handle update check errors (e.g., channel doesn't exist)
+      // Don't block app initialization if update check fails
+      if (error?.code === 'ERR_UPDATES_CHECK' || error?.message?.includes('404')) {
+        console.log('Update channel not configured, skipping update check');
+      } else {
+        console.error('Error checking for updates:', error);
+      }
     }
   };
 

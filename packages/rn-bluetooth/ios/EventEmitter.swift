@@ -15,6 +15,8 @@ class EventEmitter: RCTEventEmitter {
   override init() {
     super.init()
     EventEmitter.shared = self
+    // Use NSLog for release builds - print() may be stripped
+    NSLog("[EventEmitter] 🔌 EventEmitter initialized and set as shared instance")
     print("[EventEmitter] 🔌 EventEmitter initialized and set as shared instance")
   }
 
@@ -38,6 +40,8 @@ class EventEmitter: RCTEventEmitter {
     rssi: Int,
     payload: [String: Any]
   ) {
+    // Use NSLog for release builds - print() may be stripped
+    NSLog("[EventEmitter] 📤 Sending deviceDiscovered event: %@", deviceId)
     print("[EventEmitter] 📤 Sending deviceDiscovered event: \(deviceId)")
     send([
       "type": "deviceDiscovered",
@@ -45,6 +49,7 @@ class EventEmitter: RCTEventEmitter {
       "rssi": rssi,
       "payload": payload
     ])
+    NSLog("[EventEmitter] ✅ Event sent to JavaScript")
     print("[EventEmitter] ✅ Event sent to JavaScript")
   }
 
