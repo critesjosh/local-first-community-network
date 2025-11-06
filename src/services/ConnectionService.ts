@@ -10,6 +10,7 @@
 
 import {Buffer} from 'buffer';
 import BLEManager from './bluetooth/BLEManager';
+import Bluetooth from '@localcommunity/rn-bluetooth';
 import Database from './storage/Database';
 import IdentityService from './IdentityService';
 import ECDHService from './crypto/ECDH';
@@ -272,9 +273,9 @@ class ConnectionServiceClass {
       // IMPORTANT: Set up response waiter BEFORE sending request to avoid race condition
       // If the other device responds quickly, we need to be ready to receive it
       await log('✅ [ConnectionService] Setting up response listener...');
-      const responsePromise = this.waitForResponse(theirProfile.userId, 5000); // Reduced to 5 seconds
+      const responsePromise = this.waitForResponse(theirProfile.userId, 30000); // 30 seconds to allow time for manual acceptance
 
-      await log('✅ [ConnectionService] Connection request sent, waiting for response (5 seconds)...');
+      await log('✅ [ConnectionService] Connection request sent, waiting for response (30 seconds)...');
 
       // Wait for response (waiter already set up above)
       const response = await responsePromise;
@@ -335,7 +336,9 @@ class ConnectionServiceClass {
         await log(`✅ [ConnectionService] Connection saved with status: ${connectionStatus}`, connection.id);
       }
 
-      await BLEManager.disconnectFromDevice(deviceId);
+      // Don't disconnect immediately - keep connection open to receive late responses
+      // The connection will naturally close when devices move out of range or when explicitly disconnected
+      await log(`✅ [ConnectionService] Connection established, leaving BLE connection open for potential late responses`);
 
       return {profile: theirProfile, connection};
     } catch (error) {
@@ -537,10 +540,10 @@ class ConnectionServiceClass {
       await Database.updateConnectionStatus(connectionId, 'mutual');
       await log('Database status updated to mutual');
 
-      // Send acceptance response back to requester
-      // This is a best-effort attempt - if they're not nearby/advertising, it will fail silently
+      // Send acceptance response to the requester via BLE notification
+      // The requester should still be connected (if they stayed in range)
       try {
-        await log('📤 [ConnectionService] Sending acceptance response to requester...');
+        await log('📤 [ConnectionService] Sending acceptance response via BLE...');
 
         // Create acceptance response
         const currentUser = await IdentityService.getCurrentUser();
@@ -560,34 +563,22 @@ class ConnectionServiceClass {
           timestamp: new Date().toISOString(),
         };
 
-        // Try to find and connect to the requester's device
-        await log('🔍 [ConnectionService] Looking for requester device...');
+        // Try to find the requester device to get its BLE address
         const discoveredDevices = BLEManager.getDiscoveredDevices();
-        
-        // Find device by userId match
         const requesterDevice = Array.from(discoveredDevices.values()).find(
           d => d.broadcastPayload?.displayName === connection.displayName
         );
 
         if (requesterDevice) {
-          await log(`✅ [ConnectionService] Found requester device: ${requesterDevice.deviceId}`);
-          
-          // Connect and send response
-          const device = await BLEManager.connectToDevice(requesterDevice.deviceId);
-          if (device) {
-            await log('🔗 [ConnectionService] Connected, writing acceptance response...');
-            await BLEManager.writeHandshake(device, response);
-            await log('✅ [ConnectionService] Acceptance response sent!');
-            await BLEManager.disconnectFromDevice(requesterDevice.deviceId);
-          } else {
-            throw new Error('Failed to connect to requester device');
-          }
+          // Send via peripheral manager (to connected central)
+          await Bluetooth.sendConnectionResponse(requesterDevice.deviceId, response);
+          await log('✅ [ConnectionService] Acceptance response sent via BLE notification');
         } else {
-          await log('⚠️ [ConnectionService] Requester device not found in nearby devices');
-          await log('💡 [ConnectionService] Requester will see acceptance when they scan again');
+          await log('⚠️ [ConnectionService] Requester device not found - they may have moved out of range');
+          await log('💡 [ConnectionService] They will see acceptance when they scan again');
         }
       } catch (error) {
-        await logWarn('⚠️ [ConnectionService] Could not send BLE notification to requester:', error);
+        await logWarn('⚠️ [ConnectionService] Could not send BLE notification:', error);
         await log('💡 [ConnectionService] Requester will see acceptance via next scan');
       }
 
@@ -617,10 +608,10 @@ class ConnectionServiceClass {
       await Database.deleteConnection(connectionId);
       await log('Connection deleted from database');
 
-      // Send rejection response back to requester
-      // This is a best-effort attempt - if they're not nearby, it will fail silently
+      // Send rejection response back to requester via BLE notification
+      // The requester should still be connected (if they stayed in range)
       try {
-        await log('📤 [ConnectionService] Sending rejection response to requester...');
+        await log('📤 [ConnectionService] Sending rejection response via BLE...');
 
         const currentUser = await IdentityService.getCurrentUser();
         const identity = IdentityService.getCurrentIdentity();
@@ -639,31 +630,21 @@ class ConnectionServiceClass {
           timestamp: new Date().toISOString(),
         };
 
-        // Try to find and connect to the requester's device
-        await log('🔍 [ConnectionService] Looking for requester device...');
+        // Try to find the requester device to get its BLE address
         const discoveredDevices = BLEManager.getDiscoveredDevices();
-        
         const requesterDevice = Array.from(discoveredDevices.values()).find(
           d => d.broadcastPayload?.displayName === connection.displayName
         );
 
         if (requesterDevice) {
-          await log(`✅ [ConnectionService] Found requester device: ${requesterDevice.deviceId}`);
-          
-          const device = await BLEManager.connectToDevice(requesterDevice.deviceId);
-          if (device) {
-            await log('🔗 [ConnectionService] Connected, writing rejection response...');
-            await BLEManager.writeHandshake(device, response);
-            await log('✅ [ConnectionService] Rejection response sent!');
-            await BLEManager.disconnectFromDevice(requesterDevice.deviceId);
-          } else {
-            throw new Error('Failed to connect to requester device');
-          }
+          // Send via peripheral manager (to connected central)
+          await Bluetooth.sendConnectionResponse(requesterDevice.deviceId, response);
+          await log('✅ [ConnectionService] Rejection response sent via BLE notification');
         } else {
-          await log('⚠️ [ConnectionService] Requester device not found in nearby devices');
+          await log('⚠️ [ConnectionService] Requester device not found - they may have moved out of range');
         }
       } catch (error) {
-        await logWarn('⚠️ [ConnectionService] Could not send rejection notification:', error);
+        await logWarn('⚠️ [ConnectionService] Could not send BLE notification:', error);
       }
 
       return true;
