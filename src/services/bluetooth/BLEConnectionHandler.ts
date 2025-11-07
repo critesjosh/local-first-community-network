@@ -91,19 +91,30 @@ class BLEConnectionHandler {
   /**
    * Handle incoming follow/connection request
    * Converts old follow-request format to new connection-request format
+   *
+   * NOTE: Native Android sends ALL handshake notifications as 'followRequestReceived' events,
+   * so we need to check the payload type and route responses to handleConnectionResponse
    */
   private async handleFollowRequest(
     deviceId: string,
     payload: any,
   ): Promise<void> {
     try {
-      await log('[BLEConnectionHandler] Received connection request from:', deviceId);
+      await log('[BLEConnectionHandler] Received handshake notification from:', deviceId);
       await log('[BLEConnectionHandler] Payload:', JSON.stringify(payload).substring(0, 200));
+
+      // CRITICAL: Check if this is actually a connection-response (not a request)
+      // Native code sends all notifications as 'followRequestReceived' regardless of type
+      if (payload.type === 'connection-response' || payload.responder) {
+        console.log('[BLEConnectionHandler] 🔀 Detected connection-response, routing to handleConnectionResponse');
+        await this.handleConnectionResponse(deviceId, payload);
+        return;
+      }
 
       // Check if payload is already in connection-request format (has requester field)
       // or old follow-request format (has follower field)
       let connectionRequest: ConnectionRequest;
-      
+
       if (payload.requester) {
         // Already in correct format
         connectionRequest = payload as ConnectionRequest;

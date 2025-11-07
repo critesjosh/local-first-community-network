@@ -147,6 +147,10 @@ const HomeScreen = () => {
           );
 
           console.log("✅ BLE advertising started successfully");
+
+          // Start the connection handler to receive connection requests/responses
+          BLEConnectionHandler.start();
+          console.log("✅ BLE connection handler started");
         } else {
           console.warn("No user identity found, skipping BLE advertising");
         }
