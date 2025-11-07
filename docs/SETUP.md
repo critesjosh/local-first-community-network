@@ -19,11 +19,6 @@ This project is configured for local development and testing on physical devices
 
 ### For Android Development
 
-- **Option 1: Expo Go App (Easiest, Limited)**
-
-  - Install "Expo Go" from Google Play Store
-  - Best for simple projects without native modules
-
 - **Option 2: Development Build (Recommended)**
   - Android Studio with Android SDK
   - Java Development Kit (JDK 17 or later)
@@ -32,11 +27,6 @@ This project is configured for local development and testing on physical devices
 
 ### For iOS Development (macOS only for local builds)
 
-- **Option 1: Expo Go App (Easiest, Limited)**
-
-  - Install "Expo Go" from Apple App Store
-  - Best for simple projects without native modules
-
 - **Option 2: Development Build (Recommended)**
   - macOS with Xcode (latest version)
   - iOS device with developer mode enabled OR iOS simulator
@@ -44,39 +34,6 @@ This project is configured for local development and testing on physical devices
   - For local builds: EAS CLI (`npm install -g eas-cli`)
 
 ## Quick Start - Testing on Physical Device
-
-### Method 1: Using Expo Go (Fastest, No Build Required)
-
-This is the easiest method and works for most basic React Native apps:
-
-1. **Install Expo Go on your phone**:
-
-   - Android: Download from Google Play Store
-   - iOS: Download from Apple App Store
-
-2. **Start the development server**:
-
-   ```bash
-   npm start
-   ```
-
-3. **Connect your device**:
-
-   - Ensure your phone and computer are on the same WiFi network
-   - **Android**: Open Expo Go app and scan the QR code shown in terminal
-   - **iOS**: Open Camera app and scan the QR code, then tap the notification
-
-4. **Development workflow**:
-   - Edit code in `App.js`
-   - Save the file
-   - App automatically reloads on your device
-   - Shake device to open developer menu
-
-**Limitations**:
-
-- Cannot use custom native modules
-- Limited to Expo SDK modules only
-- Some advanced features unavailable
 
 ### Method 2: Development Build (Full Features)
 
