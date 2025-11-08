@@ -38,7 +38,7 @@
         "buildConfiguration": "Release"
       },
       "android": {
-        "buildType": "apk"
+        "buildType": "aab"
       }
     }
   },
