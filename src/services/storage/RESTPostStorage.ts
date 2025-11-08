@@ -98,6 +98,7 @@ class RESTPostStorage implements PostStorageProvider {
    * Fetch encrypted events from REST API and cache them locally
    *
    * No authentication required for GET (events are encrypted anyway)
+   * Posts are automatically cached in local database for offline access
    */
   async fetchPosts(since: number, limit?: number): Promise<EncryptedEvent[]> {
     try {
@@ -125,18 +126,20 @@ class RESTPostStorage implements PostStorageProvider {
       const posts = data.posts as EncryptedEvent[];
       console.log(`[RESTPostStorage] Fetched ${posts.length} posts from API`);
 
-      // Save fetched posts to local database for offline access and thread replies
+      // Cache posts in local database for offline access and thread operations
       for (const post of posts) {
         try {
+          // Ensure wrappedKeys is properly formatted
+          if (!post.wrappedKeys || typeof post.wrappedKeys !== 'object') {
+            console.warn(`[RESTPostStorage] Post ${post.id} has invalid wrappedKeys, skipping cache`);
+            continue;
+          }
           await Database.saveEncryptedEvent(post);
         } catch (error) {
-          // Ignore duplicate key errors, log others
-          if (!(error instanceof Error && error.message.includes('UNIQUE constraint'))) {
-            console.error('[RESTPostStorage] Error caching post to local DB:', error);
-          }
+          console.error(`[RESTPostStorage] Failed to cache post ${post.id}:`, error);
+          // Continue even if caching fails
         }
       }
-      console.log(`[RESTPostStorage] Cached ${posts.length} posts to local database`);
 
       return posts;
     } catch (error) {
@@ -252,7 +255,8 @@ class RESTPostStorage implements PostStorageProvider {
   }
 
   /**
-   * Fetch replies for a thread from REST API and cache them locally
+   * Fetch replies for a thread from REST API
+   * Replies are automatically cached in local database for offline access
    */
   async fetchThreadReplies(threadId: string): Promise<EncryptedThreadReply[]> {
     try {
@@ -273,18 +277,15 @@ class RESTPostStorage implements PostStorageProvider {
       const replies = data.replies as EncryptedThreadReply[];
       console.log(`[RESTPostStorage] Fetched ${replies.length} replies from API`);
 
-      // Save fetched replies to local database for offline access
+      // Cache replies in local database for offline access and reply counts
       for (const reply of replies) {
         try {
           await Database.saveEncryptedThreadReply(reply);
         } catch (error) {
-          // Ignore duplicate key errors, log others
-          if (!(error instanceof Error && error.message.includes('UNIQUE constraint'))) {
-            console.error('[RESTPostStorage] Error caching reply to local DB:', error);
-          }
+          console.error(`[RESTPostStorage] Failed to cache reply ${reply.id}:`, error);
+          // Continue even if caching fails
         }
       }
-      console.log(`[RESTPostStorage] Cached ${replies.length} replies to local database`);
 
       return replies;
     } catch (error) {

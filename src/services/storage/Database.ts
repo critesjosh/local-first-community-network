@@ -533,6 +533,16 @@ class Database {
   async saveEncryptedEvent(encryptedEvent: EncryptedEvent): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
+    // Validate required fields
+    if (!encryptedEvent.id || !encryptedEvent.authorId || !encryptedEvent.timestamp) {
+      throw new Error('Missing required fields in encrypted event');
+    }
+
+    // Ensure wrappedKeys is a valid object
+    const wrappedKeysStr = typeof encryptedEvent.wrappedKeys === 'object'
+      ? JSON.stringify(encryptedEvent.wrappedKeys)
+      : '{}';
+
     const query = `
       INSERT OR REPLACE INTO events (
         id, author_id, title, description, datetime, location,
@@ -546,9 +556,9 @@ class Database {
       encryptedEvent.timestamp,
       encryptedEvent.timestamp,
       encryptedEvent.timestamp,
-      encryptedEvent.encryptedContent,
-      encryptedEvent.iv,
-      JSON.stringify(encryptedEvent.wrappedKeys),
+      encryptedEvent.encryptedContent || '',
+      encryptedEvent.iv || '',
+      wrappedKeysStr,
       encryptedEvent.deletedAt || null,
     ]);
   }
@@ -587,6 +597,10 @@ class Database {
   async getEncryptedEvent(eventId: string): Promise<EncryptedEvent | null> {
     if (!this.db) throw new Error('Database not initialized');
 
+    if (!eventId) {
+      throw new Error('eventId is required');
+    }
+
     const query = 'SELECT * FROM events WHERE id = ? AND encrypted_content IS NOT NULL';
     const row = await this.db.getFirstAsync<any>(query, [eventId]);
 
@@ -594,13 +608,22 @@ class Database {
       return null;
     }
 
+    // Parse wrapped_keys safely
+    let wrappedKeys = {};
+    try {
+      wrappedKeys = row.wrapped_keys ? JSON.parse(row.wrapped_keys) : {};
+    } catch (error) {
+      console.error(`[Database] Failed to parse wrapped_keys for event ${eventId}:`, error);
+      wrappedKeys = {};
+    }
+
     return {
       id: row.id,
       authorId: row.author_id,
-      timestamp: row.created_at,
+      timestamp: row.datetime || row.created_at,
       encryptedContent: row.encrypted_content,
       iv: row.content_iv,
-      wrappedKeys: JSON.parse(row.wrapped_keys || '{}'),
+      wrappedKeys,
       deletedAt: row.deleted_at || undefined,
     };
   }

@@ -7,6 +7,7 @@ import KeyManager from './crypto/KeyManager';
 import PostStorageService from './storage/PostStorageService';
 import Database from './storage/Database';
 import {sha256} from '@noble/hashes/sha2.js';
+import * as base58 from '../utils/base58';
 
 const keyManager = new KeyManager();
 
@@ -37,11 +38,21 @@ class PostService {
           throw new Error('No API URL configured for REST storage');
         }
 
+        // Get authorId
+        const authorId = base58.encode(keyPair.publicKey);
+
+        // Create request body with authorId (required by auth middleware)
+        const body = JSON.stringify({authorId});
+
+        // Compute body hash
+        const bodyBytes = new TextEncoder().encode(body);
+        const bodyHash = Buffer.from(sha256(bodyBytes)).toString('hex');
+
         // Create timestamp for signature
         const timestamp = Date.now();
 
-        // Create message to sign: postId:timestamp
-        const message = `${postId}:${timestamp}`;
+        // Create message to sign: authorId:timestamp:bodyHash
+        const message = `${authorId}:${timestamp}:${bodyHash}`;
         const messageBytes = new TextEncoder().encode(message);
 
         // Sign with Ed25519
@@ -52,9 +63,11 @@ class PostService {
         const response = await fetch(`${apiUrl}/api/posts/${postId}`, {
           method: 'DELETE',
           headers: {
+            'Content-Type': 'application/json',
             'X-Signature': signatureHex,
             'X-Timestamp': timestamp.toString(),
           },
+          body,
         });
 
         if (!response.ok) {
