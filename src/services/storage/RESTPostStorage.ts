@@ -16,6 +16,7 @@ import {EncryptedThreadReply} from '../../types/models';
 import IdentityService from '../IdentityService';
 import KeyManager from '../crypto/KeyManager';
 import {sha256} from '@noble/hashes/sha2.js';
+import Database from './Database';
 
 const keyManager = new KeyManager();
 
@@ -79,8 +80,9 @@ class RESTPostStorage implements PostStorageProvider {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || response.statusText;
         throw new Error(
-          `Failed to publish post: ${response.status} ${response.statusText} - ${JSON.stringify(errorData)}`
+          `Failed to publish post (${response.status}): ${errorMessage}`
         );
       }
 
@@ -93,7 +95,7 @@ class RESTPostStorage implements PostStorageProvider {
   }
 
   /**
-   * Fetch encrypted events from REST API
+   * Fetch encrypted events from REST API and cache them locally
    *
    * No authentication required for GET (events are encrypted anyway)
    */
@@ -120,8 +122,23 @@ class RESTPostStorage implements PostStorageProvider {
       }
 
       const data = await response.json();
-      console.log(`[RESTPostStorage] Fetched ${data.posts.length} posts`);
-      return data.posts as EncryptedEvent[];
+      const posts = data.posts as EncryptedEvent[];
+      console.log(`[RESTPostStorage] Fetched ${posts.length} posts from API`);
+
+      // Save fetched posts to local database for offline access and thread replies
+      for (const post of posts) {
+        try {
+          await Database.saveEncryptedEvent(post);
+        } catch (error) {
+          // Ignore duplicate key errors, log others
+          if (!(error instanceof Error && error.message.includes('UNIQUE constraint'))) {
+            console.error('[RESTPostStorage] Error caching post to local DB:', error);
+          }
+        }
+      }
+      console.log(`[RESTPostStorage] Cached ${posts.length} posts to local database`);
+
+      return posts;
     } catch (error) {
       console.error('[RESTPostStorage] Error fetching posts:', error);
       throw error;
@@ -220,8 +237,9 @@ class RESTPostStorage implements PostStorageProvider {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || response.statusText;
         throw new Error(
-          `Failed to post reply: ${response.status} ${response.statusText} - ${JSON.stringify(errorData)}`
+          `Failed to post reply (${response.status}): ${errorMessage}`
         );
       }
 
@@ -234,7 +252,7 @@ class RESTPostStorage implements PostStorageProvider {
   }
 
   /**
-   * Fetch replies for a thread from REST API
+   * Fetch replies for a thread from REST API and cache them locally
    */
   async fetchThreadReplies(threadId: string): Promise<EncryptedThreadReply[]> {
     try {
@@ -252,8 +270,23 @@ class RESTPostStorage implements PostStorageProvider {
       }
 
       const data = await response.json();
-      console.log(`[RESTPostStorage] Fetched ${data.replies.length} replies`);
-      return data.replies as EncryptedThreadReply[];
+      const replies = data.replies as EncryptedThreadReply[];
+      console.log(`[RESTPostStorage] Fetched ${replies.length} replies from API`);
+
+      // Save fetched replies to local database for offline access
+      for (const reply of replies) {
+        try {
+          await Database.saveEncryptedThreadReply(reply);
+        } catch (error) {
+          // Ignore duplicate key errors, log others
+          if (!(error instanceof Error && error.message.includes('UNIQUE constraint'))) {
+            console.error('[RESTPostStorage] Error caching reply to local DB:', error);
+          }
+        }
+      }
+      console.log(`[RESTPostStorage] Cached ${replies.length} replies to local database`);
+
+      return replies;
     } catch (error) {
       console.error('[RESTPostStorage] Error fetching replies:', error);
       throw error;

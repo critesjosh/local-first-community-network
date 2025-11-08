@@ -52,9 +52,27 @@ class ThreadService {
       const authorId = base58.encode(keyPair.publicKey);
 
       // Fetch the encrypted event to get the thread key
-      const encryptedEvent = await Database.getEncryptedEvent(eventId);
+      let encryptedEvent = await Database.getEncryptedEvent(eventId);
+
+      // If not found locally, try fetching from backend
       if (!encryptedEvent) {
-        throw new Error('Event not found');
+        console.log(`[ThreadService] Event ${eventId} not found locally, fetching from backend...`);
+        try {
+          // Fetch all recent posts from backend to sync
+          const recentPosts = await PostStorageService.fetchPosts(0);
+
+          // Find the specific event we need
+          encryptedEvent = recentPosts.find(post => post.id === eventId);
+
+          if (encryptedEvent) {
+            console.log(`[ThreadService] Event ${eventId} fetched from backend and cached locally`);
+          } else {
+            throw new Error('Event not found on backend');
+          }
+        } catch (fetchError) {
+          console.error(`[ThreadService] Failed to fetch event from backend:`, fetchError);
+          throw new Error('Event not found');
+        }
       }
 
       // Decrypt the thread key from the event
@@ -86,6 +104,10 @@ class ThreadService {
       return reply;
     } catch (error) {
       console.error('[ThreadService] Error posting reply:', error);
+      // Preserve the original error message for better debugging
+      if (error instanceof Error) {
+        throw new Error(`Failed to post reply: ${error.message}`);
+      }
       throw new Error('Failed to post reply');
     }
   }
