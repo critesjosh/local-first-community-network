@@ -3,7 +3,7 @@
  */
 
 import * as SQLite from 'expo-sqlite';
-import {User, Connection, Event, Message} from '../../types/models';
+import {User, Connection, Event, Message, IrlItem} from '../../types/models';
 import {EncryptedEvent} from '../crypto/EncryptionService';
 import {Session} from '../../types/session';
 
@@ -103,6 +103,27 @@ class Database {
           PRIMARY KEY (session_id, user_id),
           FOREIGN KEY(session_id) REFERENCES sessions(id),
           FOREIGN KEY(user_id) REFERENCES connections(user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS irl_items (
+          id TEXT PRIMARY KEY,
+          media_uri TEXT NOT NULL,
+          front_camera_uri TEXT,
+          thumbnail_uri TEXT,
+          captured_at INTEGER NOT NULL,
+          latitude REAL,
+          longitude REAL,
+          caption TEXT,
+          tags TEXT,
+          synced_at INTEGER
+        );
+
+        CREATE TABLE IF NOT EXISTS irl_item_connections (
+          item_id TEXT NOT NULL,
+          connection_id TEXT NOT NULL,
+          PRIMARY KEY (item_id, connection_id),
+          FOREIGN KEY(item_id) REFERENCES irl_items(id) ON DELETE CASCADE,
+          FOREIGN KEY(connection_id) REFERENCES connections(id)
         );
       `);
     } catch (error) {
@@ -675,6 +696,162 @@ class Database {
       iv: row.content_iv,
       wrappedKeys: JSON.parse(row.wrapped_keys || '{}'),
     }));
+  }
+
+  /**
+   * Save or update an IRL item along with its associated connections
+   */
+  async saveIrlItem(item: IrlItem): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    await this.db.runAsync(
+      `
+        INSERT OR REPLACE INTO irl_items (
+          id,
+          media_uri,
+          front_camera_uri,
+          thumbnail_uri,
+          captured_at,
+          latitude,
+          longitude,
+          caption,
+          tags,
+          synced_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        item.id,
+        item.mediaUri,
+        item.frontCameraUri || null,
+        item.thumbnailUri || null,
+        item.capturedAt.getTime(),
+        item.latitude ?? null,
+        item.longitude ?? null,
+        item.caption ?? null,
+        item.tags ? JSON.stringify(item.tags) : null,
+        item.syncedAt ? item.syncedAt.getTime() : null,
+      ],
+    );
+
+    // Reset connection associations
+    await this.db.runAsync(
+      `DELETE FROM irl_item_connections WHERE item_id = ?`,
+      [item.id],
+    );
+
+    if (item.connectionIds?.length) {
+      for (const connectionId of item.connectionIds) {
+        await this.db.runAsync(
+          `
+            INSERT OR IGNORE INTO irl_item_connections (
+              item_id,
+              connection_id
+            ) VALUES (?, ?)
+          `,
+          [item.id, connectionId],
+        );
+      }
+    }
+  }
+
+  /**
+   * Get all IRL items with optional pagination
+   */
+  async getIrlItems(limit: number = 100, offset: number = 0): Promise<IrlItem[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const rows = await this.db.getAllAsync<any>(
+      `
+        SELECT 
+          i.*,
+          GROUP_CONCAT(ic.connection_id) AS connection_ids
+        FROM irl_items i
+        LEFT JOIN irl_item_connections ic ON ic.item_id = i.id
+        GROUP BY i.id
+        ORDER BY i.captured_at DESC
+        LIMIT ? OFFSET ?
+      `,
+      [limit, offset],
+    );
+
+    return rows.map(row => this.mapIrlItemRow(row));
+  }
+
+  /**
+   * Get IRL items associated with a specific connection
+   */
+  async getIrlItemsByConnection(connectionId: string): Promise<IrlItem[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const rows = await this.db.getAllAsync<any>(
+      `
+        SELECT 
+          i.*,
+          GROUP_CONCAT(ic.connection_id) AS connection_ids
+        FROM irl_items i
+        INNER JOIN irl_item_connections ic ON ic.item_id = i.id
+        WHERE ic.connection_id = ?
+        GROUP BY i.id
+        ORDER BY i.captured_at DESC
+      `,
+      [connectionId],
+    );
+
+    return rows.map(row => this.mapIrlItemRow(row));
+  }
+
+  /**
+   * Delete an IRL item and its associations
+   */
+  async deleteIrlItem(itemId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    await this.db.runAsync(`DELETE FROM irl_items WHERE id = ?`, [itemId]);
+  }
+
+  /**
+   * Mark an IRL item as synced
+   */
+  async markIrlItemSynced(itemId: string, syncedAt: Date = new Date()): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    await this.db.runAsync(
+      `UPDATE irl_items SET synced_at = ? WHERE id = ?`,
+      [syncedAt.getTime(), itemId],
+    );
+  }
+
+  private mapIrlItemRow(row: any): IrlItem {
+    let tags: string[] | undefined;
+    if (row.tags) {
+      try {
+        const parsed = JSON.parse(row.tags);
+        if (Array.isArray(parsed)) {
+          tags = parsed.filter(tag => typeof tag === 'string');
+        }
+      } catch (error) {
+        console.warn('[Database] Failed to parse IRL item tags', error);
+      }
+    }
+
+    const connectionIds =
+      typeof row.connection_ids === 'string' && row.connection_ids.length > 0
+        ? row.connection_ids.split(',').filter((id: string) => id)
+        : [];
+
+    return {
+      id: row.id,
+      mediaUri: row.media_uri,
+      frontCameraUri: row.front_camera_uri ?? undefined,
+      thumbnailUri: row.thumbnail_uri ?? undefined,
+      capturedAt: new Date(row.captured_at),
+      latitude: row.latitude ?? undefined,
+      longitude: row.longitude ?? undefined,
+      caption: row.caption ?? undefined,
+      tags,
+      connectionIds,
+      syncedAt: row.synced_at ? new Date(row.synced_at) : undefined,
+    };
   }
 
   /**

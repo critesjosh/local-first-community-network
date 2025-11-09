@@ -16,6 +16,7 @@ import ProfileEditScreen from '../screens/ProfileEditScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import ConnectionScanScreen from '../screens/ConnectionScanScreen';
 import ConnectionDetailScreen from '../screens/ConnectionDetailScreen';
+import IrlItemCaptureScreen from '../screens/IrlItemCaptureScreen';
 
 // Type imports
 import {RootStackParamList, MainTabParamList} from '../types/navigation';
@@ -151,6 +152,11 @@ const AppNavigator = () => {
               headerTitle: 'Edit Profile',
               headerBackTitle: 'Back',
             }}
+          />
+          <Stack.Screen
+            name="IrlItemCapture"
+            component={IrlItemCaptureScreen}
+            options={{headerShown: false, presentation: 'modal'}}
           />
         </Stack.Navigator>
       </NavigationContainer>

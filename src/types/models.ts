@@ -36,6 +36,20 @@ export interface Event {
   // Posts use hybrid encryption: single encrypted content + wrapped keys per recipient
 }
 
+export interface IrlItem {
+  id: string;
+  mediaUri: string;
+  frontCameraUri?: string;
+  thumbnailUri?: string;
+  capturedAt: Date;
+  latitude?: number;
+  longitude?: number;
+  caption?: string;
+  tags?: string[];
+  connectionIds: string[];
+  syncedAt?: Date;
+}
+
 export interface Message {
   id: string; // UUID
   conversationId: string;
@@ -53,4 +67,5 @@ export interface AppState {
   currentUser?: User;
   connections: Connection[];
   events: Event[];
+  irlItems?: IrlItem[];
 }

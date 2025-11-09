@@ -8,9 +8,12 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  TouchableOpacity,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { StackNavigationProp } from "@react-navigation/stack";
 import EventCard from "../components/events/EventCard";
 import { Event } from "../types/models";
 import PostStorageService from "../services/storage/PostStorageService";
@@ -23,6 +26,10 @@ import { addBluetoothListener } from "@localcommunity/rn-bluetooth";
 import { initLogger } from "../utils/logger";
 import { Buffer } from "buffer";
 import { ConnectionProfile } from "../types/bluetooth";
+import { RootStackParamList } from "../types/navigation";
+import ItemStorageService from "../services/storage/ItemStorageService";
+import { IrlItem } from "../types/models";
+import IrlItemCard from "../components/irl/IrlItemCard";
 
 interface RSVPState {
   [eventId: string]: {
@@ -32,6 +39,8 @@ interface RSVPState {
 }
 
 const HomeScreen = () => {
+  const navigation =
+    useNavigation<StackNavigationProp<RootStackParamList>>();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -39,6 +48,7 @@ const HomeScreen = () => {
   const [isAdvertising, setIsAdvertising] = useState(false);
   const [connections, setConnections] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [irlItems, setIrlItems] = useState<IrlItem[]>([]);
 
   // Initialize logger with user display name
   useEffect(() => {
@@ -219,7 +229,7 @@ const HomeScreen = () => {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await loadEvents();
+    await Promise.all([loadEvents(), loadIrlItems()]);
     setRefreshing(false);
   };
 
@@ -260,8 +270,18 @@ const HomeScreen = () => {
   useFocusEffect(
     useCallback(() => {
       loadEvents();
+      loadIrlItems();
     }, [])
   );
+
+  const loadIrlItems = async () => {
+    try {
+      const items = await ItemStorageService.listItems(20, 0);
+      setIrlItems(items);
+    } catch (error) {
+      console.error("Error loading IRL items:", error);
+    }
+  };
 
   const getAuthorInfo = (authorId: string) => {
     // Check if it's the current user
@@ -312,6 +332,44 @@ const HomeScreen = () => {
     </View>
   );
 
+  const renderFindsSection = () => (
+    <View style={styles.findsSection}>
+      <View style={styles.findsHeader}>
+        <Text style={styles.sectionTitle}>IRL Finds</Text>
+        <TouchableOpacity
+          style={styles.findsAction}
+          onPress={() => navigation.navigate("IrlItemCapture")}
+        >
+          <Text style={styles.findsActionText}>New</Text>
+        </TouchableOpacity>
+      </View>
+      {irlItems.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.findsScroll}
+        >
+          {irlItems.map((item) => (
+            <IrlItemCard key={item.id} item={item} />
+          ))}
+        </ScrollView>
+      ) : (
+        <View style={styles.findsEmpty}>
+          <Text style={styles.findsEmptyText}>
+            Capture items you find in the neighborhood to remember and share
+            them later.
+          </Text>
+          <TouchableOpacity
+            style={styles.findsEmptyButton}
+            onPress={() => navigation.navigate("IrlItemCapture")}
+          >
+            <Text style={styles.findsEmptyButtonText}>Log an IRL find</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={[]}>
       <View style={styles.header}>
@@ -337,6 +395,12 @@ const HomeScreen = () => {
             {isAdvertising ? "Discoverable" : "Not advertising"}
           </Text>
         </View>
+        <TouchableOpacity
+          style={styles.captureButton}
+          onPress={() => navigation.navigate("IrlItemCapture")}
+        >
+          <Text style={styles.captureButtonText}>Log IRL Find</Text>
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -349,6 +413,7 @@ const HomeScreen = () => {
           renderItem={renderEvent}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
+          ListHeaderComponent={renderFindsSection}
           ListEmptyComponent={renderEmpty}
           refreshControl={
             <RefreshControl
@@ -415,6 +480,19 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#333",
   },
+  captureButton: {
+    marginTop: 16,
+    backgroundColor: "#007AFF",
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    alignSelf: "flex-start",
+  },
+  captureButtonText: {
+    color: "white",
+    fontSize: 15,
+    fontWeight: "600",
+  },
   listContent: {
     padding: 20,
   },
@@ -435,6 +513,60 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 16,
     lineHeight: 22,
+  },
+  findsSection: {
+    marginBottom: 24,
+    backgroundColor: "white",
+    borderRadius: 16,
+    paddingVertical: 16,
+  },
+  findsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1C1C1E",
+  },
+  findsAction: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#E5F1FF",
+  },
+  findsActionText: {
+    color: "#007AFF",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  findsScroll: {
+    paddingHorizontal: 20,
+  },
+  findsEmpty: {
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  findsEmptyText: {
+    color: "#8E8E93",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  findsEmptyButton: {
+    backgroundColor: "#007AFF",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  findsEmptyButtonText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });
 

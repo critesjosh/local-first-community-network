@@ -1,9 +1,11 @@
 import React, {useState, useEffect} from 'react';
-import {View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView} from 'react-native';
+import {View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, ActivityIndicator} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {RootStackScreenProps} from '../types/navigation';
 import ConnectionService from '../services/ConnectionService';
-import {Connection} from '../types/models';
+import ItemStorageService from '../services/storage/ItemStorageService';
+import {Connection, IrlItem} from '../types/models';
+import IrlItemCard from '../components/irl/IrlItemCard';
 
 type Props = RootStackScreenProps<'ConnectionDetail'>;
 
@@ -11,6 +13,8 @@ const ConnectionDetailScreen = ({route, navigation}: Props) => {
   const {connectionId} = route.params;
   const [connection, setConnection] = useState<Connection | null>(null);
   const [loading, setLoading] = useState(true);
+  const [irlItems, setIrlItems] = useState<IrlItem[]>([]);
+  const [itemsLoading, setItemsLoading] = useState(true);
 
   useEffect(() => {
     loadConnection();
@@ -28,6 +32,30 @@ const ConnectionDetailScreen = ({route, navigation}: Props) => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    let mounted = true;
+    const loadItems = async () => {
+      try {
+        const items = await ItemStorageService.listItemsForConnection(connectionId);
+        if (mounted) {
+          setIrlItems(items);
+        }
+      } catch (error) {
+        console.error('Error loading IRL items for connection:', error);
+      } finally {
+        if (mounted) {
+          setItemsLoading(false);
+        }
+      }
+    };
+
+    loadItems();
+
+    return () => {
+      mounted = false;
+    };
+  }, [connectionId]);
 
   const handleDisconnect = () => {
     Alert.alert(
@@ -195,6 +223,47 @@ const ConnectionDetailScreen = ({route, navigation}: Props) => {
           )}
         </View>
 
+        <View style={styles.findsSection}>
+          <View style={styles.findsHeader}>
+            <Text style={styles.sectionTitle}>Shared Finds</Text>
+            <TouchableOpacity
+              style={styles.findsAction}
+              onPress={() =>
+                navigation.navigate('IrlItemCapture', {connectionId})
+              }>
+              <Text style={styles.findsActionText}>Log new</Text>
+            </TouchableOpacity>
+          </View>
+          {itemsLoading ? (
+            <View style={styles.findsLoading}>
+              <ActivityIndicator color="#007AFF" />
+            </View>
+          ) : irlItems.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.findsScroll}>
+              {irlItems.map(item => (
+                <IrlItemCard key={item.id} item={item} />
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={styles.findsEmpty}>
+              <Text style={styles.findsEmptyText}>
+                Nothing logged with this neighbor yet. Capture what you trade,
+                lend, or discover together.
+              </Text>
+              <TouchableOpacity
+                style={styles.findsEmptyButton}
+                onPress={() =>
+                  navigation.navigate('IrlItemCapture', {connectionId})
+                }>
+                <Text style={styles.findsEmptyButtonText}>Start logging</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
         <View style={styles.actionsSection}>
           <TouchableOpacity
             style={styles.disconnectButton}
@@ -324,6 +393,64 @@ const styles = StyleSheet.create({
   detailValue: {
     fontSize: 16,
     color: '#000',
+  },
+  findsSection: {
+    paddingVertical: 24,
+    paddingLeft: 20,
+    backgroundColor: 'white',
+    marginBottom: 16,
+  },
+  findsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingRight: 20,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1C1C1E',
+  },
+  findsAction: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#E5F1FF',
+    borderRadius: 8,
+  },
+  findsActionText: {
+    color: '#007AFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  findsLoading: {
+    paddingVertical: 20,
+    paddingRight: 20,
+  },
+  findsScroll: {
+    paddingRight: 20,
+  },
+  findsEmpty: {
+    paddingRight: 20,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  findsEmptyText: {
+    fontSize: 14,
+    color: '#8E8E93',
+    lineHeight: 20,
+  },
+  findsEmptyButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  findsEmptyButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
   },
   actionsSection: {
     padding: 20,

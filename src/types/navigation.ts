@@ -17,6 +17,7 @@ export type RootStackParamList = {
   ConnectionScan: undefined;
   ConnectionDetail: {connectionId: string};
   ProfileEdit: undefined;
+  IrlItemCapture: {connectionId?: string} | undefined;
 };
 
 /**
