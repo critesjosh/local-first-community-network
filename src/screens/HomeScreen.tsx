@@ -379,6 +379,17 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
     </View>
   );
 
+  const renderFooter = () => (
+    <View style={styles.footerContainer}>
+      <Text
+        style={styles.reportLink}
+        onPress={() => Linking.openURL('mailto:report@adjacentpossible.dev')}
+      >
+        Report content violations
+      </Text>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={[]}>
       <View style={styles.header}>
@@ -399,6 +410,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
           keyExtractor={item => item.id}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={renderEmpty}
+          ListFooterComponent={renderFooter}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -452,6 +464,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 16,
     lineHeight: 22,
+  },
+  footerContainer: {
+    paddingVertical: 20,
+    paddingBottom: 40,
+    alignItems: 'center',
+  },
+  reportLink: {
+    fontSize: 12,
+    color: '#8E8E93',
+    textDecorationLine: 'underline',
   },
 });
 
