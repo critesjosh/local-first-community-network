@@ -3,7 +3,7 @@
  */
 
 import * as SQLite from 'expo-sqlite';
-import {User, Connection, Event, Message} from '../../types/models';
+import {User, Connection, Event, Message, EncryptedThreadReply} from '../../types/models';
 import {EncryptedEvent} from '../crypto/EncryptionService';
 import {Session} from '../../types/session';
 
@@ -68,7 +68,8 @@ class Database {
           encrypted_content TEXT,
           content_iv TEXT,
           wrapped_keys TEXT,
-          encrypted_for TEXT
+          encrypted_for TEXT,
+          deleted_at INTEGER
         );
 
         CREATE TABLE IF NOT EXISTS messages (
@@ -81,6 +82,19 @@ class Database {
           delivered INTEGER DEFAULT 0,
           read INTEGER DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS thread_replies (
+          id TEXT PRIMARY KEY,
+          thread_id TEXT NOT NULL,
+          author_id TEXT NOT NULL,
+          timestamp INTEGER NOT NULL,
+          encrypted_content TEXT NOT NULL,
+          iv TEXT NOT NULL,
+          FOREIGN KEY (thread_id) REFERENCES events(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_thread_replies_thread_id
+          ON thread_replies(thread_id);
 
         CREATE TABLE IF NOT EXISTS app_state (
           key TEXT PRIMARY KEY,
@@ -135,21 +149,41 @@ class Database {
         console.log('[Database] trust_level column already exists');
       });
 
-      // Migration 3: Clean up duplicate connections (keep most recent per user_id)
+      // Migration 3: Drop threads table (no longer needed)
+      await this.db.execAsync(`
+        DROP TABLE IF EXISTS threads;
+      `).catch((error) => {
+        console.log('[Database] Error dropping threads table (may not exist):', error);
+      });
+
+      // Migration 4: Remove wrapped_thread_keys column (we reuse event keys for replies)
+      // Note: SQLite doesn't support DROP COLUMN easily, so we just ignore if it exists
+      // New installs won't have the column, existing ones will have unused column (harmless)
+      console.log('[Database] Note: wrapped_thread_keys column (if exists) is no longer used - event keys are reused for replies');
+
+      // Migration 5: Add deleted_at column to events table for soft delete
+      await this.db.execAsync(`
+        ALTER TABLE events ADD COLUMN deleted_at INTEGER;
+      `).catch(() => {
+        // Column already exists, ignore error
+        console.log('[Database] deleted_at column already exists');
+      });
+
+      // Migration 6: Clean up duplicate connections (keep most recent per user_id)
       // This ONLY affects connections table, never touches users or identity
       await this.cleanupDuplicateConnections();
-      
-      // Migration 4: Add unique constraint to user_id
+
+      // Migration 7: Add unique constraint to user_id
       // Note: SQLite doesn't support adding UNIQUE constraints to existing columns
       // The constraint is in the CREATE TABLE statement, so new installs will have it
       // For existing databases, the cleanup above ensures no duplicates exist
       try {
         await this.db.execAsync(`
-          CREATE UNIQUE INDEX IF NOT EXISTS idx_connections_user_id 
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_connections_user_id
             ON connections(user_id);
         `);
         console.log('[Database] Unique index on user_id created');
-      } catch (error) {
+      } catch (error: any) {
         // If this fails, it's not critical - the duplicate cleanup above prevents issues
         console.log('[Database] Could not create unique index:', error.message);
       }
@@ -616,7 +650,7 @@ class Database {
   }
 
   /**
-   * Delete event
+   * Delete event (hard delete - use sparingly)
    */
   async deleteEvent(eventId: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
@@ -626,16 +660,36 @@ class Database {
   }
 
   /**
+   * Soft delete event (mark as deleted, preserve for threads)
+   */
+  async softDeleteEvent(eventId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'UPDATE events SET deleted_at = ? WHERE id = ?';
+    await this.db.runAsync(query, [Date.now(), eventId]);
+  }
+
+  /**
    * Save encrypted event (hybrid encryption)
    */
   async saveEncryptedEvent(encryptedEvent: EncryptedEvent): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
+    // Validate required fields
+    if (!encryptedEvent.id || !encryptedEvent.authorId || !encryptedEvent.timestamp) {
+      throw new Error('Missing required fields in encrypted event');
+    }
+
+    // Ensure wrappedKeys is a valid object
+    const wrappedKeysStr = typeof encryptedEvent.wrappedKeys === 'object'
+      ? JSON.stringify(encryptedEvent.wrappedKeys)
+      : '{}';
+
     const query = `
       INSERT OR REPLACE INTO events (
         id, author_id, title, description, datetime, location,
-        photo, created_at, updated_at, encrypted_content, content_iv, wrapped_keys
-      ) VALUES (?, ?, NULL, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?)
+        photo, created_at, updated_at, encrypted_content, content_iv, wrapped_keys, deleted_at
+      ) VALUES (?, ?, NULL, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?, ?)
     `;
 
     await this.db.runAsync(query, [
@@ -644,9 +698,10 @@ class Database {
       encryptedEvent.timestamp,
       encryptedEvent.timestamp,
       encryptedEvent.timestamp,
-      encryptedEvent.encryptedContent,
-      encryptedEvent.iv,
-      JSON.stringify(encryptedEvent.wrappedKeys),
+      encryptedEvent.encryptedContent || '',
+      encryptedEvent.iv || '',
+      wrappedKeysStr,
+      encryptedEvent.deletedAt || null,
     ]);
   }
 
@@ -661,7 +716,7 @@ class Database {
 
     const query = `
       SELECT * FROM events
-      WHERE encrypted_content IS NOT NULL
+      WHERE encrypted_content IS NOT NULL AND deleted_at IS NULL
       ORDER BY datetime DESC
       LIMIT ? OFFSET ?
     `;
@@ -674,6 +729,7 @@ class Database {
       encryptedContent: row.encrypted_content,
       iv: row.content_iv,
       wrappedKeys: JSON.parse(row.wrapped_keys || '{}'),
+      deletedAt: row.deleted_at || undefined,
     }));
   }
 
@@ -683,6 +739,10 @@ class Database {
   async getEncryptedEvent(eventId: string): Promise<EncryptedEvent | null> {
     if (!this.db) throw new Error('Database not initialized');
 
+    if (!eventId) {
+      throw new Error('eventId is required');
+    }
+
     const query = 'SELECT * FROM events WHERE id = ? AND encrypted_content IS NOT NULL';
     const row = await this.db.getFirstAsync<any>(query, [eventId]);
 
@@ -690,13 +750,23 @@ class Database {
       return null;
     }
 
+    // Parse wrapped_keys safely
+    let wrappedKeys = {};
+    try {
+      wrappedKeys = row.wrapped_keys ? JSON.parse(row.wrapped_keys) : {};
+    } catch (error) {
+      console.error(`[Database] Failed to parse wrapped_keys for event ${eventId}:`, error);
+      wrappedKeys = {};
+    }
+
     return {
       id: row.id,
       authorId: row.author_id,
-      timestamp: row.created_at,
+      timestamp: row.datetime || row.created_at,
       encryptedContent: row.encrypted_content,
       iv: row.content_iv,
-      wrappedKeys: JSON.parse(row.wrapped_keys || '{}'),
+      wrappedKeys,
+      deletedAt: row.deleted_at || undefined,
     };
   }
 
@@ -954,12 +1024,95 @@ class Database {
   }
 
   /**
+   * Save encrypted thread reply
+   */
+  async saveEncryptedThreadReply(reply: EncryptedThreadReply): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      INSERT OR REPLACE INTO thread_replies (
+        id, thread_id, author_id, timestamp, encrypted_content, iv
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `;
+
+    await this.db.runAsync(query, [
+      reply.id,
+      reply.threadId,
+      reply.authorId,
+      reply.timestamp,
+      reply.encryptedContent,
+      reply.iv,
+    ]);
+  }
+
+  /**
+   * Get all encrypted replies for a thread
+   */
+  async getEncryptedThreadReplies(threadId: string): Promise<EncryptedThreadReply[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      SELECT * FROM thread_replies
+      WHERE thread_id = ?
+      ORDER BY timestamp ASC
+    `;
+    const rows = await this.db.getAllAsync<any>(query, [threadId]);
+
+    return rows.map(row => ({
+      id: row.id,
+      threadId: row.thread_id,
+      authorId: row.author_id,
+      timestamp: row.timestamp,
+      encryptedContent: row.encrypted_content,
+      iv: row.iv,
+    }));
+  }
+
+  /**
+   * Get encrypted thread reply by ID
+   */
+  async getEncryptedThreadReply(replyId: string): Promise<EncryptedThreadReply | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'SELECT * FROM thread_replies WHERE id = ?';
+    const row = await this.db.getFirstAsync<any>(query, [replyId]);
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      threadId: row.thread_id,
+      authorId: row.author_id,
+      timestamp: row.timestamp,
+      encryptedContent: row.encrypted_content,
+      iv: row.iv,
+    };
+  }
+
+  /**
+   * Get reply count for a thread
+   */
+  async getThreadReplyCount(threadId: string): Promise<number> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      SELECT COUNT(*) as count FROM thread_replies
+      WHERE thread_id = ?
+    `;
+    const row = await this.db.getFirstAsync<any>(query, [threadId]);
+
+    return row?.count || 0;
+  }
+
+  /**
    * Clear all data (factory reset)
    */
   async clearAllData(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const tables = ['users', 'connections', 'events', 'messages', 'app_state', 'sessions', 'session_connections'];
+    const tables = ['users', 'connections', 'events', 'messages', 'thread_replies', 'app_state', 'sessions', 'session_connections'];
 
     for (const table of tables) {
       await this.db.execAsync(`DELETE FROM ${table}`);

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,21 +8,24 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "@react-navigation/native";
-import EventCard from "../components/events/EventCard";
-import { Event } from "../types/models";
-import PostStorageService from "../services/storage/PostStorageService";
-import EncryptionService from "../services/crypto/EncryptionService";
-import ConnectionService from "../services/ConnectionService";
-import BLEBroadcastService from "../services/bluetooth/BLEBroadcastService";
-import BLEConnectionHandler from "../services/bluetooth/BLEConnectionHandler";
-import IdentityService from "../services/IdentityService";
-import { addBluetoothListener } from "@localcommunity/rn-bluetooth";
-import { initLogger } from "../utils/logger";
-import { Buffer } from "buffer";
-import { ConnectionProfile } from "../types/bluetooth";
+} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
+import {useFocusEffect} from '@react-navigation/native';
+import EventCard from '../components/events/EventCard';
+import {Event} from '../types/models';
+import PostStorageService from '../services/storage/PostStorageService';
+import EncryptionService from '../services/crypto/EncryptionService';
+import ConnectionService from '../services/ConnectionService';
+import BLEBroadcastService from '../services/bluetooth/BLEBroadcastService';
+import BLEConnectionHandler from '../services/bluetooth/BLEConnectionHandler';
+import IdentityService from '../services/IdentityService';
+import {addBluetoothListener} from '@localcommunity/rn-bluetooth';
+import {initLogger} from '../utils/logger';
+import ThreadService from '../services/ThreadService';
+import PostService from '../services/PostService';
+import {MainTabScreenProps} from '../types/navigation';
+import {Buffer} from 'buffer';
+import {ConnectionProfile} from '../types/bluetooth';
 
 interface RSVPState {
   [eventId: string]: {
@@ -31,7 +34,9 @@ interface RSVPState {
   };
 }
 
-const HomeScreen = () => {
+type Props = MainTabScreenProps<'Home'>;
+
+const HomeScreen: React.FC<Props> = ({navigation}) => {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -39,6 +44,7 @@ const HomeScreen = () => {
   const [isAdvertising, setIsAdvertising] = useState(false);
   const [connections, setConnections] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [threadReplyCounts, setThreadReplyCounts] = useState<{[threadId: string]: number}>({});
 
   // Initialize logger with user display name
   useEffect(() => {
@@ -170,7 +176,7 @@ const HomeScreen = () => {
     };
   }, []);
 
-  const loadEvents = async () => {
+  const loadEvents = useCallback(async () => {
     try {
       // Get current user
       const user = await IdentityService.getCurrentUser();
@@ -178,12 +184,14 @@ const HomeScreen = () => {
 
       // Get all encrypted events from storage provider (local for MVP, REST/OrbitDB later)
       const encryptedEvents = await PostStorageService.fetchPosts(0); // Fetch all events since epoch
+      console.log(`[HomeScreen] Fetched ${encryptedEvents.length} encrypted events`);
 
       // Get all connections for decryption
       const fetchedConnections = await ConnectionService.getConnections();
       setConnections(fetchedConnections);
 
       if (fetchedConnections.length === 0) {
+        console.log('[HomeScreen] No connections, clearing events');
         setEvents([]);
         return;
       }
@@ -205,6 +213,8 @@ const HomeScreen = () => {
         }
       }
 
+      console.log(`[HomeScreen] Decrypted ${decryptedEvents.length} events`);
+
       // Sort by createdAt (newest first)
       decryptedEvents.sort((a, b) => {
         return (
@@ -219,7 +229,7 @@ const HomeScreen = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []); // Empty deps - function doesn't depend on any props/state
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -260,6 +270,87 @@ const HomeScreen = () => {
     // TODO: In Week 3, this will POST to the server
   };
 
+  const handleViewReplies = async (eventId: string) => {
+    try {
+      console.log('[HomeScreen] Viewing replies for event:', eventId);
+
+      const event = events.find(e => e.id === eventId);
+      const authorInfo = getAuthorInfo(event?.authorId || '');
+
+      navigation.navigate('ThreadView', {
+        threadId: eventId, // Event ID is the thread ID
+        postContent: event?.content,
+        postAuthor: authorInfo.displayName,
+      });
+    } catch (error) {
+      console.error('[HomeScreen] Error viewing replies:', error);
+      Alert.alert('Error', 'Failed to open replies. Please try again.');
+    }
+  };
+
+  const handleDeletePost = async (eventId: string) => {
+    try {
+      console.log('[HomeScreen] Deleting post:', eventId);
+
+      // Optimistically update UI first
+      setEvents(prevEvents => {
+        const filtered = prevEvents.filter(e => e.id !== eventId);
+        console.log(`[HomeScreen] Filtered events: ${prevEvents.length} -> ${filtered.length}`);
+        return filtered;
+      });
+
+      // Then delete from server/database
+      await PostService.deletePost(eventId);
+
+      console.log('[HomeScreen] Post deleted successfully');
+    } catch (error) {
+      console.error('[HomeScreen] Error deleting post:', error);
+      Alert.alert('Error', 'Failed to delete post. Please try again.');
+      // Reload events on error to restore state
+      await loadEvents();
+    }
+  };
+
+  // Load thread reply counts for all events (every event can have replies)
+  useEffect(() => {
+    const loadReplyCounts = async () => {
+      console.log(`[HomeScreen] Loading reply counts for ${events.length} events`);
+      const counts: {[threadId: string]: number} = {};
+      for (const event of events) {
+        try {
+          const count = await ThreadService.getReplyCount(event.id);
+          counts[event.id] = count;
+          if (count > 0) {
+            console.log(`[HomeScreen] Event ${event.id.substring(0, 8)} has ${count} replies`);
+          }
+        } catch (error) {
+          console.error(`[HomeScreen] Error loading reply count for ${event.id}:`, error);
+        }
+      }
+      setThreadReplyCounts(counts);
+      console.log(`[HomeScreen] Reply counts loaded:`, counts);
+    };
+
+    if (events.length > 0) {
+      loadReplyCounts();
+    }
+  }, [events]);
+
+  // Auto-refresh: Poll for new posts every 15 seconds
+  useEffect(() => {
+    console.log('[HomeScreen] Setting up auto-refresh (15s interval)');
+
+    const intervalId = setInterval(async () => {
+      console.log('[HomeScreen] Auto-refreshing posts...');
+      await loadEvents();
+    }, 15000); // 15 seconds
+
+    return () => {
+      console.log('[HomeScreen] Cleaning up auto-refresh');
+      clearInterval(intervalId);
+    };
+  }, [loadEvents]); // Depend on loadEvents
+
   // Load events when screen comes into focus
   useFocusEffect(
     useCallback(() => {
@@ -294,6 +385,7 @@ const HomeScreen = () => {
 
   const renderEvent = ({ item }: { item: Event }) => {
     const authorInfo = getAuthorInfo(item.authorId);
+    const isOwnPost = currentUser && currentUser.id === item.authorId;
     return (
       <EventCard
         event={item}
@@ -302,6 +394,10 @@ const HomeScreen = () => {
         onRSVP={handleRSVP}
         currentUserRSVP={rsvpState[item.id]?.status}
         attendeeCount={rsvpState[item.id]?.count}
+        onViewReplies={handleViewReplies}
+        replyCount={threadReplyCounts[item.id]}
+        onDelete={handleDeletePost}
+        isOwnPost={isOwnPost}
       />
     );
   };
@@ -312,6 +408,17 @@ const HomeScreen = () => {
         {loading
           ? "Loading events..."
           : "No events yet. Connect with neighbors and create an event to get started!"}
+      </Text>
+    </View>
+  );
+
+  const renderFooter = () => (
+    <View style={styles.footerContainer}>
+      <Text
+        style={styles.reportLink}
+        onPress={() => Linking.openURL('mailto:report@adjacentpossible.dev')}
+      >
+        Report content violations
       </Text>
     </View>
   );
@@ -354,6 +461,7 @@ const HomeScreen = () => {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={renderEmpty}
+          ListFooterComponent={renderFooter}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -439,6 +547,16 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 16,
     lineHeight: 22,
+  },
+  footerContainer: {
+    paddingVertical: 20,
+    paddingBottom: 40,
+    alignItems: 'center',
+  },
+  reportLink: {
+    fontSize: 12,
+    color: '#8E8E93',
+    textDecorationLine: 'underline',
   },
 });
 

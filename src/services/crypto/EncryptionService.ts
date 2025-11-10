@@ -97,10 +97,11 @@ export interface EncryptedEvent {
   wrappedKeys: {
     [recipientLookupId: string]: {
       // recipientLookupId = base64(HMAC(sharedSecret, postID))
-      wrappedKey: string; // base64 - event key wrapped with connection key
+      wrappedKey: string; // base64 - event key wrapped with connection key (reused for replies)
       keyWrapIV: string; // base64 - IV for key wrapping
     };
   };
+  deletedAt?: number; // timestamp - present if post was soft-deleted
 }
 
 /**
@@ -139,7 +140,7 @@ class EncryptionService {
     connections: Connection[],
   ): Promise<EncryptedEvent> {
     try {
-      // 1. Generate random event key
+      // 1. Generate random event key (used for both content and replies)
       const eventKey = await generateRandomKey();
       const contentIV = await generateIV();
 
@@ -151,7 +152,7 @@ class EncryptionService {
       const plaintext = new TextEncoder().encode(JSON.stringify(eventContent));
       const encryptedContentBytes = await encryptAESGCM(plaintext, eventKey, contentIV);
 
-      // 3. Wrap event key for author (so they can decrypt their own posts)
+      // 3. Wrap event key for author (so they can decrypt their own posts and post replies)
       const wrappedKeys: EncryptedEvent['wrappedKeys'] = {};
 
       const keyPair = await IdentityService.getKeyPair();

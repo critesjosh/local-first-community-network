@@ -1,5 +1,5 @@
 import React from 'react';
-import {View, Text, StyleSheet, Image, TouchableOpacity} from 'react-native';
+import {View, Text, StyleSheet, Image, TouchableOpacity, Alert} from 'react-native';
 import {Event} from '../../types/models';
 
 interface EventCardProps {
@@ -10,6 +10,10 @@ interface EventCardProps {
   onRSVP?: (eventId: string, status: 'going' | 'interested' | 'not_going') => void;
   currentUserRSVP?: 'going' | 'interested' | 'not_going';
   attendeeCount?: number;
+  onViewReplies?: (eventId: string) => void;
+  replyCount?: number;
+  onDelete?: (eventId: string) => void;
+  isOwnPost?: boolean;
 }
 
 const EventCard: React.FC<EventCardProps> = ({
@@ -17,6 +21,10 @@ const EventCard: React.FC<EventCardProps> = ({
   authorName,
   authorPhoto,
   onPress,
+  onViewReplies,
+  replyCount,
+  onDelete,
+  isOwnPost,
 }) => {
   const formatTimeAgo = (date: Date): string => {
     const now = new Date();
@@ -35,6 +43,21 @@ const EventCard: React.FC<EventCardProps> = ({
     } else {
       return `${diffInDays}d ago`;
     }
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Post',
+      'Are you sure you want to delete this post? Replies will be preserved.',
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => onDelete?.(event.id),
+        },
+      ]
+    );
   };
 
   return (
@@ -61,9 +84,35 @@ const EventCard: React.FC<EventCardProps> = ({
             <Text style={styles.authorName}>{authorName}</Text>
             <Text style={styles.postTime}>{formatTimeAgo(event.createdAt)}</Text>
           </View>
+          {isOwnPost && onDelete && (
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleDelete();
+              }}>
+              <Text style={styles.deleteButtonText}>🗑️</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <Text style={styles.postContent}>{event.content}</Text>
+
+        {/* Reply Actions - All posts have threads now */}
+        {onViewReplies && (
+          <View style={styles.threadActions}>
+            <TouchableOpacity
+              style={styles.threadButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                onViewReplies(event.id);
+              }}>
+              <Text style={styles.threadButtonText}>
+                💬 {replyCount || 0} {replyCount === 1 ? 'Reply' : 'Replies'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -122,6 +171,31 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#000',
     lineHeight: 22,
+  },
+  threadActions: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+  },
+  threadButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 6,
+  },
+  threadButtonText: {
+    fontSize: 14,
+    color: '#007AFF',
+    fontWeight: '600',
+  },
+  deleteButton: {
+    padding: 8,
+    marginLeft: 8,
+  },
+  deleteButtonText: {
+    fontSize: 20,
   },
 });
 

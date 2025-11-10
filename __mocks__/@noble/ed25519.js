@@ -103,6 +103,11 @@ const verify = jest.fn(async (signature, message, publicKey) => {
   return true;
 });
 
+// Hashes object for cryptoConfig.ts polyfill
+const hashes = {
+  sha512: undefined, // Will be set by cryptoConfig.ts
+};
+
 module.exports = {
   utils,
   getPublicKey,
@@ -111,4 +116,5 @@ module.exports = {
   verify,
   keygen,
   keygenAsync,
+  hashes,
 };

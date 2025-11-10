@@ -9,6 +9,7 @@
 
 import {PostStorageProvider} from './PostStorageProvider';
 import {EncryptedEvent} from '../crypto/EncryptionService';
+import {EncryptedThreadReply} from '../../types/models';
 import Database from './Database';
 
 class LocalPostStorage implements PostStorageProvider {
@@ -83,6 +84,23 @@ class LocalPostStorage implements PostStorageProvider {
    */
   getProviderType(): 'local' {
     return 'local';
+  }
+
+  /**
+   * Post a reply to a thread in local database
+   */
+  async postThreadReply(encryptedReply: EncryptedThreadReply): Promise<void> {
+    await Database.saveEncryptedThreadReply(encryptedReply);
+    console.log(`[LocalPostStorage] Posted reply ${encryptedReply.id} to thread ${encryptedReply.threadId} locally`);
+  }
+
+  /**
+   * Fetch replies for a thread from local database
+   */
+  async fetchThreadReplies(threadId: string): Promise<EncryptedThreadReply[]> {
+    const replies = await Database.getEncryptedThreadReplies(threadId);
+    console.log(`[LocalPostStorage] Fetched ${replies.length} replies for thread ${threadId}`);
+    return replies;
   }
 
   /**

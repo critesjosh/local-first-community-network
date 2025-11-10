@@ -48,4 +48,6 @@ release/*
 /ios
 /android
 
+# Android build artifacts
+**/android/build/
 *.apk

@@ -12,9 +12,11 @@
 
 import {PostStorageProvider, StorageProviderConfig} from './PostStorageProvider';
 import {EncryptedEvent} from '../crypto/EncryptionService';
+import {EncryptedThreadReply} from '../../types/models';
 import IdentityService from '../IdentityService';
 import KeyManager from '../crypto/KeyManager';
 import {sha256} from '@noble/hashes/sha2.js';
+import Database from './Database';
 
 const keyManager = new KeyManager();
 
@@ -78,8 +80,9 @@ class RESTPostStorage implements PostStorageProvider {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || response.statusText;
         throw new Error(
-          `Failed to publish post: ${response.status} ${response.statusText} - ${JSON.stringify(errorData)}`
+          `Failed to publish post (${response.status}): ${errorMessage}`
         );
       }
 
@@ -92,9 +95,10 @@ class RESTPostStorage implements PostStorageProvider {
   }
 
   /**
-   * Fetch encrypted events from REST API
+   * Fetch encrypted events from REST API and cache them locally
    *
    * No authentication required for GET (events are encrypted anyway)
+   * Posts are automatically cached in local database for offline access
    */
   async fetchPosts(since: number, limit?: number): Promise<EncryptedEvent[]> {
     try {
@@ -119,8 +123,25 @@ class RESTPostStorage implements PostStorageProvider {
       }
 
       const data = await response.json();
-      console.log(`[RESTPostStorage] Fetched ${data.posts.length} posts`);
-      return data.posts as EncryptedEvent[];
+      const posts = data.posts as EncryptedEvent[];
+      console.log(`[RESTPostStorage] Fetched ${posts.length} posts from API`);
+
+      // Cache posts in local database for offline access and thread operations
+      for (const post of posts) {
+        try {
+          // Ensure wrappedKeys is properly formatted
+          if (!post.wrappedKeys || typeof post.wrappedKeys !== 'object') {
+            console.warn(`[RESTPostStorage] Post ${post.id} has invalid wrappedKeys, skipping cache`);
+            continue;
+          }
+          await Database.saveEncryptedEvent(post);
+        } catch (error) {
+          console.error(`[RESTPostStorage] Failed to cache post ${post.id}:`, error);
+          // Continue even if caching fails
+        }
+      }
+
+      return posts;
     } catch (error) {
       console.error('[RESTPostStorage] Error fetching posts:', error);
       throw error;
@@ -182,6 +203,95 @@ class RESTPostStorage implements PostStorageProvider {
    */
   getProviderType(): 'rest' {
     return 'rest';
+  }
+
+  /**
+   * Post a reply to a thread via REST API
+   *
+   * Signs the request with Ed25519 private key for authentication
+   */
+  async postThreadReply(encryptedReply: EncryptedThreadReply): Promise<void> {
+    try {
+      console.log('[RESTPostStorage] Posting thread reply via API:', this.config.apiUrl);
+
+      const keyPair = await IdentityService.getKeyPair();
+      if (!keyPair) {
+        throw new Error('Cannot post reply: No key pair available');
+      }
+
+      const body = JSON.stringify(encryptedReply);
+      const bodyBytes = new TextEncoder().encode(body);
+      const bodyHash = Buffer.from(sha256(bodyBytes)).toString('hex');
+      const timestamp = Date.now();
+      const message = `${encryptedReply.authorId}:${timestamp}:${bodyHash}`;
+      const messageBytes = new TextEncoder().encode(message);
+      const signature = await keyManager.signData(messageBytes, keyPair.privateKey);
+      const signatureHex = Buffer.from(signature).toString('hex');
+
+      const response = await fetch(`${this.config.apiUrl}/api/threads/${encryptedReply.threadId}/replies`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Signature': signatureHex,
+          'X-Timestamp': timestamp.toString(),
+        },
+        body,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || errorData.error || response.statusText;
+        throw new Error(
+          `Failed to post reply (${response.status}): ${errorMessage}`
+        );
+      }
+
+      const result = await response.json();
+      console.log('[RESTPostStorage] Reply posted successfully:', result.replyId);
+    } catch (error) {
+      console.error('[RESTPostStorage] Error posting reply:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch replies for a thread from REST API
+   * Replies are automatically cached in local database for offline access
+   */
+  async fetchThreadReplies(threadId: string): Promise<EncryptedThreadReply[]> {
+    try {
+      console.log('[RESTPostStorage] Fetching thread replies from API:', threadId);
+
+      const response = await fetch(`${this.config.apiUrl}/api/threads/${threadId}/replies`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch replies: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const replies = data.replies as EncryptedThreadReply[];
+      console.log(`[RESTPostStorage] Fetched ${replies.length} replies from API`);
+
+      // Cache replies in local database for offline access and reply counts
+      for (const reply of replies) {
+        try {
+          await Database.saveEncryptedThreadReply(reply);
+        } catch (error) {
+          console.error(`[RESTPostStorage] Failed to cache reply ${reply.id}:`, error);
+          // Continue even if caching fails
+        }
+      }
+
+      return replies;
+    } catch (error) {
+      console.error('[RESTPostStorage] Error fetching replies:', error);
+      throw error;
+    }
   }
 }
 

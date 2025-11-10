@@ -14,6 +14,7 @@ Local Community Network is committed to maintaining a safe environment for all u
 The following content and conduct are strictly prohibited on our platform:
 
 #### Absolutely Prohibited:
+
 - **Child Sexual Abuse Material (CSAM)**: Any visual depiction or content involving minors in sexual or sexually suggestive situations
 - **Child Grooming**: Any attempt to establish an emotional connection with a minor to lower inhibitions for sexual abuse
 - **Child Sexualization**: Content that sexualizes minors in any way, including through images, text, or other media
@@ -24,6 +25,7 @@ The following content and conduct are strictly prohibited on our platform:
 - **Child Sex Tourism**: Content that promotes or facilitates travel for the purpose of sexual exploitation of children
 
 #### Additional Protections:
+
 - Age-inappropriate content shared with minors
 - Sharing of personal information of minors without proper consent
 - Attempts to contact minors for purposes unrelated to legitimate community activities
@@ -53,6 +55,7 @@ For users between 13-17 years old, we implement additional safeguards:
 We provide multiple ways for users to report child safety concerns:
 
 #### Within the App:
+
 1. **Report Button**: Every post, event, and user profile has a "Report" button
 2. **Report Categories**: Users can select from specific categories including:
    - Child safety concern
@@ -64,6 +67,7 @@ We provide multiple ways for users to report child safety concerns:
 4. **Priority Processing**: All child safety reports are flagged for immediate review
 
 #### Direct Contact:
+
 - **Child Safety Email**: childsafety@adjacentpossible.dev
 - **24/7 Monitoring**: Child safety reports are monitored continuously
 
@@ -102,6 +106,7 @@ We fully cooperate with law enforcement investigations:
 ### 5.2 Law Enforcement Contact
 
 For law enforcement inquiries:
+
 - **Email**: childsafety@adjacentpossible.dev (24/7 monitored)
 
 ## 6. Content Moderation and Enforcement
@@ -111,11 +116,13 @@ For law enforcement inquiries:
 Violations result in immediate action:
 
 #### Minor Violations:
+
 - Warning to user
 - Content removal
 - Temporary account suspension
 
 #### Serious Violations:
+
 - Immediate account suspension
 - Content preservation for investigation
 - Report to law enforcement
@@ -123,6 +130,7 @@ Violations result in immediate action:
 - Device-level blocking
 
 #### CSAM Violations:
+
 - Immediate permanent ban
 - Full cooperation with law enforcement
 - Report to NCMEC CyberTipline
@@ -153,6 +161,7 @@ While we maintain strong privacy protections through end-to-end encryption:
 ### 8.1 Community Responsibility
 
 We encourage all users to:
+
 - Report suspicious behavior immediately
 - Educate themselves about online safety
 - Monitor their children's online activities
@@ -172,25 +181,30 @@ We continuously improve our child safety measures:
 ## 10. Contact Information
 
 ### For Users:
+
 - **Report Safety Concerns**: email childsafety@adjacentpossible.dev
 - **General Inquiries**: privacy@adjacentpossible.dev
 - **Parent/Guardian Concerns**: childsafety@adjacentpossible.dev
 
 ### For Law Enforcement:
+
 - **Email**: childsafety@adjacentpossible.dev (24/7)
 
 ### For Researchers and Organizations:
+
 - **Partnerships**: childsafety@adjacentpossible.dev
 
 ## 11. External Resources
 
 ### Reporting Resources:
+
 - **NCMEC CyberTipline**: www.cybertipline.org | 1-800-843-5678
 - **FBI**: tips.fbi.gov | 1-800-CALL-FBI
 - **Internet Watch Foundation** (UK): www.iwf.org.uk
 - **Australian eSafety Commissioner**: www.esafety.gov.au
 
 ### Educational Resources:
+
 - **National Center for Missing & Exploited Children**: www.missingkids.org
 - **Thorn**: www.thorn.org
 - **Common Sense Media**: www.commonsensemedia.org
@@ -199,12 +213,14 @@ We continuously improve our child safety measures:
 ## 12. Policy Updates
 
 This policy may be updated to reflect:
+
 - Changes in applicable laws
 - Improvements in detection technology
 - Feedback from law enforcement and safety organizations
 - Emerging threats and safety concerns
 
 Users will be notified of material changes through:
+
 - Updates to this document with revision date
 
 ## 13. Legal Disclaimer

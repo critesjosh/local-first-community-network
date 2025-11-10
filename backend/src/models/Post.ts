@@ -18,6 +18,7 @@ export interface EncryptedPost {
       keyWrapIV: string; // base64 - IV for key wrapping
     };
   };
+  deletedAt?: number; // milliseconds since epoch - null if not deleted
 }
 
 export interface PostRow {
@@ -32,5 +33,6 @@ export interface PostRow {
       keyWrapIV: string;
     };
   }; // JSONB is already parsed by pg library
+  deleted_at: Date | null;
   created_at: Date;
 }

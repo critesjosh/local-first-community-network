@@ -5,8 +5,11 @@ Backend server for Local Community Network that stores and relays encrypted post
 ## Features
 
 - 📮 **Encrypted Post Storage**: Stores encrypted events with HMAC-obfuscated recipient lookup
+- 💬 **Threaded Replies**: Support for encrypted replies to posts using shared thread keys
 - 🔒 **End-to-End Encryption**: Server cannot decrypt content
-- 🚀 **Simple REST API**: POST and GET endpoints for posts
+- 🔐 **Signature Authentication**: Ed25519-based auth for POST/DELETE operations
+- 🗑️ **Soft Delete**: Posts marked as deleted but preserved for thread integrity
+- 🚀 **Simple REST API**: Full CRUD + thread operations
 - 📊 **PostgreSQL Storage**: Reliable database with JSON support
 - 🔍 **Efficient Queries**: Indexed for fast retrieval
 
@@ -130,6 +133,102 @@ GET /api/posts/:id
 
 Response: Single encrypted post object
 
+### Delete Post (Soft Delete)
+```
+DELETE /api/posts/:id
+X-Signature: <hex-encoded-signature>
+X-Timestamp: <current-timestamp-ms>
+Content-Type: application/json
+```
+
+Body:
+```json
+{
+  "authorId": "base58-public-key"
+}
+```
+
+**Authentication Required:** Signature verification using Ed25519
+- Message format: `${authorId}:${timestamp}:${bodyHash}`
+- Only post author can delete their own posts (403 if unauthorized)
+
+Response:
+```json
+{
+  "success": true,
+  "message": "Post deleted successfully"
+}
+```
+
+### Create Thread Reply
+```
+POST /api/threads/:threadId/replies
+X-Signature: <hex-encoded-signature>
+X-Timestamp: <current-timestamp-ms>
+Content-Type: application/json
+```
+
+Body:
+```json
+{
+  "id": "uuid",
+  "threadId": "parent-post-uuid",
+  "authorId": "base58-public-key",
+  "timestamp": 1698765432000,
+  "encryptedContent": "base64-encrypted-data",
+  "iv": "base64-iv"
+}
+```
+
+**Note:** Replies use the shared thread key from the parent post (no `wrappedKeys` needed)
+
+Response:
+```json
+{
+  "success": true,
+  "replyId": "uuid",
+  "createdAt": "2025-10-24T12:00:00.000Z"
+}
+```
+
+### Get Thread Replies
+```
+GET /api/threads/:threadId/replies
+```
+
+Response:
+```json
+{
+  "success": true,
+  "threadId": "parent-post-uuid",
+  "replies": [
+    {
+      "id": "uuid",
+      "threadId": "parent-post-uuid",
+      "authorId": "base58-public-key",
+      "timestamp": 1698765432000,
+      "encryptedContent": "base64-encrypted-data",
+      "iv": "base64-iv"
+    }
+  ],
+  "count": 5
+}
+```
+
+### Get Reply Count
+```
+GET /api/threads/:threadId/replies/count
+```
+
+Response:
+```json
+{
+  "success": true,
+  "threadId": "parent-post-uuid",
+  "count": 5
+}
+```
+
 ## Database Schema
 
 ### Posts Table
@@ -142,13 +241,35 @@ CREATE TABLE posts (
   encrypted_content TEXT NOT NULL,
   iv VARCHAR(100) NOT NULL,
   wrapped_keys JSONB NOT NULL,
+  deleted_at TIMESTAMP DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Indexes for performance
 CREATE INDEX idx_posts_timestamp ON posts (timestamp DESC);
 CREATE INDEX idx_posts_author ON posts (author_id);
+CREATE INDEX idx_posts_created_at ON posts (created_at DESC);
 CREATE INDEX idx_posts_wrapped_keys ON posts USING GIN (wrapped_keys);
+```
+
+### Thread Replies Table
+
+```sql
+CREATE TABLE thread_replies (
+  id VARCHAR(36) PRIMARY KEY,
+  thread_id VARCHAR(36) NOT NULL,
+  author_id VARCHAR(100) NOT NULL,
+  timestamp BIGINT NOT NULL,
+  encrypted_content TEXT NOT NULL,
+  iv VARCHAR(100) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (thread_id) REFERENCES posts(id)
+);
+
+-- Indexes for performance
+CREATE INDEX idx_thread_replies_thread_id ON thread_replies (thread_id, timestamp ASC);
+CREATE INDEX idx_thread_replies_author ON thread_replies (author_id);
+CREATE INDEX idx_thread_replies_timestamp ON thread_replies (timestamp DESC);
 ```
 
 ## Development
@@ -228,8 +349,10 @@ docker run -p 3000:3000 --env-file .env local-community-backend
 
 - **Server cannot decrypt content**: All post data is end-to-end encrypted
 - **HMAC-based recipient lookup**: Server cannot determine who can read each post
-- **Ed25519 signature authentication**: Required for creating posts
-- **Rate limiting**: 30 posts per 15 min, 100 API requests per 15 min
+- **Ed25519 signature authentication**: Required for creating/deleting posts and replies
+- **Authorization checks**: Only post authors can delete their own posts
+- **Soft delete**: Posts marked as deleted but preserved for thread integrity
+- **Rate limiting**: 30 posts per 15 min, 300 API requests per 15 min (supports auto-refresh polling)
 - **Request validation**: Input sanitization and size limits
 - **Security headers**: Helmet.js protection
 - **Resource limits**: Docker CPU and memory constraints

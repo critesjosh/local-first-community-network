@@ -20,6 +20,7 @@ import {PostStorageProvider, StorageProviderConfig} from './PostStorageProvider'
 import LocalPostStorage from './LocalPostStorage';
 import RESTPostStorage from './RESTPostStorage';
 import {EncryptedEvent} from '../crypto/EncryptionService';
+import {EncryptedThreadReply} from '../../types/models';
 
 class PostStorageService {
   private provider: PostStorageProvider;
@@ -93,6 +94,20 @@ class PostStorageService {
     callback: (post: EncryptedEvent) => void,
   ): () => void {
     return this.provider.subscribeToPosts(userIds, callback);
+  }
+
+  /**
+   * Post a reply to a thread
+   */
+  async postThreadReply(encryptedReply: EncryptedThreadReply): Promise<void> {
+    return this.provider.postThreadReply(encryptedReply);
+  }
+
+  /**
+   * Fetch replies for a thread
+   */
+  async fetchThreadReplies(threadId: string): Promise<EncryptedThreadReply[]> {
+    return this.provider.fetchThreadReplies(threadId);
   }
 
   /**

@@ -34,6 +34,36 @@ export interface Event {
   // Note: This is the plaintext/decrypted event model
   // For encrypted storage, see EncryptedEvent in EncryptionService
   // Posts use hybrid encryption: single encrypted content + wrapped keys per recipient
+
+  // Threading fields
+  // Note: All events automatically have a thread key wrapped alongside the content key
+  // Anyone who can decrypt the event can also decrypt the thread key and post replies
+  replyCount?: number; // Number of replies to this post
+}
+
+/**
+ * A reply to a post/event (plaintext/decrypted)
+ * Replies use the thread key that was distributed with the original post
+ */
+export interface ThreadReply {
+  id: string; // UUID
+  threadId: string; // Reference to parent event (the original post)
+  authorId: string; // base58 public key
+  content: string; // The reply text content
+  createdAt: Date;
+}
+
+/**
+ * Encrypted thread reply - encrypted with shared thread key
+ * Much simpler than regular posts - no per-recipient key wrapping needed
+ */
+export interface EncryptedThreadReply {
+  id: string;
+  threadId: string;
+  authorId: string;
+  timestamp: number;
+  encryptedContent: string; // base64 - encrypted with shared thread key
+  iv: string; // base64 - AES-GCM IV
 }
 
 export interface Message {

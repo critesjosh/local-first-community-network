@@ -45,10 +45,7 @@
         "buildConfiguration": "Release"
       },
       "android": {
-        "buildType": "apk",
-        "env": {
-          "ANDROID_HOME": "/Users/johngulbronson/Library/Android/sdk"
-        }
+        "buildType": "app-bundle"
       }
     }
   },

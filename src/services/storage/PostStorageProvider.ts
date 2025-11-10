@@ -9,7 +9,7 @@
  */
 
 import {EncryptedEvent} from '../crypto/EncryptionService';
-import {Event} from '../../types/models';
+import {Event, EncryptedThreadReply} from '../../types/models';
 
 /**
  * Post storage provider interface
@@ -54,6 +54,22 @@ export interface PostStorageProvider {
    * Useful for debugging and feature flags
    */
   getProviderType(): 'local' | 'rest' | 'orbitdb';
+
+  /**
+   * Post a reply to a thread
+   *
+   * @param encryptedReply - The encrypted reply
+   * @returns Promise that resolves when reply is posted
+   */
+  postThreadReply(encryptedReply: EncryptedThreadReply): Promise<void>;
+
+  /**
+   * Fetch replies for a thread
+   *
+   * @param threadId - The thread ID
+   * @returns Promise with array of encrypted replies
+   */
+  fetchThreadReplies(threadId: string): Promise<EncryptedThreadReply[]>;
 }
 
 /**
