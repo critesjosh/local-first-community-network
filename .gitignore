@@ -33,6 +33,14 @@ yarn-error.*
 # local env files
 .env*.local
 
+build-*.ipa
+build-*.tar.gz
+build-*.apk
+
+packages/rn-bluetooth/android/build/*
+
+release/*
+
 # typescript
 *.tsbuildinfo
 

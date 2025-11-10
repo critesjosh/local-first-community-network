@@ -14,6 +14,7 @@ Local Community Network is committed to maintaining a safe environment for all u
 The following content and conduct are strictly prohibited on our platform:
 
 #### Absolutely Prohibited:
+
 - **Child Sexual Abuse Material (CSAM)**: Any visual depiction or content involving minors in sexual or sexually suggestive situations
 - **Child Grooming**: Any attempt to establish an emotional connection with a minor to lower inhibitions for sexual abuse
 - **Child Sexualization**: Content that sexualizes minors in any way, including through images, text, or other media
@@ -24,6 +25,7 @@ The following content and conduct are strictly prohibited on our platform:
 - **Child Sex Tourism**: Content that promotes or facilitates travel for the purpose of sexual exploitation of children
 
 #### Additional Protections:
+
 - Age-inappropriate content shared with minors
 - Sharing of personal information of minors without proper consent
 - Attempts to contact minors for purposes unrelated to legitimate community activities
@@ -53,6 +55,7 @@ For users between 13-17 years old, we implement additional safeguards:
 We provide multiple ways for users to report child safety concerns:
 
 #### Within the App:
+
 1. **Report Button**: Every post, event, and user profile has a "Report" button
 2. **Report Categories**: Users can select from specific categories including:
    - Child safety concern
@@ -64,6 +67,7 @@ We provide multiple ways for users to report child safety concerns:
 4. **Priority Processing**: All child safety reports are flagged for immediate review
 
 #### Direct Contact:
+
 - **Child Safety Email**: childsafety@adjacentpossible.dev
 - **24/7 Monitoring**: Child safety reports are monitored continuously
 
@@ -81,62 +85,17 @@ We provide multiple ways for users to report child safety concerns:
 
 We implement multiple layers of protection:
 
-- **Proactive Monitoring**: Automated systems and manual review processes
-- **PhotoDNA Technology**: Integration with industry-standard CSAM detection tools (where applicable)
+- **Proactive Monitoring**: Automated systems and manual review processes, where possible
 - **User Reporting**: Community-driven reporting mechanism
-- **Content Hashing**: Known CSAM content is blocked using hash-matching technology
 - **Encryption Considerations**: While we use end-to-end encryption for user privacy, we retain the ability to respond to valid legal requests and CSAM reports
 
-### 3.2 Response to CSAM
-
-When CSAM is detected or reported:
-
-1. **Immediate Removal**: Content is immediately removed from our platform
-2. **Account Suspension**: Involved accounts are immediately suspended pending investigation
-3. **Evidence Preservation**: All evidence is securely preserved
-4. **Law Enforcement Notification**: We immediately report to:
-   - National Center for Missing & Exploited Children (NCMEC) via CyberTipline
-   - Local law enforcement as appropriate
-   - International authorities as required
-5. **Platform Ban**: Users found distributing CSAM are permanently banned
-6. **Device Fingerprinting**: We use device identification to prevent banned users from creating new accounts
-
-### 3.3 Cooperation with Law Enforcement
+### 3.2 Cooperation with Law Enforcement
 
 We fully cooperate with law enforcement investigations:
 
 - Provide preserved evidence when legally required
-- Maintain detailed logs for investigation purposes
 - Work with NCMEC and international child safety organizations
 - Participate in industry initiatives to combat CSAM
-
-## 4. Compliance with Child Safety Laws
-
-### 4.1 Legal Compliance
-
-We comply with all applicable child safety laws, including:
-
-#### United States:
-- **18 U.S.C. § 2251**: Sexual exploitation of children
-- **18 U.S.C. § 2252**: Material involving the sexual exploitation of minors
-- **18 U.S.C. § 2258A**: Reporting requirements for CSAM
-- **COPPA** (Children's Online Privacy Protection Act): Privacy protections for children under 13
-- **EARN IT Act**: Requirements for online platforms
-
-#### International:
-- **EU General Data Protection Regulation (GDPR)**: Special protections for children's data
-- **UK Online Safety Act**: Duty of care requirements
-- **Australian Online Safety Act**: Protections for children online
-- **Other Jurisdictions**: We comply with applicable laws in all regions where we operate
-
-### 4.2 Mandatory Reporting
-
-We comply with all mandatory reporting requirements:
-
-- Reports to NCMEC's CyberTipline within required timeframes
-- Cooperation with international law enforcement via appropriate channels
-- Preservation of evidence as required by law
-- Transparency reports regarding child safety enforcement actions
 
 ## 5. Child Safety Point of Contact
 
@@ -147,27 +106,23 @@ We comply with all mandatory reporting requirements:
 ### 5.2 Law Enforcement Contact
 
 For law enforcement inquiries:
+
 - **Email**: childsafety@adjacentpossible.dev (24/7 monitored)
 
 ## 6. Content Moderation and Enforcement
 
-### 6.1 Review Process
-
-- **Automated Screening**: AI-powered content analysis for potential violations
-- **Human Review**: Trained moderators review flagged content
-- **Expert Review**: Complex cases escalated to specialized child safety experts
-- **Appeals Process**: Users can appeal moderation decisions (except CSAM cases)
-
-### 6.2 Enforcement Actions
+### 6.1 Enforcement Actions
 
 Violations result in immediate action:
 
 #### Minor Violations:
+
 - Warning to user
 - Content removal
 - Temporary account suspension
 
 #### Serious Violations:
+
 - Immediate account suspension
 - Content preservation for investigation
 - Report to law enforcement
@@ -175,6 +130,7 @@ Violations result in immediate action:
 - Device-level blocking
 
 #### CSAM Violations:
+
 - Immediate permanent ban
 - Full cooperation with law enforcement
 - Report to NCMEC CyberTipline
@@ -186,7 +142,6 @@ Violations result in immediate action:
 We implement proactive measures:
 
 - **Education**: Safety tips and resources for users
-- **Account Verification**: Measures to verify user identity
 - **Behavioral Analysis**: Detection of suspicious patterns
 - **Community Guidelines**: Clear standards for acceptable behavior
 - **Parental Resources**: Information for parents about keeping children safe
@@ -203,18 +158,10 @@ While we maintain strong privacy protections through end-to-end encryption:
 
 ## 8. User Education and Resources
 
-### 8.1 Safety Resources
-
-We provide resources for all users:
-
-- **In-App Safety Center**: Tips for staying safe online
-- **Parent Guides**: Resources for parents of teen users
-- **Reporting Guides**: Step-by-step instructions for reporting concerns
-- **External Resources**: Links to organizations like NCMEC, NCOSE, Thorn, and IWF
-
-### 8.2 Community Responsibility
+### 8.1 Community Responsibility
 
 We encourage all users to:
+
 - Report suspicious behavior immediately
 - Educate themselves about online safety
 - Monitor their children's online activities
@@ -222,17 +169,6 @@ We encourage all users to:
 - Support our efforts to maintain a safe community
 
 ## 9. Transparency and Accountability
-
-### 9.1 Transparency Reporting
-
-We commit to transparency:
-
-- Periodic transparency reports on child safety enforcement
-- Statistics on reports received and actions taken
-- Information about cooperation with law enforcement
-- Updates to policies and procedures
-
-### 9.2 Continuous Improvement
 
 We continuously improve our child safety measures:
 
@@ -245,25 +181,30 @@ We continuously improve our child safety measures:
 ## 10. Contact Information
 
 ### For Users:
+
 - **Report Safety Concerns**: email childsafety@adjacentpossible.dev
-- **General Inquiries**: privacy@builddetroit.xyz
+- **General Inquiries**: privacy@adjacentpossible.dev
 - **Parent/Guardian Concerns**: childsafety@adjacentpossible.dev
 
 ### For Law Enforcement:
+
 - **Email**: childsafety@adjacentpossible.dev (24/7)
 
 ### For Researchers and Organizations:
+
 - **Partnerships**: childsafety@adjacentpossible.dev
 
 ## 11. External Resources
 
 ### Reporting Resources:
+
 - **NCMEC CyberTipline**: www.cybertipline.org | 1-800-843-5678
 - **FBI**: tips.fbi.gov | 1-800-CALL-FBI
 - **Internet Watch Foundation** (UK): www.iwf.org.uk
 - **Australian eSafety Commissioner**: www.esafety.gov.au
 
 ### Educational Resources:
+
 - **National Center for Missing & Exploited Children**: www.missingkids.org
 - **Thorn**: www.thorn.org
 - **Common Sense Media**: www.commonsensemedia.org
@@ -272,14 +213,14 @@ We continuously improve our child safety measures:
 ## 12. Policy Updates
 
 This policy may be updated to reflect:
+
 - Changes in applicable laws
 - Improvements in detection technology
 - Feedback from law enforcement and safety organizations
 - Emerging threats and safety concerns
 
 Users will be notified of material changes through:
-- In-app notifications
-- Email notifications
+
 - Updates to this document with revision date
 
 ## 13. Legal Disclaimer

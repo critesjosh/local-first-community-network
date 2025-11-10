@@ -11,10 +11,16 @@ Pod::Spec.new do |s|
   s.authors      = package["author"]
 
   s.platforms    = { :ios => "12.0" }
-  s.source       = { :git => "https://github.com/facebook/react-native.git", :tag => "#{s.version}" }
+  s.source       = { :git => ".", :tag => "#{s.version}" }
 
-  s.source_files = "ios/**/*.{h,m,mm,swift}"
+  s.source_files = "*.{h,m,mm,swift}"
   s.requires_arc = true
+  
+  # Swift configuration for frameworks
+  s.swift_version = '5.0'
+  s.pod_target_xcconfig = {
+    'DEFINES_MODULE' => 'YES'
+  }
 
   s.dependency "React-Core"
   s.dependency "React-CoreModules"

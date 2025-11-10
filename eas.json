@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 13.3.1"
+    "version": ">= 13.3.1",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -8,7 +9,10 @@
       "distribution": "internal",
       "android": {
         "gradleCommand": ":app:assembleDebug",
-        "buildType": "apk"
+        "buildType": "apk",
+        "env": {
+          "ANDROID_HOME": "/Users/johngulbronson/Library/Android/sdk"
+        }
       },
       "ios": {
         "buildConfiguration": "Debug"
@@ -21,7 +25,10 @@
         "simulator": false
       },
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "env": {
+          "ANDROID_HOME": "/Users/johngulbronson/Library/Android/sdk"
+        }
       }
     },
     "simulator": {

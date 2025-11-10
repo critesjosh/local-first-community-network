@@ -17,6 +17,7 @@ export type RootStackParamList = {
   ConnectionScan: undefined;
   ConnectionDetail: {connectionId: string};
   ThreadView: {threadId: string; postContent?: string; postAuthor?: string};
+  ProfileEdit: undefined;
 };
 
 /**
@@ -25,9 +26,10 @@ export type RootStackParamList = {
 export type MainTabParamList = {
   Home: undefined;
   Connections: undefined;
-  CreateEvent: undefined;
+  Connect: undefined;
   Profile: undefined;
   Settings: undefined;
+  CreateEvent: undefined;
 };
 
 /**

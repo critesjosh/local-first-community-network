@@ -19,30 +19,36 @@ export interface BroadcastProfile {
   displayName: string;
 }
 
+type BroadcastStateListener = (isAdvertising: boolean) => void;
+
 class BLEBroadcastService {
   private isBroadcasting = false;
   private rotationTimer: NodeJS.Timeout | null = null;
   private currentProfile: BroadcastProfile | null = null;
   private localFingerprint: string | null = null;
+  private stateListeners: Set<BroadcastStateListener> = new Set();
 
   /**
    * Start advertising the current user's presence
    */
-  async start(profile: BroadcastProfile): Promise<void> {
+  async start(profile: BroadcastProfile, fullProfile?: any): Promise<void> {
     this.currentProfile = profile;
 
     try {
-      // Check Bluetooth permissions and state first
       await this.checkBluetoothPermissions();
       
-      // Set up GATT server profile data
-      // Note: This should be called with full profile including userId, publicKey, etc.
-      // For now, we'll let the caller handle this via setProfileData
+      if (fullProfile) {
+        await this.setProfileData(JSON.stringify(fullProfile));
+      }
 
       await this.refreshBroadcast();
       this.startRotationTimer();
+      this.isBroadcasting = true;
+      this.notifyStateListeners();
     } catch (error) {
-      console.error('Failed to start BLE broadcasting:', error);
+      console.error('❌ Failed to start BLE broadcasting:', error);
+      this.isBroadcasting = false;
+      this.notifyStateListeners();
       throw error;
     }
   }
@@ -69,13 +75,12 @@ class BLEBroadcastService {
 
     if (this.isBroadcasting) {
       try {
-        // Note: The custom module might not have stopAdvertising method
-        // We'll just set the state to false for now
-        console.log('🛑 Stopping BLE broadcast');
         this.isBroadcasting = false;
+        this.notifyStateListeners();
       } catch (error) {
         console.warn('Failed to stop BLE broadcast', error);
         this.isBroadcasting = false;
+        this.notifyStateListeners();
       }
     }
   }
@@ -92,14 +97,8 @@ class BLEBroadcastService {
    */
   private async checkBluetoothPermissions(): Promise<void> {
     try {
-      // Initialize Bluetooth and request permissions
-      console.log('🔧 Initializing Bluetooth...');
       await Bluetooth.initialize();
-      
-      console.log('🔐 Requesting Bluetooth permissions...');
       await Bluetooth.requestPermissions();
-      
-      console.log('✅ Bluetooth initialized and permissions requested');
     } catch (error) {
       console.error('❌ Bluetooth initialization failed:', error);
       throw new Error(`Bluetooth initialization failed: ${error.message}`);
@@ -118,8 +117,6 @@ class BLEBroadcastService {
     this.localFingerprint = payload.fingerprint;
 
     try {
-      // Start advertising with the custom module
-      console.log('📡 Starting BLE advertisement');
       await Bluetooth.startAdvertising(
         payload.displayName,
         payload.userHashHex,
@@ -127,22 +124,22 @@ class BLEBroadcastService {
       );
       
       this.isBroadcasting = true;
-      console.log('✅ BLE advertisement started successfully');
     } catch (error) {
-      console.error('❌ Error advertising BLE presence:', error);
       this.isBroadcasting = false;
       
       // Provide more specific error messages
-      if (error.message.includes('permission')) {
+      if (error.message && error.message.includes('permission')) {
         throw new Error('Bluetooth advertising permission denied. Please grant permission in device settings.');
-      } else if (error.message.includes('not enabled')) {
-        throw new Error('Bluetooth is not enabled. Please enable Bluetooth in device settings.');
-      } else if (error.message.includes('already advertising')) {
-        console.log('⚠️ Already advertising, continuing...');
+      } else if (error.message && error.message.includes('powered off')) {
+        throw new Error('Bluetooth is powered off. Please enable Bluetooth in device settings.');
+      } else if (error.message && error.message.includes('initializing')) {
+        this.isBroadcasting = true;
+        return;
+      } else if (error.message && error.message.includes('already advertising')) {
         this.isBroadcasting = true;
         return;
       } else {
-        throw new Error(`BLE advertising failed: ${error.message}`);
+        throw new Error(`BLE advertising failed: ${error.message || 'Unknown error'}`);
       }
     }
   }
@@ -207,6 +204,36 @@ class BLEBroadcastService {
       }
     }
     return Array.from(array);
+  }
+
+  /**
+   * Add a listener for broadcasting state changes
+   */
+  addStateListener(listener: BroadcastStateListener): void {
+    this.stateListeners.add(listener);
+    // Immediately notify of current state
+    listener(this.isBroadcasting);
+  }
+
+  /**
+   * Remove a state listener
+   */
+  removeStateListener(listener: BroadcastStateListener): void {
+    this.stateListeners.delete(listener);
+  }
+
+  /**
+   * Get current broadcasting state
+   */
+  isAdvertising(): boolean {
+    return this.isBroadcasting;
+  }
+
+  /**
+   * Notify all listeners of state change
+   */
+  private notifyStateListeners(): void {
+    this.stateListeners.forEach(listener => listener(this.isBroadcasting));
   }
 }
 

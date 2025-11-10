@@ -1,15 +1,15 @@
 {
   "expo": {
-    "name": "local-social-network-expo",
+    "name": "yourland",
     "slug": "local-social-network-expo",
     "version": "1.0.1",
     "owner": "renaissance-builders",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/yourland-app-logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/yourland-splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -27,7 +27,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/yourland-app-logo.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
@@ -58,7 +58,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/yourland-app-logo.png"
     },
     "extra": {
       "eas": {
@@ -78,9 +78,7 @@
       ],
       "./app.plugin.js"
     ],
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.1",
     "updates": {
       "url": "https://u.expo.dev/ccbafd9b-37cb-422b-a8a3-cb3a2f3d781e",
       "requestHeaders": {

@@ -204,6 +204,16 @@ class RNLCBluetoothModule(reactContext: ReactApplicationContext) :
         peripheralManager.stopAdvertising(promise)
     }
 
+    @ReactMethod
+    fun sendConnectionResponse(deviceAddress: String, responseJson: String, promise: Promise) {
+        try {
+            peripheralManager.sendConnectionResponse(deviceAddress, responseJson)
+            promise.resolve(null)
+        } catch (e: Exception) {
+            promise.reject("send_response_error", "Failed to send connection response: ${e.message}", e)
+        }
+    }
+
     // MARK: - Utility Methods
 
     @ReactMethod

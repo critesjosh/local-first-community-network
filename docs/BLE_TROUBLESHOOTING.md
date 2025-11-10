@@ -56,22 +56,25 @@ This guide helps resolve common Bluetooth Low Energy (BLE) advertising issues.
 - Test on a physical device instead
 - Use `npm run android` to build for physical device
 
-## Current Limitations
+## ✅ Module Status (FIXED)
 
-### Custom Module Not Available
-- The custom `@localcommunity/rn-bluetooth` module is not currently built/available
-- Using fallback implementation with `react-native-ble-plx`
-- `react-native-ble-plx` has limited advertising support compared to the custom module
+The custom `@localcommunity/rn-bluetooth` module **is now properly linked** and available!
 
-### What Works
-- Bluetooth initialization and permission checking
-- Device scanning (central role)
-- Basic BLE functionality
+### What Now Works
+- ✅ Full Bluetooth initialization and permission checking
+- ✅ Device scanning (central role)
+- ✅ BLE advertising (peripheral role)
+- ✅ Custom GATT service advertising
+- ✅ Manufacturer data advertising
+- ✅ Native iOS and Android Bluetooth APIs
 
-### What Doesn't Work
-- Full advertising functionality (peripheral role)
-- Custom GATT service advertising
-- Manufacturer data advertising
+### How It Was Fixed
+The module was not being discovered by Expo's autolinking system. We:
+1. Added `react-native.config.js` with autolinking configuration
+2. Manually added the pod to `ios/Podfile`
+3. Reinstalled pods with `pod install`
+
+See [BLUETOOTH_MODULE_LINKING.md](./BLUETOOTH_MODULE_LINKING.md) for full details.
 
 ## Debugging Steps
 

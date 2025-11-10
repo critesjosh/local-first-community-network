@@ -77,7 +77,9 @@ const SettingsScreen = () => {
         bounces={true}
       >
         <View style={styles.content}>
-          <Text style={styles.title}>Settings</Text>
+          <View style={styles.headerSection}>
+            <Text style={styles.title}>Settings</Text>
+          </View>
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Connections</Text>
@@ -153,16 +155,23 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingTop: 60,
     paddingBottom: 60,
   },
   content: {
-    padding: 20,
+    paddingHorizontal: 20,
+  },
+  headerSection: {
+    paddingTop: 60,
+    paddingBottom: 16,
   },
   title: {
     fontSize: 34,
     fontWeight: 'bold',
-    marginBottom: 24,
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#8E8E93',
   },
   section: {
     marginBottom: 32,

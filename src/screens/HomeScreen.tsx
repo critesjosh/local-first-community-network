@@ -1,4 +1,4 @@
-import React, {useState, useCallback, useEffect} from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -24,10 +24,12 @@ import {initLogger} from '../utils/logger';
 import ThreadService from '../services/ThreadService';
 import PostService from '../services/PostService';
 import {MainTabScreenProps} from '../types/navigation';
+import {Buffer} from 'buffer';
+import {ConnectionProfile} from '../types/bluetooth';
 
 interface RSVPState {
   [eventId: string]: {
-    status: 'going' | 'interested' | 'not_going';
+    status: "going" | "interested" | "not_going";
     count: number;
   };
 }
@@ -39,6 +41,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [rsvpState, setRsvpState] = useState<RSVPState>({});
+  const [isAdvertising, setIsAdvertising] = useState(false);
   const [connections, setConnections] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [threadReplyCounts, setThreadReplyCounts] = useState<{[threadId: string]: number}>({});
@@ -48,23 +51,37 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
     initLogger();
   }, []);
 
+  // Subscribe to advertising state changes
+  useEffect(() => {
+    const handleAdvertisingStateChange = (advertising: boolean) => {
+      setIsAdvertising(advertising);
+    };
+
+    BLEBroadcastService.addStateListener(handleAdvertisingStateChange);
+
+    return () => {
+      BLEBroadcastService.removeStateListener(handleAdvertisingStateChange);
+    };
+  }, []);
+
   // Listen for Bluetooth events from native layer
   useEffect(() => {
     const unsubscribe = addBluetoothListener((event) => {
-      if (event.type === 'error') {
-
+      if (event.type === "error") {
         // Check if this is a Location Services warning
-        if (event.code === 'SCAN_DEBUG' &&
-            event.message &&
-            event.message.includes('Location Services') &&
-            event.message.includes('disabled')) {
+        if (
+          event.code === "SCAN_DEBUG" &&
+          event.message &&
+          event.message.includes("Location Services") &&
+          event.message.includes("disabled")
+        ) {
           // Show alert to user
           Alert.alert(
-            'Location Services Required',
-            'BLE scanning requires Location Services to be enabled on Android. Please enable Location in your device settings to discover nearby neighbors.',
+            "Location Services Required",
+            "BLE scanning requires Location Services to be enabled on Android. Please enable Location in your device settings to discover nearby neighbors.",
             [
-              {text: 'Cancel', style: 'cancel'},
-              {text: 'Open Settings', onPress: () => Linking.openSettings()}
+              { text: "Cancel", style: "cancel" },
+              { text: "Open Settings", onPress: () => Linking.openSettings() },
             ]
           );
         }
@@ -79,59 +96,72 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
     const startAdvertising = async () => {
       try {
         // Request Bluetooth permissions first
-        console.log('Checking Bluetooth permissions...');
-        const {Bluetooth} = await import('@localcommunity/rn-bluetooth');
+        console.log("Checking Bluetooth permissions...");
+        const { Bluetooth } = await import("@localcommunity/rn-bluetooth");
         const hasPermissions = await Bluetooth.requestPermissions();
 
         if (!hasPermissions) {
           Alert.alert(
-            'Bluetooth Permissions Needed',
-            'Please grant Bluetooth permissions to discover nearby neighbors.',
+            "Bluetooth Permissions Needed",
+            "Please grant Bluetooth permissions to discover nearby neighbors.",
             [
-              {text: 'OK', onPress: async () => {
-                // Try again after user acknowledges
-                const granted = await Bluetooth.requestPermissions();
-                if (!granted) {
-                  console.error('Bluetooth permissions denied');
-                }
-              }}
+              {
+                text: "OK",
+                onPress: async () => {
+                  // Try again after user acknowledges
+                  const granted = await Bluetooth.requestPermissions();
+                  if (!granted) {
+                    console.error("Bluetooth permissions denied");
+                  }
+                },
+              },
             ]
           );
           return;
         }
 
-        console.log('Bluetooth permissions granted');
+        console.log("Bluetooth permissions granted");
 
         const user = await IdentityService.getCurrentUser();
         const identity = IdentityService.getCurrentIdentity();
 
         if (user && identity) {
-          console.log('Starting BLE advertising for user:', user.displayName);
+          console.log("Starting BLE advertising for user:", user.displayName);
 
-          // Set profile data for GATT server (when others connect to read profile)
-          await BLEBroadcastService.setProfileData(JSON.stringify({
+          // Create minimal connection profile - only essential data for BLE transfer
+          // Profile photos are too large for GATT reads/writes (512 byte limit) and will be synced separately
+          const fullProfile: ConnectionProfile = {
             userId: user.id,
             displayName: user.displayName,
-            publicKey: user.id,
-            profilePhoto: user.profilePhoto,
-          }));
+            publicKey: Buffer.from(identity.publicKey).toString("base64"),
+            // Explicitly exclude profilePhoto - it causes 512-byte GATT read limit to be exceeded
+          };
 
-          // Start advertising presence
-          await BLEBroadcastService.start({
-            userId: user.id,
-            displayName: user.displayName,
+          console.log("[HomeScreen] 📋 Profile data prepared:", {
+            userId: fullProfile.userId,
+            displayName: fullProfile.displayName,
+            publicKeyLength: fullProfile.publicKey.length,
           });
 
-          console.log('✅ BLE advertising started successfully');
+          // Start advertising presence (this will set the profile data internally)
+          await BLEBroadcastService.start(
+            {
+              userId: user.id,
+              displayName: user.displayName,
+            },
+            fullProfile
+          );
 
-          // Start listening for incoming connection requests
+          console.log("✅ BLE advertising started successfully");
+
+          // Start the connection handler to receive connection requests/responses
           BLEConnectionHandler.start();
-          console.log('✅ BLE connection handler started');
+          console.log("✅ BLE connection handler started");
         } else {
-          console.warn('No user identity found, skipping BLE advertising');
+          console.warn("No user identity found, skipping BLE advertising");
         }
       } catch (error) {
-        console.error('❌ Failed to start BLE advertising:', error);
+        console.error("❌ Failed to start BLE advertising:", error);
       }
     };
 
@@ -139,8 +169,8 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
 
     // Cleanup: stop advertising and connection handler when component unmounts
     return () => {
-      BLEBroadcastService.stop().catch(err =>
-        console.warn('Error stopping advertising:', err)
+      BLEBroadcastService.stop().catch((err) =>
+        console.warn("Error stopping advertising:", err)
       );
       BLEConnectionHandler.stop();
     };
@@ -172,13 +202,13 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
         try {
           const decrypted = await EncryptionService.decryptEvent(
             encryptedEvent,
-            fetchedConnections,
+            fetchedConnections
           );
           if (decrypted) {
             decryptedEvents.push(decrypted);
           }
         } catch (error) {
-          console.warn('Failed to decrypt event:', error);
+          console.warn("Failed to decrypt event:", error);
           // Skip events we can't decrypt
         }
       }
@@ -187,13 +217,15 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
 
       // Sort by createdAt (newest first)
       decryptedEvents.sort((a, b) => {
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        return (
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
       });
 
       setEvents(decryptedEvents);
     } catch (error) {
-      console.error('Error loading events:', error);
-      Alert.alert('Error', 'Failed to load events. Please try again.');
+      console.error("Error loading events:", error);
+      Alert.alert("Error", "Failed to load events. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -207,9 +239,9 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
 
   const handleRSVP = (
     eventId: string,
-    status: 'going' | 'interested' | 'not_going',
+    status: "going" | "interested" | "not_going"
   ) => {
-    setRsvpState(prev => {
+    setRsvpState((prev) => {
       const currentStatus = prev[eventId]?.status;
       const currentCount = prev[eventId]?.count || 0;
 
@@ -218,7 +250,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
         return {
           ...prev,
           [eventId]: {
-            status: 'not_going',
+            status: "not_going",
             count: Math.max(0, currentCount - 1),
           },
         };
@@ -229,7 +261,8 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
         ...prev,
         [eventId]: {
           status,
-          count: currentStatus === 'not_going' ? currentCount + 1 : currentCount,
+          count:
+            currentStatus === "not_going" ? currentCount + 1 : currentCount,
         },
       };
     });
@@ -322,7 +355,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
   useFocusEffect(
     useCallback(() => {
       loadEvents();
-    }, []),
+    }, [])
   );
 
   const getAuthorInfo = (authorId: string) => {
@@ -335,7 +368,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
     }
 
     // Look up in connections
-    const connection = connections.find(c => c.userId === authorId);
+    const connection = connections.find((c) => c.userId === authorId);
     if (connection) {
       return {
         displayName: connection.displayName,
@@ -345,12 +378,12 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
 
     // Fallback
     return {
-      displayName: 'Unknown',
+      displayName: "Unknown",
       profilePhoto: undefined,
     };
   };
 
-  const renderEvent = ({item}: {item: Event}) => {
+  const renderEvent = ({ item }: { item: Event }) => {
     const authorInfo = getAuthorInfo(item.authorId);
     const isOwnPost = currentUser && currentUser.id === item.authorId;
     return (
@@ -373,8 +406,8 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
     <View style={styles.placeholder}>
       <Text style={styles.placeholderText}>
         {loading
-          ? 'Loading events...'
-          : 'No events yet. Connect with neighbors and create an event to get started!'}
+          ? "Loading events..."
+          : "No events yet. Connect with neighbors and create an event to get started!"}
       </Text>
     </View>
   );
@@ -397,6 +430,24 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
         <Text style={styles.subtitle}>
           Discover what's happening in your neighborhood
         </Text>
+        <View
+          style={[
+            styles.advertisingBadge,
+            isAdvertising
+              ? styles.advertisingBadgeActive
+              : styles.advertisingBadgeInactive,
+          ]}
+        >
+          <View
+            style={[
+              styles.statusDot,
+              isAdvertising ? styles.statusDotActive : styles.statusDotInactive,
+            ]}
+          />
+          <Text style={styles.advertisingText}>
+            {isAdvertising ? "Discoverable" : "Not advertising"}
+          </Text>
+        </View>
       </View>
 
       {loading ? (
@@ -407,7 +458,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
         <FlatList
           data={events}
           renderItem={renderEvent}
-          keyExtractor={item => item.id}
+          keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={renderEmpty}
           ListFooterComponent={renderFooter}
@@ -427,41 +478,73 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: "#F2F2F7",
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 68,
-    paddingBottom: 12,
-    backgroundColor: '#F2F2F7',
+    paddingTop: 60,
+    paddingBottom: 16,
+    backgroundColor: "#F2F2F7",
   },
   title: {
     fontSize: 34,
-    fontWeight: 'bold',
-    marginBottom: 4,
+    fontWeight: "bold",
+    marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#8E8E93',
+    color: "#8E8E93",
+  },
+  advertisingBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    marginTop: 12,
+    alignSelf: "flex-start",
+  },
+  advertisingBadgeActive: {
+    backgroundColor: "#E8F5E9",
+  },
+  advertisingBadgeInactive: {
+    backgroundColor: "#FFF3E0",
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  statusDotActive: {
+    backgroundColor: "#4CAF50",
+  },
+  statusDotInactive: {
+    backgroundColor: "#FF9800",
+  },
+  advertisingText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#333",
   },
   listContent: {
     padding: 20,
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   placeholder: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 12,
     padding: 40,
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 20,
   },
   placeholderText: {
-    color: '#8E8E93',
-    textAlign: 'center',
+    color: "#8E8E93",
+    textAlign: "center",
     fontSize: 16,
     lineHeight: 22,
   },
