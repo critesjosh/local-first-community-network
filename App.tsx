@@ -10,11 +10,15 @@ import React, {useEffect, useState} from 'react';
 import 'react-native-gesture-handler';
 import {ActivityIndicator, View, StyleSheet} from 'react-native';
 import * as Updates from 'expo-updates';
+import {Buffer} from 'buffer';
 import Constants from 'expo-constants';
 import AppNavigator from './src/navigation/AppNavigator';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import IdentityService from './src/services/IdentityService';
 import BLEBroadcastService from './src/services/bluetooth/BLEBroadcastService';
+import BLEConnectionHandler from './src/services/bluetooth/BLEConnectionHandler';
+import SessionService from './src/services/SessionService';
+import PendingConnectionReconciler from './src/services/PendingConnectionReconciler';
 import PostStorageService from './src/services/storage/PostStorageService';
 
 function App() {
@@ -23,6 +27,11 @@ function App() {
 
   useEffect(() => {
     initializeApp();
+    
+    // Cleanup on unmount
+    return () => {
+      PendingConnectionReconciler.stop();
+    };
   }, []);
 
   const initializeApp = async () => {
@@ -32,6 +41,9 @@ function App() {
 
       // Initialize identity service
       await IdentityService.init();
+
+      // Clean up expired sessions
+      await SessionService.cleanupExpiredSessions();
 
       // Initialize post storage with REST backend
       const apiUrl = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:3000';
@@ -47,6 +59,12 @@ function App() {
 
       if (identityExists) {
         await startBroadcasting();
+        
+        // Start listening for connection requests/responses
+        BLEConnectionHandler.start();
+        
+        // Start periodic reconciliation of pending connections
+        PendingConnectionReconciler.start();
       }
     } catch (error) {
       console.error('App initialization error:', error);
@@ -62,6 +80,11 @@ function App() {
         return;
       }
 
+      // Skip update checks if Updates is not available
+      if (!Updates.isEnabled) {
+        return;
+      }
+
       const update = await Updates.checkForUpdateAsync();
       if (update.isAvailable) {
         console.log('Update available, downloading...');
@@ -69,34 +92,64 @@ function App() {
         console.log('Update downloaded, reloading app...');
         await Updates.reloadAsync();
       }
-    } catch (error) {
-      console.error('Error checking for updates:', error);
+    } catch (error: any) {
+      // Gracefully handle update check errors (e.g., channel doesn't exist)
+      // Don't block app initialization if update check fails
+      if (error?.code === 'ERR_UPDATES_CHECK' || error?.message?.includes('404')) {
+        console.log('Update channel not configured, skipping update check');
+      } else {
+        console.error('Error checking for updates:', error);
+      }
     }
   };
 
   const startBroadcasting = async () => {
     try {
       const user = await IdentityService.getCurrentUser();
-      if (user) {
+      const identity = IdentityService.getCurrentIdentity();
+      
+      if (user && identity) {
         console.log('🚀 Starting BLE broadcasting for user:', user.displayName);
-        await BLEBroadcastService.start({
+        
+        // Build minimal profile for GATT server
+        // CRITICAL: Profile photos are too large for BLE GATT (512 byte limit)
+        // and MUST be excluded to prevent truncation errors
+        const fullProfile = {
           userId: user.id,
           displayName: user.displayName,
-        });
+          publicKey: Buffer.from(identity.publicKey).toString('base64'),
+          // profilePhoto explicitly excluded - exceeds 512-byte BLE GATT limit
+        };
+        
+        await BLEBroadcastService.start(
+          {
+            userId: user.id,
+            displayName: user.displayName,
+          },
+          fullProfile
+        );
         console.log('✅ BLE broadcasting started successfully');
+      } else {
+        console.error('❌ Cannot start broadcasting: missing user or identity');
       }
     } catch (error) {
       console.error('❌ Failed to start BLE broadcasting:', error);
       
       // Provide user-friendly error messages
-      if (error.message.includes('permission')) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      if (errorMessage.includes('permission')) {
         console.error('💡 Please grant Bluetooth permissions in device settings');
-      } else if (error.message.includes('not enabled')) {
+      } else if (errorMessage.includes('powered off')) {
+        console.error('💡 Please turn on Bluetooth in device settings');
+      } else if (errorMessage.includes('not enabled')) {
         console.error('💡 Please enable Bluetooth in device settings');
-      } else if (error.message.includes('not available')) {
+      } else if (errorMessage.includes('not available')) {
         console.error('💡 Bluetooth is not available on this device');
+      } else if (errorMessage.includes('initializing')) {
+        console.log('⏳ Bluetooth is still initializing...');
       } else {
-        console.error('💡 BLE advertising failed. Check device Bluetooth settings and try again.');
+        console.error('💡 BLE advertising failed:', errorMessage);
       }
     }
   };

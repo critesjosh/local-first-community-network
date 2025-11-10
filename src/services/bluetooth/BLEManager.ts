@@ -39,6 +39,8 @@ class BLEManagerService {
   private stateListeners: Set<BLEStateListener> = new Set();
   private deviceExpiryTimer: NodeJS.Timeout | null = null;
   private bluetoothEventUnsubscribe: (() => void) | null = null;
+  private pulseTimer: NodeJS.Timeout | null = null;
+  private isPulsing: boolean = false;
 
   /**
    * Initialize BLE manager and request permissions
@@ -47,6 +49,10 @@ class BLEManagerService {
     try {
       // Initialize the Bluetooth module
       await Bluetooth.initialize();
+
+      // Wait for CoreBluetooth to initialize (iOS needs time to power on)
+      // This prevents "Bluetooth is initializing" errors when trying to scan immediately
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       // Request permissions
       const permissionsGranted = await Bluetooth.requestPermissions();
@@ -58,7 +64,7 @@ class BLEManagerService {
       // Setup event listeners
       this.bluetoothEventUnsubscribe = addBluetoothListener(this.handleBluetoothEvent.bind(this));
 
-      await log('BLE Manager initialized successfully');
+      await log('✅ BLE Manager initialized and ready');
       return true;
     } catch (error) {
       await logError('Error initializing BLE Manager:', error);
@@ -86,9 +92,44 @@ class BLEManagerService {
         // Silently handle - calling code will log if needed
         break;
       case 'error':
-        // Silently handle errors - these are mostly debug events
+        // Handle critical Bluetooth state errors
+        if (event.code === 'BLUETOOTH_OFF') {
+          console.error('[BLEManager] ❌ Bluetooth was turned off');
+          this.handleBluetoothOff();
+        } else if (event.code === 'PERMISSION_DENIED') {
+          console.error('[BLEManager] ❌ Bluetooth permission denied');
+        }
         break;
     }
+  }
+
+  /**
+   * Handle Bluetooth being turned off
+   */
+  private handleBluetoothOff(): void {
+    console.log('[BLEManager] Handling Bluetooth off state...');
+    
+    // Stop all ongoing operations
+    this.state.isScanning = false;
+    this.state.isAdvertising = false;
+    this.stopDeviceExpiryTimer();
+    
+    // Clear discovered devices
+    this.state.discoveredDevices.clear();
+    
+    // Stop pulsed scanning if active
+    if (this.isPulsing) {
+      this.isPulsing = false;
+      if (this.pulseTimer) {
+        clearTimeout(this.pulseTimer);
+        this.pulseTimer = null;
+      }
+    }
+    
+    // Notify listeners
+    this.notifyStateListeners();
+    
+    console.log('[BLEManager] Stopped all BLE operations due to Bluetooth off');
   }
 
   /**
@@ -97,12 +138,9 @@ class BLEManagerService {
   private handleDeviceDiscovered(event: BluetoothEvent & {type: 'deviceDiscovered'}): void {
     const {deviceId, rssi, payload} = event;
 
-    logSync(`[BLE] Device discovered: ${payload.displayName || 'Unknown'} (${deviceId}) RSSI: ${rssi} dBm`);
-
     // Filter by RSSI threshold
     if (rssi < RSSI_THRESHOLD) {
-      logSync(`[BLE] Filtered: RSSI ${rssi} below threshold ${RSSI_THRESHOLD}`);
-      return;
+      return; // Silently filter weak signals
     }
 
     // Check if this is our own broadcast
@@ -112,16 +150,29 @@ class BLEManagerService {
       payload.userHashHex &&
       payload.userHashHex === localFingerprint
     ) {
-      // Ignore our own broadcast
-      logSync(`[BLE] Filtered: Own device broadcast`);
+      // Ignore our own broadcast (silently)
       return;
     }
 
-    logSync(`[BLE] Adding device to list: ${payload.displayName || 'Unknown'}`);
+    // Skip devices with no data (too noisy)
+    if (!payload.displayName && !payload.userHashHex) {
+      return; // Silently ignore devices without our protocol data
+    }
 
     // Use userHashHex as stable device key, fallback to deviceId
     const deviceKey = payload.userHashHex || deviceId;
     const displayName = payload.displayName || null;
+
+    // Check if this is a new device or an update
+    const existingDevice = this.state.discoveredDevices.get(deviceKey);
+    const isNewDevice = !existingDevice;
+    const hasNameChanged = existingDevice && existingDevice.name !== displayName;
+    const hasSignificantRssiChange = existingDevice && Math.abs(existingDevice.rssi - rssi) > 20;
+
+    // DIAGNOSTIC: Log ALL new devices to see what's happening
+    if (isNewDevice) {
+      logSync(`🆕 [BLE] Found: ${displayName || '(no name)'} | userHash: ${payload.userHashHex || '(none)'} | followToken: ${payload.followTokenHex || '(none)'}`);
+    }
 
     // Create or update discovered device
     const discoveredDevice: DiscoveredDevice = {
@@ -135,6 +186,8 @@ class BLEManagerService {
     };
 
     this.state.discoveredDevices.set(deviceKey, discoveredDevice);
+    
+    // Silently notify listeners (logging done above for new devices only)
     this.notifyScanListeners(discoveredDevice);
   }
 
@@ -143,29 +196,41 @@ class BLEManagerService {
    */
   async startScanning(): Promise<void> {
     if (this.state.isScanning) {
-      await log('[BLE] Already scanning, skipping');
       return;
     }
 
     try {
-      await log('[BLE] Starting BLE scan...');
       this.state.isScanning = true;
       this.state.discoveredDevices.clear();
       this.notifyStateListeners();
-
-      // Start device expiry timer
       this.startDeviceExpiryTimer();
-
-      // Start scanning
       await Bluetooth.startScanning();
-      await log('[BLE] BLE scan started successfully');
 
       // Auto-stop after timeout
       setTimeout(() => {
         this.stopScanning();
       }, SCAN_TIMEOUT);
     } catch (error) {
-      await logError('Error starting BLE scan:', error);
+      const errorMessage = error?.message || String(error);
+      
+      // If Bluetooth is initializing, wait and retry once
+      if (errorMessage.includes('initializing') || errorMessage.includes('not ready')) {
+        console.log('[BLE] Bluetooth still initializing, waiting 1s and retrying...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        try {
+          await Bluetooth.startScanning();
+          // Successfully started on retry
+          return;
+        } catch (retryError) {
+          await logError('[BLE] Error starting scan after retry:', retryError);
+          this.state.isScanning = false;
+          this.notifyStateListeners();
+          throw retryError;
+        }
+      }
+      
+      await logError('[BLE] Error starting scan:', error);
       this.state.isScanning = false;
       this.notifyStateListeners();
       throw error;
@@ -180,14 +245,99 @@ class BLEManagerService {
       return;
     }
 
-    await log('Stopping BLE scan');
     try {
       await Bluetooth.stopScanning();
       this.state.isScanning = false;
       this.stopDeviceExpiryTimer();
       this.notifyStateListeners();
     } catch (error) {
-      await logError('Error stopping scan:', error);
+      await logError('[BLE] Error stopping scan:', error);
+    }
+  }
+
+  /**
+   * Start pulsed scanning - alternates between scan bursts and pauses
+   * This works better with simultaneous advertising on iOS
+   */
+  async startPulsedScanning(durationMs: number = 30000): Promise<void> {
+    if (this.isPulsing) {
+      return;
+    }
+
+    this.isPulsing = true;
+
+    const scanDuration = 3000; // 3 seconds of scanning
+    const pauseDuration = 2000; // 2 seconds pause (advertising gets priority)
+    const startTime = Date.now();
+
+    const doPulse = async () => {
+      if (!this.isPulsing) {
+        return;
+      }
+
+      // Check if total duration exceeded
+      if (Date.now() - startTime >= durationMs) {
+        await this.stopPulsedScanning();
+        return;
+      }
+
+      try {
+        // Scan burst (silent - too noisy to log every pulse)
+        this.state.isScanning = true;
+        this.notifyStateListeners();
+        this.startDeviceExpiryTimer();
+        await Bluetooth.startScanning();
+
+        // Scan for scanDuration
+        setTimeout(async () => {
+          if (!this.isPulsing) return;
+
+          // Stop scanning (silent)
+          try {
+            await Bluetooth.stopScanning();
+            this.state.isScanning = false;
+            this.stopDeviceExpiryTimer();
+            this.notifyStateListeners();
+          } catch (error) {
+            await logError('Error stopping pulse scan:', error);
+          }
+
+          // Pause for pauseDuration, then repeat
+          setTimeout(() => {
+            if (this.isPulsing) {
+              doPulse();
+            }
+          }, pauseDuration);
+        }, scanDuration);
+      } catch (error) {
+        await logError('❌ Error in pulse scanning:', error);
+        await this.stopPulsedScanning();
+      }
+    };
+
+    // Start first pulse
+    doPulse();
+  }
+
+  /**
+   * Stop pulsed scanning
+   */
+  async stopPulsedScanning(): Promise<void> {
+    if (!this.isPulsing) {
+      return;
+    }
+
+    this.isPulsing = false;
+
+    if (this.state.isScanning) {
+      try {
+        await Bluetooth.stopScanning();
+        this.state.isScanning = false;
+        this.stopDeviceExpiryTimer();
+        this.notifyStateListeners();
+      } catch (error) {
+        await logError('[BLE] Error stopping scan:', error);
+      }
     }
   }
 
@@ -294,18 +444,39 @@ class BLEManagerService {
   }
 
   /**
-   * Connect to a discovered device
+   * Connect to a discovered device with retry logic
    */
-  async connectToDevice(deviceId: string): Promise<any> {
-    try {
-      await log(`Connecting to device ${deviceId}...`);
-      await Bluetooth.connect(deviceId, 10000); // 10 second timeout
-      await log(`Connected to device ${deviceId}`);
-      return {id: deviceId}; // Return a minimal device object
-    } catch (error) {
-      await logError('Error connecting to device:', error);
-      return null;
+  async connectToDevice(deviceId: string, maxRetries: number = 2): Promise<any> {
+    let lastError: any;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        if (attempt > 0) {
+          const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Exponential backoff, max 5s
+          console.log(`[BLEManager] 🔄 Retry attempt ${attempt}/${maxRetries} after ${backoffMs}ms delay...`);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+        }
+        
+        console.log(`[BLEManager] 🔌 Connecting to device ${deviceId}... (attempt ${attempt + 1}/${maxRetries + 1})`);
+        await Bluetooth.connect(deviceId, 8000); // 8 second timeout (reduced from 10s for faster connections)
+        console.log(`[BLEManager] ✅ Connected to device ${deviceId}`);
+        await log(`✅ [BLEManager] Connected to device ${deviceId}`);
+        return {id: deviceId}; // Return a minimal device object
+      } catch (error) {
+        lastError = error;
+        console.error(`[BLEManager] ❌ Connection attempt ${attempt + 1} failed:`, error);
+        
+        // Don't retry on certain errors
+        const errorMessage = error?.message || String(error);
+        if (errorMessage.includes('powered off') || errorMessage.includes('unauthorized')) {
+          console.log('[BLEManager] Fatal error - not retrying');
+          break;
+        }
+      }
     }
+    
+    await logError('❌ [BLEManager] Failed to connect after all retries:', lastError);
+    return null;
   }
 
   /**
@@ -321,18 +492,39 @@ class BLEManagerService {
   }
 
   /**
-   * Read profile data from connected device
+   * Read profile data from connected device with retry logic
    */
-  async readProfile(device: any): Promise<ConnectionProfile | null> {
-    try {
-      const profileJson = await Bluetooth.readProfile(device.id);
-      const profile: ConnectionProfile = JSON.parse(profileJson);
-      await log('Profile received:', profile);
-      return profile;
-    } catch (error) {
-      await logError('Error reading profile:', error);
-      return null;
+  async readProfile(device: any, maxRetries: number = 2): Promise<ConnectionProfile | null> {
+    let lastError: any;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        if (attempt > 0) {
+          const backoffMs = 500 * attempt; // Shorter backoff for reads: 500ms, 1000ms
+          console.log(`[BLEManager] 🔄 Read retry attempt ${attempt}/${maxRetries} after ${backoffMs}ms delay...`);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+        }
+        
+        console.log(`[BLEManager] 📖 Reading profile from device ${device.id}... (attempt ${attempt + 1}/${maxRetries + 1})`);
+        const profile: ConnectionProfile = await Bluetooth.readProfile(device.id);
+        console.log(`[BLEManager] ✅ Profile read successfully`);
+        await log(`✅ [BLEManager] Profile received:`, JSON.stringify(profile));
+        return profile;
+      } catch (error) {
+        lastError = error;
+        console.error(`[BLEManager] ❌ Profile read attempt ${attempt + 1} failed:`, error);
+        
+        // Check if error is due to disconnection
+        const errorMessage = error?.message || String(error);
+        if (errorMessage.includes('not connected')) {
+          console.log('[BLEManager] Device disconnected - not retrying');
+          break;
+        }
+      }
     }
+    
+    await logError('❌ [BLEManager] Failed to read profile after all retries:', lastError);
+    return null;
   }
 
   /**
@@ -342,11 +534,13 @@ class BLEManagerService {
    */
   async writeHandshake(device: any, handshakeData: any): Promise<boolean> {
     try {
+      await log(`✍️ [BLEManager] Writing handshake to device ${device.id}...`);
+      await log(`✍️ [BLEManager] Handshake data: ${JSON.stringify(handshakeData).substring(0, 100)}...`);
       await Bluetooth.writeFollowRequest(device.id, handshakeData);
-      await log('Handshake data written');
+      await log('✅ [BLEManager] Handshake data written successfully');
       return true;
     } catch (error) {
-      await logError('Error writing handshake:', error);
+      await logError('❌ [BLEManager] Error writing handshake:', error);
       return false;
     }
   }

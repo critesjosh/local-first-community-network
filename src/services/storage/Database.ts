@@ -5,6 +5,7 @@
 import * as SQLite from 'expo-sqlite';
 import {User, Connection, Event, Message} from '../../types/models';
 import {EncryptedEvent} from '../crypto/EncryptionService';
+import {Session} from '../../types/session';
 
 class Database {
   private db: SQLite.SQLiteDatabase | null = null;
@@ -85,6 +86,24 @@ class Database {
           key TEXT PRIMARY KEY,
           value TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS sessions (
+          id TEXT PRIMARY KEY,
+          event_name TEXT NOT NULL,
+          host_user_id TEXT NOT NULL,
+          check_in_time INTEGER NOT NULL,
+          expires_at INTEGER NOT NULL,
+          is_active INTEGER DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS session_connections (
+          session_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          connected_at INTEGER NOT NULL,
+          PRIMARY KEY (session_id, user_id),
+          FOREIGN KEY(session_id) REFERENCES sessions(id),
+          FOREIGN KEY(user_id) REFERENCES connections(user_id)
+        );
       `);
     } catch (error) {
       console.error('Error creating database tables:', error);
@@ -94,6 +113,7 @@ class Database {
 
   /**
    * Run database migrations to update existing tables
+   * IMPORTANT: Migrations should never delete user data or identity!
    */
   private async runMigrations(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
@@ -101,7 +121,6 @@ class Database {
     try {
       // Migration 1: Add status column to connections table if it doesn't exist
       await this.db.execAsync(`
-        -- Check if status column exists, if not add it
         ALTER TABLE connections ADD COLUMN status TEXT NOT NULL DEFAULT 'pending-sent';
       `).catch(() => {
         // Column already exists, ignore error
@@ -116,10 +135,86 @@ class Database {
         console.log('[Database] trust_level column already exists');
       });
 
+      // Migration 3: Clean up duplicate connections (keep most recent per user_id)
+      // This ONLY affects connections table, never touches users or identity
+      await this.cleanupDuplicateConnections();
+      
+      // Migration 4: Add unique constraint to user_id
+      // Note: SQLite doesn't support adding UNIQUE constraints to existing columns
+      // The constraint is in the CREATE TABLE statement, so new installs will have it
+      // For existing databases, the cleanup above ensures no duplicates exist
+      try {
+        await this.db.execAsync(`
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_connections_user_id 
+            ON connections(user_id);
+        `);
+        console.log('[Database] Unique index on user_id created');
+      } catch (error) {
+        // If this fails, it's not critical - the duplicate cleanup above prevents issues
+        console.log('[Database] Could not create unique index:', error.message);
+      }
+
       console.log('[Database] Migrations completed successfully');
     } catch (error) {
       console.error('Error running database migrations:', error);
-      // Don't throw - migrations are best-effort
+      // Don't throw - migrations should never break the app
+      // User data and identity are preserved even if migrations fail
+    }
+  }
+
+  /**
+   * Clean up duplicate connections - keeps the most recent connection per user_id
+   * IMPORTANT: This ONLY affects the connections table, never touches users or identity!
+   */
+  private async cleanupDuplicateConnections(): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      // Verify connections table exists before querying
+      const tableExists = await this.db.getFirstAsync<{name: string}>(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='connections'`
+      );
+      
+      if (!tableExists) {
+        console.log('[Database] Connections table does not exist yet, skipping cleanup');
+        return;
+      }
+
+      // Find duplicates
+      const duplicates = await this.db.getAllAsync<{user_id: string, count: number}>(`
+        SELECT user_id, COUNT(*) as count
+        FROM connections
+        GROUP BY user_id
+        HAVING count > 1
+      `);
+
+      if (duplicates.length === 0) {
+        console.log('[Database] No duplicate connections found');
+        return;
+      }
+
+      console.log(`[Database] Found ${duplicates.length} users with duplicate connections, cleaning up...`);
+
+      // For each user with duplicates, keep only the most recent connection
+      for (const dup of duplicates) {
+        // Delete all but the most recent connection for this user
+        await this.db.runAsync(`
+          DELETE FROM connections
+          WHERE user_id = ?
+            AND id NOT IN (
+              SELECT id FROM connections
+              WHERE user_id = ?
+              ORDER BY connected_at DESC
+              LIMIT 1
+            )
+        `, [dup.user_id, dup.user_id]);
+      }
+
+      console.log('[Database] Duplicate connections cleaned up successfully');
+    } catch (error) {
+      console.error('[Database] Error cleaning up duplicates:', error);
+      // Don't throw - this is best-effort and should never break the app
+      // User identity and data remain intact even if this fails
     }
   }
 
@@ -186,29 +281,59 @@ class Database {
   }
 
   /**
-   * Save connection
+   * Save connection - uses UPSERT based on user_id to prevent duplicates
    */
   async saveConnection(connection: Connection): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const query = `
-      INSERT OR REPLACE INTO connections (
-        id, user_id, display_name, profile_photo, shared_secret,
-        connected_at, notes, status, trust_level
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
+    // Check if connection already exists for this user_id
+    const existing = await this.getConnectionByUserId(connection.userId);
+    
+    if (existing) {
+      // Update existing connection, preserving the original id and connected_at
+      console.log(`[Database] Updating existing connection for user ${connection.userId}`);
+      const query = `
+        UPDATE connections 
+        SET display_name = ?,
+            profile_photo = ?,
+            shared_secret = ?,
+            notes = ?,
+            status = ?,
+            trust_level = ?
+        WHERE user_id = ?
+      `;
+      
+      await this.db.runAsync(query, [
+        connection.displayName,
+        connection.profilePhoto || null,
+        connection.sharedSecret ? Buffer.from(connection.sharedSecret).toString('hex') : null,
+        connection.notes || null,
+        connection.status,
+        connection.trustLevel,
+        connection.userId,
+      ]);
+    } else {
+      // Insert new connection
+      console.log(`[Database] Creating new connection for user ${connection.userId}`);
+      const query = `
+        INSERT INTO connections (
+          id, user_id, display_name, profile_photo, shared_secret,
+          connected_at, notes, status, trust_level
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
 
-    await this.db.runAsync(query, [
-      connection.id,
-      connection.userId,
-      connection.displayName,
-      connection.profilePhoto || null,
-      connection.sharedSecret ? Buffer.from(connection.sharedSecret).toString('hex') : null,
-      connection.connectedAt.getTime(),
-      connection.notes || null,
-      connection.status,
-      connection.trustLevel,
-    ]);
+      await this.db.runAsync(query, [
+        connection.id,
+        connection.userId,
+        connection.displayName,
+        connection.profilePhoto || null,
+        connection.sharedSecret ? Buffer.from(connection.sharedSecret).toString('hex') : null,
+        connection.connectedAt.getTime(),
+        connection.notes || null,
+        connection.status,
+        connection.trustLevel,
+      ]);
+    }
   }
 
   /**
@@ -303,29 +428,46 @@ class Database {
    * Get connection by user ID
    */
   async getConnectionByUserId(userId: string): Promise<Connection | null> {
-    if (!this.db) throw new Error('Database not initialized');
-
-    const query = 'SELECT * FROM connections WHERE user_id = ?';
-    const row = await this.db.getFirstAsync<any>(query, [userId]);
-
-    if (!row) {
+    if (!this.db) {
+      console.error('[Database] ERROR: Database not initialized when trying to get connection by userId');
+      console.error('[Database] userId:', userId);
+      throw new Error('Database not initialized');
+    }
+    
+    if (!userId) {
+      console.error('[Database] ERROR: userId is null/undefined');
       return null;
     }
 
-    return {
-      id: row.id,
-      userId: row.user_id,
-      displayName: row.display_name,
-      profilePhoto: row.profile_photo,
-      sharedSecret: row.shared_secret
-        ? new Uint8Array(Buffer.from(row.shared_secret, 'hex'))
-        : undefined,
-      connectedAt: new Date(row.connected_at),
-      notes: row.notes,
-      status: (row.status || 'pending-sent') as 'mutual' | 'pending-sent' | 'pending-received',
-      trustLevel: row.trust_level as 'verified' | 'pending',
-    };
+    try {
+      const query = 'SELECT * FROM connections WHERE user_id = ?';
+      const row = await this.db.getFirstAsync<any>(query, [userId]);
+      
+      if (!row) {
+        return null;
+      }
+      
+      return {
+        id: row.id,
+        userId: row.user_id,
+        displayName: row.display_name,
+        profilePhoto: row.profile_photo,
+        sharedSecret: row.shared_secret
+          ? new Uint8Array(Buffer.from(row.shared_secret, 'hex'))
+          : undefined,
+        connectedAt: new Date(row.connected_at),
+        notes: row.notes,
+        status: (row.status || 'pending-sent') as 'mutual' | 'pending-sent' | 'pending-received',
+        trustLevel: row.trust_level as 'verified' | 'pending',
+      };
+    } catch (error) {
+      console.error('[Database] ERROR in getConnectionByUserId:', error);
+      console.error('[Database] userId:', userId);
+      console.error('[Database] db state:', this.db ? 'initialized' : 'NULL');
+      throw error;
+    }
   }
+
 
   /**
    * Get pending received connections (connection requests)
@@ -356,7 +498,7 @@ class Database {
    */
   async getAutoAcceptConnections(): Promise<boolean> {
     const value = await this.getAppState('auto_accept_connections');
-    return value === 'true' || value === null; // default to true
+    return value === 'true'; // default to false (require manual approval)
   }
 
   /**
@@ -690,13 +832,134 @@ class Database {
     await this.db.runAsync(query, [key, value]);
   }
 
+  // =======================
+  // Session Management
+  // =======================
+
+  /**
+   * Create a new session
+   */
+  async createSession(session: Session): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      INSERT INTO sessions (
+        id, event_name, host_user_id, check_in_time, expires_at, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `;
+
+    await this.db.runAsync(query, [
+      session.id,
+      session.eventName,
+      session.hostUserId,
+      session.checkInTime.getTime(),
+      session.expiresAt.getTime(),
+      session.isActive ? 1 : 0,
+    ]);
+
+    console.log('[Database] Session created:', session.id);
+  }
+
+  /**
+   * Get the current active session
+   */
+  async getCurrentSession(): Promise<Session | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      SELECT * FROM sessions 
+      WHERE is_active = 1 
+      ORDER BY check_in_time DESC 
+      LIMIT 1
+    `;
+
+    const row = await this.db.getFirstAsync<any>(query);
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      eventName: row.event_name,
+      hostUserId: row.host_user_id,
+      checkInTime: new Date(row.check_in_time),
+      expiresAt: new Date(row.expires_at),
+      isActive: row.is_active === 1,
+    };
+  }
+
+  /**
+   * Get all sessions (for cleanup)
+   */
+  async getAllSessions(): Promise<Session[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'SELECT * FROM sessions ORDER BY check_in_time DESC';
+    const rows = await this.db.getAllAsync<any>(query);
+
+    return rows.map(row => ({
+      id: row.id,
+      eventName: row.event_name,
+      hostUserId: row.host_user_id,
+      checkInTime: new Date(row.check_in_time),
+      expiresAt: new Date(row.expires_at),
+      isActive: row.is_active === 1,
+    }));
+  }
+
+  /**
+   * End a session (mark as inactive)
+   */
+  async endSession(sessionId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = 'UPDATE sessions SET is_active = 0 WHERE id = ?';
+    await this.db.runAsync(query, [sessionId]);
+
+    console.log('[Database] Session ended:', sessionId);
+  }
+
+  /**
+   * Add a connection to a session
+   */
+  async addConnectionToSession(sessionId: string, userId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      INSERT OR IGNORE INTO session_connections (
+        session_id, user_id, connected_at
+      ) VALUES (?, ?, ?)
+    `;
+
+    await this.db.runAsync(query, [
+      sessionId,
+      userId,
+      Date.now(),
+    ]);
+  }
+
+  /**
+   * Get all connections made at a session
+   */
+  async getSessionConnections(sessionId: string): Promise<string[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = `
+      SELECT user_id FROM session_connections 
+      WHERE session_id = ? 
+      ORDER BY connected_at ASC
+    `;
+
+    const rows = await this.db.getAllAsync<{user_id: string}>(query, [sessionId]);
+    return rows.map(row => row.user_id);
+  }
+
   /**
    * Clear all data (factory reset)
    */
   async clearAllData(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const tables = ['users', 'connections', 'events', 'messages', 'app_state'];
+    const tables = ['users', 'connections', 'events', 'messages', 'app_state', 'sessions', 'session_connections'];
 
     for (const table of tables) {
       await this.db.execAsync(`DELETE FROM ${table}`);

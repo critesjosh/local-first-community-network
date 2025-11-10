@@ -6,9 +6,10 @@
 #import <React/RCTBridgeModule.h>
 #import <React/RCTConvert.h>
 #import <React/RCTUtils.h>
+#import <CoreBluetooth/CoreBluetooth.h>
 
 // Import the generated header from Swift
-#import "rn_bluetooth-Swift.h"
+#import "RNLCBluetooth-Swift.h"
 
 @interface RNLCBluetoothModule : NSObject <RCTBridgeModule>
 @end
@@ -17,13 +18,8 @@
 
 RCT_EXPORT_MODULE(RNLCBluetoothModule)
 
-+ (void)load {
-  NSLog(@"🚀 RNLCBluetoothModule loaded successfully!");
-}
-
-+ (NSString *)moduleName {
-  NSLog(@"🔍 Module name: RNLCBluetoothModule");
-  return @"RNLCBluetoothModule";
++ (BOOL)requiresMainQueueSetup {
+  return YES;
 }
 
 // MARK: - Initialization
@@ -32,6 +28,15 @@ RCT_EXPORT_METHOD(initialize:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
   @try {
+    // CRITICAL: Ensure EventEmitter is initialized early by referencing it
+    // React Native should instantiate it automatically, but force early initialization
+    Class eventEmitterClass = NSClassFromString(@"RNLCBluetoothEventEmitter");
+    if (eventEmitterClass) {
+      NSLog(@"[RNLCBluetoothModule] EventEmitter class found, should be initialized by RN");
+    } else {
+      NSLog(@"[RNLCBluetoothModule] ⚠️ WARNING: EventEmitter class not found!");
+    }
+    
     [[BLECentralManager shared] initializeWithRestoreIdentifier:nil];
     [[BLEPeripheralManager shared] initialize];
     resolve(nil);
@@ -53,11 +58,25 @@ RCT_EXPORT_METHOD(requestPermissions:(RCTPromiseResolveBlock)resolve
 RCT_EXPORT_METHOD(startScanning:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
-  @try {
-    [[BLECentralManager shared] startScanning];
+  NSLog(@"[RNLCBluetoothModule] startScanning called in Objective-C bridge");
+  
+  // CRITICAL: Verify EventEmitter is initialized before starting scan
+  // This is important for release builds where timing might differ
+  Class eventEmitterClass = NSClassFromString(@"RNLCBluetoothEventEmitter");
+  if (!eventEmitterClass) {
+    NSLog(@"[RNLCBluetoothModule] ❌ ERROR: EventEmitter class not found! Events will be lost!");
+    reject(@"init_error", @"EventEmitter not initialized", nil);
+    return;
+  }
+  
+  NSError *error = nil;
+  [[BLECentralManager shared] startScanningAndReturnError:&error];
+  if (error) {
+    NSLog(@"[RNLCBluetoothModule] startScanning failed: %@", error.localizedDescription);
+    reject(@"scan_error", error.localizedDescription, error);
+  } else {
+    NSLog(@"[RNLCBluetoothModule] startScanning completed successfully");
     resolve(nil);
-  } @catch (NSException *exception) {
-    reject(@"scan_error", exception.reason, nil);
   }
 }
 
@@ -79,8 +98,15 @@ RCT_EXPORT_METHOD(connect:(NSString *)deviceId
     return;
   }
 
-  [[BLECentralManager shared] connectWithDeviceId:uuid timeoutMs:(int)timeoutMs];
-  resolve(nil);
+  [[BLECentralManager shared] connectWithDeviceId:uuid
+                                         timeoutMs:(int)timeoutMs
+                                        completion:^(NSError * _Nullable error) {
+    if (error) {
+      reject(@"connection_error", error.localizedDescription, error);
+    } else {
+      resolve(nil);
+    }
+  }];
 }
 
 RCT_EXPORT_METHOD(disconnect:(NSString *)deviceId
@@ -101,16 +127,22 @@ RCT_EXPORT_METHOD(readProfile:(NSString *)deviceId
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
+  NSLog(@"[RNLCBluetoothModule] 📖 readProfile called from JS for device: %@", deviceId);
+  
   NSUUID *uuid = [[NSUUID alloc] initWithUUIDString:deviceId];
   if (uuid == nil) {
+    NSLog(@"[RNLCBluetoothModule] ❌ Invalid device ID format");
     reject(@"invalid_device_id", @"Invalid device ID format", nil);
     return;
   }
 
+  NSLog(@"[RNLCBluetoothModule] ✅ UUID parsed, calling BLECentralManager");
   [[BLECentralManager shared] readProfileWithDeviceId:uuid completion:^(NSString * _Nullable result, NSError * _Nullable error) {
     if (error) {
+      NSLog(@"[RNLCBluetoothModule] ❌ Read error: %@", error.localizedDescription);
       reject(@"read_error", error.localizedDescription, error);
     } else {
+      NSLog(@"[RNLCBluetoothModule] ✅ Read success, profile length: %lu", (unsigned long)result.length);
       resolve(result);
     }
   }];
@@ -144,11 +176,12 @@ RCT_EXPORT_METHOD(setProfileData:(NSString *)profileJson
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
-  @try {
-    [[BLEPeripheralManager shared] setProfileDataWithProfileJson:profileJson];
+  NSError *error = nil;
+  [[BLEPeripheralManager shared] setProfileDataWithProfileJson:profileJson error:&error];
+  if (error) {
+    reject(@"profile_error", error.localizedDescription, error);
+  } else {
     resolve(nil);
-  } @catch (NSException *exception) {
-    reject(@"profile_error", exception.reason, nil);
   }
 }
 
@@ -158,13 +191,15 @@ RCT_EXPORT_METHOD(startAdvertising:(NSString *)displayName
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
-  @try {
-    [[BLEPeripheralManager shared] startAdvertisingWithDisplayName:displayName
-                                                        userHashHex:userHashHex
-                                                    followTokenHex:followTokenHex];
+  NSError *error = nil;
+  [[BLEPeripheralManager shared] startAdvertisingWithDisplayName:displayName
+                                                      userHashHex:userHashHex
+                                                  followTokenHex:followTokenHex
+                                                            error:&error];
+  if (error) {
+    reject(@"advertise_error", error.localizedDescription, error);
+  } else {
     resolve(nil);
-  } @catch (NSException *exception) {
-    reject(@"advertise_error", exception.reason, nil);
   }
 }
 
@@ -174,13 +209,15 @@ RCT_EXPORT_METHOD(updateAdvertisement:(NSString *)displayName
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
-  @try {
-    [[BLEPeripheralManager shared] updateAdvertisementWithDisplayName:displayName
-                                                          userHashHex:userHashHex
-                                                      followTokenHex:followTokenHex];
+  NSError *error = nil;
+  [[BLEPeripheralManager shared] updateAdvertisementWithDisplayName:displayName
+                                                        userHashHex:userHashHex
+                                                    followTokenHex:followTokenHex
+                                                              error:&error];
+  if (error) {
+    reject(@"update_error", error.localizedDescription, error);
+  } else {
     resolve(nil);
-  } @catch (NSException *exception) {
-    reject(@"update_error", exception.reason, nil);
   }
 }
 
@@ -188,6 +225,21 @@ RCT_EXPORT_METHOD(stopAdvertising:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
   [[BLEPeripheralManager shared] stopAdvertising];
+  resolve(nil);
+}
+
+RCT_EXPORT_METHOD(sendConnectionResponse:(NSString *)deviceId
+                  withResponseJson:(NSString *)responseJson
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
+  NSLog(@"[RNLCBluetoothModule] 📤 sendConnectionResponse called for device: %@", deviceId);
+  NSLog(@"[RNLCBluetoothModule] Response JSON: %@", [responseJson substringToIndex:MIN(100, responseJson.length)]);
+  
+  // iOS sends to all subscribed centrals, deviceId is ignored
+  [[BLEPeripheralManager shared] sendConnectionResponse:responseJson];
+  
+  NSLog(@"[RNLCBluetoothModule] ✅ Response notification sent");
   resolve(nil);
 }
 

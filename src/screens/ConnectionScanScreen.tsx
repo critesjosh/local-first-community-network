@@ -7,21 +7,35 @@ import {
   FlatList,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {RootStackScreenProps} from '../types/navigation';
 import BLEManager from '../services/bluetooth/BLEManager';
 import ConnectionService from '../services/ConnectionService';
 import BLEBroadcastService from '../services/bluetooth/BLEBroadcastService';
+import Database from '../services/storage/Database';
 import {DiscoveredDevice} from '../types/bluetooth';
+import {Connection} from '../types/models';
 
 type Props = RootStackScreenProps<'ConnectionScan'>;
+
+type DeviceWithStatus = DiscoveredDevice & {
+  connection?: Connection;
+};
 
 const ConnectionScanScreen = ({navigation}: Props) => {
   const [isScanning, setIsScanning] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
+  const [devices, setDevices] = useState<DeviceWithStatus[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
+  const [connections, setConnections] = useState<Connection[]>([]);
+
+  // Load connections and match with devices
+  const loadConnections = async () => {
+    const allConnections = await Database.getConnections();
+    setConnections(allConnections);
+  };
 
   useEffect(() => {
     // Initialize BLE
@@ -37,9 +51,17 @@ const ConnectionScanScreen = ({navigation}: Props) => {
     };
 
     initBLE();
+    loadConnections();
+
+    // Reload connections periodically to catch status updates
+    const connectionInterval = setInterval(loadConnections, 2000);
 
     // Add listeners
-    const scanListener = (device: DiscoveredDevice) => {
+    const scanListener = async (device: DiscoveredDevice) => {
+      // Load latest connections to match with device
+      const allConnections = await Database.getConnections();
+      setConnections(allConnections);
+      
       setDevices((prev) => {
         const existing = prev.find((d) => d.id === device.id);
         if (existing) {
@@ -66,14 +88,17 @@ const ConnectionScanScreen = ({navigation}: Props) => {
     return () => {
       BLEManager.removeScanListener(scanListener);
       BLEManager.removeStateListener(stateListener);
+      BLEManager.stopPulsedScanning();
       BLEManager.stopScanning();
+      clearInterval(connectionInterval);
     };
   }, [navigation]);
 
   const handleStartScanning = async () => {
     try {
       setDevices([]);
-      await BLEManager.startScanning();
+      // Use pulsed scanning for better iOS compatibility with simultaneous advertising
+      await BLEManager.startPulsedScanning(30000); // 30 seconds
     } catch (error) {
       Alert.alert('Error', 'Failed to start scanning. Please try again.');
     }
@@ -107,6 +132,7 @@ const ConnectionScanScreen = ({navigation}: Props) => {
   };
 
   const handleStopScanning = () => {
+    BLEManager.stopPulsedScanning();
     BLEManager.stopScanning();
   };
 
@@ -126,38 +152,19 @@ const ConnectionScanScreen = ({navigation}: Props) => {
         throw new Error('Failed to request connection');
       }
 
+      // Reload connections to show updated status
+      await loadConnections();
+
       setIsProcessing(false);
       setSelectedDevice(null);
 
-      // Show appropriate message based on connection status
-      if (result.connection.status === 'mutual') {
-        Alert.alert(
-          'Connected!',
-          `You are now connected with ${result.profile.displayName}`,
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.goBack(),
-            },
-          ],
-        );
-      } else if (result.connection.status === 'pending-sent') {
-        Alert.alert(
-          'Request Sent',
-          `Your connection request has been sent to ${result.profile.displayName}. Scan again later to check if they've accepted.`,
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.goBack(),
-            },
-          ],
-        );
-      }
+      // Restart scanning
+      await BLEManager.startScanning();
     } catch (error) {
       console.error('Error requesting connection:', error);
-      Alert.alert('Connection Error', 'Failed to request connection. Please try again.');
       setIsProcessing(false);
       setSelectedDevice(null);
+      // Restart scanning
       BLEManager.startScanning().catch(() => {
         // scanning retry failure handled silently
       });
@@ -178,26 +185,97 @@ const ConnectionScanScreen = ({navigation}: Props) => {
     return '#FF3B30';
   };
 
+  const getConnectionForDevice = (device: DiscoveredDevice): Connection | undefined => {
+    // Try to match by display name (from broadcast payload)
+    if (device.name) {
+      return connections.find(c => c.displayName === device.name);
+    }
+    return undefined;
+  };
+
+  const renderAvatar = (device: DiscoveredDevice, connection?: Connection) => {
+    // Use connection profile photo if available (base64 data URI)
+    if (connection?.profilePhoto) {
+      return (
+        <Image
+          source={{uri: connection.profilePhoto}}
+          style={styles.deviceAvatar}
+        />
+      );
+    }
+    
+    // Fallback to initial letter
+    const initial = (device.name || 'U').charAt(0).toUpperCase();
+    return (
+      <View style={[styles.deviceAvatar, styles.deviceAvatarFallback]}>
+        <Text style={styles.deviceAvatarText}>{initial}</Text>
+      </View>
+    );
+  };
+
+  const renderConnectionStatus = (connection?: Connection) => {
+    if (!connection) {
+      return (
+        <View style={[styles.statusBadge, styles.statusBadgeConnect]}>
+          <Text style={[styles.statusText, styles.statusConnect]}>Connect</Text>
+        </View>
+      );
+    }
+
+    switch (connection.status) {
+      case 'mutual':
+        return (
+          <View style={[styles.statusBadge, styles.statusBadgeMutual]}>
+            <Text style={[styles.statusText, styles.statusMutual]}>✓ Connected</Text>
+          </View>
+        );
+      case 'pending-sent':
+        return (
+          <View style={[styles.statusBadge, styles.statusBadgePending]}>
+            <Text style={[styles.statusText, styles.statusPending]}>⏳ Pending</Text>
+          </View>
+        );
+      case 'pending-received':
+        return (
+          <View style={[styles.statusBadge, styles.statusBadgeReceived]}>
+            <Text style={[styles.statusText, styles.statusReceived]}>👋 Tap to accept</Text>
+          </View>
+        );
+      default:
+        return (
+          <View style={[styles.statusBadge, styles.statusBadgeConnect]}>
+            <Text style={[styles.statusText, styles.statusConnect]}>Connect</Text>
+          </View>
+        );
+    }
+  };
+
   const renderDevice = ({item}: {item: DiscoveredDevice}) => {
     const isSelected = selectedDevice === item.id;
     const signalStrength = getSignalStrength(item.rssi);
     const signalColor = getSignalColor(item.rssi);
+    const connection = getConnectionForDevice(item);
+    const canConnect = !connection || connection.status === 'pending-received';
 
     return (
       <TouchableOpacity
         style={[styles.deviceCard, isSelected && styles.deviceCardSelected]}
-        onPress={() => handleDevicePress(item)}
-        disabled={isProcessing}>
-        <View style={styles.deviceInfo}>
-          <Text style={styles.deviceName}>{item.name || 'Broadcasting Member'}</Text>
-          <Text style={styles.deviceId}>{item.id.substring(0, 8)}...</Text>
-        </View>
-        <View style={styles.deviceSignal}>
-          <View style={[styles.signalDot, {backgroundColor: signalColor}]} />
-          <Text style={[styles.signalText, {color: signalColor}]}>
-            {signalStrength}
-          </Text>
-          <Text style={styles.rssiText}>{item.rssi} dBm</Text>
+        onPress={() => canConnect ? handleDevicePress(item) : null}
+        disabled={isProcessing || !canConnect}>
+        {renderAvatar(item, connection)}
+        <View style={styles.deviceMainInfo}>
+          <View style={styles.deviceInfo}>
+            <Text style={styles.deviceName}>{item.name || 'Broadcasting Member'}</Text>
+            <View style={styles.deviceSignal}>
+              <View style={[styles.signalDot, {backgroundColor: signalColor}]} />
+              <Text style={[styles.signalText, {color: signalColor}]}>
+                {signalStrength} • {item.rssi} dBm
+              </Text>
+            </View>
+          </View>
+          <View style={styles.deviceActions}>
+            {renderConnectionStatus(connection)}
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -372,7 +450,6 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 12,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: {width: 0, height: 2},
@@ -384,35 +461,85 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#007AFF',
   },
+  deviceAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 12,
+  },
+  deviceAvatarFallback: {
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deviceAvatarText: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  deviceMainInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   deviceInfo: {
     flex: 1,
   },
   deviceName: {
     fontSize: 17,
     fontWeight: '600',
-    marginBottom: 4,
-  },
-  deviceId: {
-    fontSize: 13,
-    color: '#8E8E93',
+    marginBottom: 6,
   },
   deviceSignal: {
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   signalDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginBottom: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
   },
   signalText: {
     fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 2,
+    fontWeight: '500',
   },
-  rssiText: {
-    fontSize: 11,
-    color: '#8E8E93',
+  deviceActions: {
+    marginLeft: 12,
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  statusBadgeConnect: {
+    backgroundColor: '#007AFF',
+  },
+  statusBadgeMutual: {
+    backgroundColor: '#E8F5E9',
+  },
+  statusBadgePending: {
+    backgroundColor: '#FFF3E0',
+  },
+  statusBadgeReceived: {
+    backgroundColor: '#E3F2FD',
+  },
+  statusText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  statusConnect: {
+    color: 'white',
+  },
+  statusMutual: {
+    color: '#2E7D32',
+  },
+  statusPending: {
+    color: '#E65100',
+  },
+  statusReceived: {
+    color: '#0D47A1',
   },
   emptyState: {
     backgroundColor: 'white',
