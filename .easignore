@@ -1,4 +1,6 @@
 # EAS should include android directory even though it's in .gitignore
 !android
 !ios
-
+build-*
+release/
+debug/
