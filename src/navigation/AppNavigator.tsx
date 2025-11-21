@@ -11,6 +11,7 @@ import {base64ToDataUri} from '../utils/imageUtils';
 import HomeScreen from '../screens/HomeScreen';
 import ConnectionsScreen from '../screens/ConnectionsScreen';
 import ConnectScreen from '../screens/ConnectScreen';
+import CreateEventScreen from '../screens/CreateEventScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import ProfileEditScreen from '../screens/ProfileEditScreen';
 import SettingsScreen from '../screens/SettingsScreen';
@@ -62,6 +63,17 @@ const MainTabs = () => {
           headerShown: false,
           tabBarIcon: ({color}) => (
             <Text style={{fontSize: 24, color}}>👥</Text>
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="CreateEvent"
+        component={CreateEventScreen}
+        options={{
+          title: 'New Post',
+          headerShown: false,
+          tabBarIcon: ({color}) => (
+            <Text style={{fontSize: 24, color}}>✏️</Text>
           ),
         }}
       />
